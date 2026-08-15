@@ -14,7 +14,7 @@ import {
 
 const MapComponent = dynamic(() => import('../components/Map'), { ssr: false });
 
-// Poin 3: 12 STO Resmi Whitelist
+// 12 STO Resmi Whitelist
 const ALLOWED_STOS = [
   'BNT', 'PLK', 'KKN', 'MTW', 'PPS', 'PYM', 'TML', 'AMP', 'KKP', 'KRI', 'KSO', 'PRC'
 ];
@@ -35,6 +35,31 @@ const MONTH_NAMES = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
+
+// Helper Ekstrak STO
+function extractSto(odpName, existingSto) {
+  if (existingSto && String(existingSto).trim() !== '' && String(existingSto).toUpperCase() !== 'UNKNOWN') {
+    return String(existingSto).trim().toUpperCase();
+  }
+  if (!odpName) return 'UNKNOWN';
+  const match = String(odpName).match(/ODP-([A-Z0-9]{3})/i);
+  return match && match[1] ? match[1].toUpperCase() : 'UNKNOWN';
+}
+
+// Filter Ketat Whitelist STO (Nama ODP WAJIB mengandung 12 STO Resmi)
+function isAllowedOdp(odpName, existingSto) {
+  if (!odpName) return false;
+  const nameUpper = String(odpName).trim().toUpperCase();
+  if (nameUpper.startsWith('OTB-')) return false;
+
+  const sto = extractSto(odpName, existingSto);
+  if (!ALLOWED_STOS.includes(sto)) return false;
+
+  const hasAllowedStoInName = ALLOWED_STOS.some((code) => nameUpper.includes(code));
+  if (!hasAllowedStoInName) return false;
+
+  return true;
+}
 
 function parseDateRobust(raw) {
   if (!raw) return null;
@@ -69,7 +94,6 @@ function parseCleanFloat(val) {
   return isNaN(parsed) ? null : parsed;
 }
 
-// Poin 2: Custom Label Segmen Batang yang Membaca Nilai Asli (Bukan Akumulasi Stack)
 const renderSegmentLabel = (key) => (props) => {
   const { x, y, width, height, payload } = props;
   const val = payload ? payload[key] : null;
@@ -89,7 +113,6 @@ const renderSegmentLabel = (key) => (props) => {
   );
 };
 
-// Poin 2: Tooltip Pop-up dengan Grand Total ODP & Port
 const CustomChartTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     const totalOdpKab = payload[0]?.payload?.total || 0;
@@ -117,7 +140,6 @@ const CustomChartTooltip = ({ active, payload, label }) => {
           })}
         </div>
 
-        {/* Poin 2: Grand Total ODP & Port di Popup */}
         <div className="border-t border-slate-200 pt-1 mt-1 flex justify-between items-center text-[10px] font-black text-slate-800 bg-slate-50 p-1 rounded">
           <span>GRAND TOTAL:</span>
           <span>{totalOdpKab.toLocaleString()} ODP | {totalPortKab.toLocaleString()} Port</span>
@@ -157,17 +179,7 @@ export default function Dashboard() {
       if (res.ok) {
         const odpData = await res.json();
         const enrichedData = odpData
-          .filter((item) => {
-            // Poin 4: Ignore OTB-
-            if (!item.odp_name || String(item.odp_name).trim().toUpperCase().startsWith('OTB-')) return false;
-
-            // Poin 3: Filter Whitelist 12 STO
-            let sto = (item.sto || '').trim().toUpperCase();
-            if (!sto || sto === 'UNKNOWN') {
-              sto = (item.odp_name || '').match(/ODP-([A-Z0-9]{3})/i)?.[1].toUpperCase() || 'UNKNOWN';
-            }
-            return ALLOWED_STOS.includes(sto);
-          })
+          .filter((item) => isAllowedOdp(item.odp_name, item.sto))
           .map((item) => {
             const isTotal = parseInt(item.is_total) || 0;
             const used = parseInt(item.used) || 0;
@@ -175,9 +187,7 @@ export default function Dashboard() {
             const rsk = isTotal > 0 ? used / isTotal : 0;
             let status = rsk === 0 ? 'BLACK' : rsk <= 0.6 ? 'GREEN' : rsk <= 0.85 ? 'YELLOW' : rsk < 0.99 ? 'ORANGE' : 'RED';
             
-            let sto = (item.sto || '').trim().toUpperCase();
-            if (!sto || sto === 'UNKNOWN') sto = (item.odp_name || '').match(/ODP-([A-Z0-9]{3})/i)?.[1].toUpperCase() || 'UNKNOWN';
-            
+            let sto = extractSto(item.odp_name, item.sto);
             let wok = (item.wok || '').trim().toUpperCase();
             if (!wok || wok === 'UNKNOWN') wok = STO_WOK_MAP[sto] || 'PALANGKARAYA';
 
@@ -207,7 +217,6 @@ export default function Dashboard() {
 
         setData(enrichedData);
 
-        // Poin 1: Default Filter Week Paling Terakhir
         const weeks = [...new Set(enrichedData.map((d) => d.week).filter((w) => w !== 'Unknown'))].sort((a, b) => {
           const numA = parseInt(a.replace(/\D/g, '')) || 0;
           const numB = parseInt(b.replace(/\D/g, '')) || 0;
@@ -256,7 +265,6 @@ export default function Dashboard() {
     return `*${selectedWeek === 'ALL' ? getWeekNumber(latestDate) : selectedWeek} - Cut Off Data until ${formatDateFormatted(latestDate)}`;
   }, [weekFilteredData, selectedWeek]);
 
-  // Poin 1: Agregasi Lengkap ODP & Ports per Status Warna
   const statsOverview = useMemo(() => {
     let totalPort = 0, usedPort = 0, avaiPort = 0;
     let colorCounts = { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 };
@@ -567,7 +575,7 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* Poin 1: BLACK ODP dengan Total Port */}
+                {/* BLACK ODP dengan Total Port */}
                 <div
                   onClick={() => setSelectedStatus((p) => (p === 'BLACK' ? 'ALL' : 'BLACK'))}
                   className={`col-span-1 border border-gray-400 p-2 shadow-inner flex flex-col justify-center cursor-pointer transition-transform hover:scale-105 rounded relative ${
@@ -588,7 +596,7 @@ export default function Dashboard() {
                   </p>
                 </div>
 
-                {/* Poin 1: Colored ODP dengan Total Port masing-masing */}
+                {/* Colored ODP */}
                 <div className="col-span-1 grid grid-cols-2 gap-1.5 sm:gap-2">
                   <div
                     onClick={() => setSelectedStatus((p) => (p === 'YELLOW' ? 'ALL' : 'YELLOW'))}
@@ -760,7 +768,6 @@ export default function Dashboard() {
                       />
                       <YAxis tick={{ fontSize: 9, fontWeight: 'bold' }} domain={[0, 100]} unit="%" />
                       <Tooltip content={<CustomChartTooltip />} />
-                      {/* Poin 2: Label Persentase di Tiap Segmen Batang */}
                       <Bar dataKey="BLACK" stackId="a" fill="#000000" label={renderSegmentLabel('BLACK')} />
                       <Bar dataKey="GREEN" stackId="a" fill="#16a34a" label={renderSegmentLabel('GREEN')} />
                       <Bar dataKey="YELLOW" stackId="a" fill="#facc15" label={renderSegmentLabel('YELLOW')} />
