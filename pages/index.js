@@ -3,6 +3,7 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Papa from 'papaparse';
 import Uploader from '../components/Uploader';
+import Sidebar from '../components/Sidebar';
 import {
   BarChart,
   Bar,
