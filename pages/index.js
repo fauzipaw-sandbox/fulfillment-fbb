@@ -31,13 +31,68 @@ const getWeekNumber = (dateString) => {
   return `W${weekNo}`;
 };
 
+// Komponen Label persentase di dalam batang grafik
+const renderCustomBarLabel = ({ x, y, width, height, value }) => {
+  if (!value || value < 3 || height < 12) return null;
+  return (
+    <text
+      x={x + width / 2}
+      y={y + height / 2 + 3}
+      fill="#ffffff"
+      textAnchor="middle"
+      fontSize={8}
+      fontWeight="bold"
+    >
+      {`${value}%`}
+    </text>
+  );
+};
+
+// Custom Tooltip Popup untuk Grafik
+const CustomChartTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-white p-2.5 rounded shadow-lg border border-slate-300 text-xs font-sans space-y-1.5 z-50">
+        <p className="font-bold text-slate-800 border-b pb-1 text-center">{label}</p>
+        <div className="space-y-1">
+          {payload.slice().reverse().map((entry, index) => {
+            if (!entry.value || entry.value === 0) return null;
+            const statusKey = entry.dataKey;
+            const count = entry.payload?.rawCounts?.[statusKey] || 0;
+            const ports = entry.payload?.rawPorts?.[statusKey] || 0;
+
+            return (
+              <div key={`item-${index}`} className="flex items-center justify-between gap-3 text-[11px]">
+                <span className="flex items-center font-semibold" style={{ color: entry.fill }}>
+                  <span
+                    className="w-2.5 h-2.5 inline-block mr-1.5 rounded-sm"
+                    style={{ backgroundColor: entry.fill }}
+                  ></span>
+                  {statusKey}:
+                </span>
+                <span className="font-medium text-slate-700">
+                  <strong>{entry.value}%</strong> ({count.toLocaleString()} ODP | {ports.toLocaleString()} Port)
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+  return null;
+};
+
 export default function Dashboard() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedWeek, setSelectedWeek] = useState('ALL');
   const [sortConfig, setSortConfig] = useState({ key: 'occ', direction: 'desc' });
 
-  // State interaktif Status & Search Bar Maps
+  // State Toggle Uploader (Default: Hide)
+  const [showUploader, setShowUploader] = useState(false);
+
+  // State Interaktif Status & Search Bar Maps
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
@@ -89,19 +144,16 @@ export default function Dashboard() {
     return [...new Set(data.map((d) => d.week).filter((w) => w !== 'Unknown'))].sort();
   }, [data]);
 
-  // Data per Week
   const weekFilteredData = useMemo(() => {
     return selectedWeek === 'ALL' ? data : data.filter((d) => d.week === selectedWeek);
   }, [data, selectedWeek]);
 
-  // Data Sinkron saat Filter Box Status diklik
   const fullyFilteredData = useMemo(() => {
     return selectedStatus === 'ALL'
       ? weekFilteredData
       : weekFilteredData.filter((d) => d.status_final === selectedStatus);
   }, [weekFilteredData, selectedStatus]);
 
-  // Cutoff date terbaru
   const cutoffDate = useMemo(() => {
     if (weekFilteredData.length === 0) return '-';
     const dates = weekFilteredData
@@ -111,7 +163,6 @@ export default function Dashboard() {
     return formatDate(new Date(Math.max(...dates)));
   }, [weekFilteredData]);
 
-  // Overview Stats (Tetap hitung semua status pada week aktif)
   const statsOverview = useMemo(() => {
     let totalPort = 0;
     let usedPort = 0;
@@ -130,7 +181,6 @@ export default function Dashboard() {
     return { totalPort, usedPort, avaiPort, colorCounts };
   }, [weekFilteredData]);
 
-  // Chart & Table Stats
   const statsFiltered = useMemo(() => {
     const kabMap = {};
     const flatStosMap = {};
@@ -138,9 +188,20 @@ export default function Dashboard() {
     fullyFilteredData.forEach((item) => {
       const kab = item.kabupaten || 'LAINNYA';
       if (!kabMap[kab]) {
-        kabMap[kab] = { name: kab, BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0, total: 0 };
+        kabMap[kab] = {
+          name: kab,
+          BLACK: 0,
+          GREEN: 0,
+          YELLOW: 0,
+          ORANGE: 0,
+          RED: 0,
+          rawCounts: { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 },
+          rawPorts: { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 },
+          total: 0,
+        };
       }
-      kabMap[kab][item.status_final] += 1;
+      kabMap[kab].rawCounts[item.status_final] += 1;
+      kabMap[kab].rawPorts[item.status_final] += item.is_total;
       kabMap[kab].total += 1;
 
       const wok = item.wok || 'UNKNOWN';
@@ -155,14 +216,19 @@ export default function Dashboard() {
       flatStosMap[key].avai += item.avai;
     });
 
-    const chartData = Object.values(kabMap).map((k) => ({
-      name: k.name,
-      BLACK: parseFloat(((k.BLACK / (k.total || 1)) * 100).toFixed(1)),
-      GREEN: parseFloat(((k.GREEN / (k.total || 1)) * 100).toFixed(1)),
-      YELLOW: parseFloat(((k.YELLOW / (k.total || 1)) * 100).toFixed(1)),
-      ORANGE: parseFloat(((k.ORANGE / (k.total || 1)) * 100).toFixed(1)),
-      RED: parseFloat(((k.RED / (k.total || 1)) * 100).toFixed(1)),
-    }));
+    const chartData = Object.values(kabMap).map((k) => {
+      const tot = k.total || 1;
+      return {
+        name: k.name,
+        BLACK: parseFloat(((k.rawCounts.BLACK / tot) * 100).toFixed(1)),
+        GREEN: parseFloat(((k.rawCounts.GREEN / tot) * 100).toFixed(1)),
+        YELLOW: parseFloat(((k.rawCounts.YELLOW / tot) * 100).toFixed(1)),
+        ORANGE: parseFloat(((k.rawCounts.ORANGE / tot) * 100).toFixed(1)),
+        RED: parseFloat(((k.rawCounts.RED / tot) * 100).toFixed(1)),
+        rawCounts: k.rawCounts,
+        rawPorts: k.rawPorts,
+      };
+    });
 
     const flatStos = Object.values(flatStosMap).map((row) => ({
       ...row,
@@ -173,7 +239,6 @@ export default function Dashboard() {
     return { chartData, flatStos };
   }, [fullyFilteredData]);
 
-  // Sorting Table
   const sortedTableData = useMemo(() => {
     let sortableItems = [...statsFiltered.flatStos];
     if (sortConfig !== null) {
@@ -210,7 +275,7 @@ export default function Dashboard() {
             (d.kabupaten && d.kabupaten.toLowerCase().includes(lower)) ||
             (d.sto && d.sto.toLowerCase().includes(lower))
         )
-        .slice(0, 5);
+        .slice(0, 8);
       setSuggestions(suggs);
     } else {
       setSuggestions([]);
@@ -233,7 +298,7 @@ export default function Dashboard() {
         <title>ODP Profile & Utilization</title>
       </Head>
 
-      <div className="max-w-[1350px] mx-auto space-y-4">
+      <div className="max-w-[1350px] mx-auto space-y-3">
         {/* HEADER UTAMA & FILTER WEEK */}
         <div className="bg-gradient-to-r from-[#211c47] to-[#3a3575] text-white p-4 flex flex-col md:flex-row justify-between items-start md:items-center border-b-4 border-purple-500 rounded-t-lg shadow-sm">
           <div>
@@ -262,7 +327,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* NARRATIVE EXECUTIVE SUMMARY */}
+        {/* NARRATIVE SUMMARY */}
         <div className="bg-white px-4 py-2 text-[13px] border border-gray-200 shadow-sm rounded">
           The total <strong className="font-extrabold">number of ODP</strong> in Branch Palangkaraya
           was <strong className="font-extrabold">{(totalOdp / 1000).toFixed(1)}K</strong> (
@@ -277,14 +342,36 @@ export default function Dashboard() {
           available ports for <strong className="font-extrabold">new sales.</strong>
         </div>
 
-        {/* UPLOADER */}
-        <Uploader onUploadSuccess={fetchData} />
+        {/* TOGGLE TOMBOL UPLOADER (DEFAULT HIDE) */}
+        <div className="flex justify-end">
+          <button
+            onClick={() => setShowUploader(!showUploader)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-900 text-white font-bold text-xs rounded shadow hover:bg-blue-800 transition"
+          >
+            <svg
+              className={`w-3.5 h-3.5 transition-transform ${showUploader ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+            {showUploader ? 'Tutup Form Upload' : 'Upload / Update Data ODP (CSV / XLSX)'}
+          </button>
+        </div>
+
+        {/* UPLOADER CONTAINER */}
+        {showUploader && (
+          <div className="transition-all duration-300">
+            <Uploader onUploadSuccess={fetchData} />
+          </div>
+        )}
 
         {/* MAIN DASHBOARD */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
           {/* ================= KOLOM KIRI ================= */}
           <div className="space-y-4">
-            {/* OVERVIEW (INTERAKTIF & KLIK) */}
+            {/* OVERVIEW ODP PROFILE */}
             <div className="bg-white border border-gray-300 shadow-sm">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-sm tracking-wide">
                 OVERVIEW ODP PROFILE{' '}
@@ -293,7 +380,7 @@ export default function Dashboard() {
                 </span>
               </div>
               <div className="p-3 grid grid-cols-3 gap-3 text-center">
-                {/* Port Summary Cards */}
+                {/* Summary Port */}
                 <div className="col-span-1 space-y-2">
                   <div className="border border-gray-200 bg-gray-50/50 p-2 shadow-sm">
                     <p className="text-[10px] font-bold text-gray-600 mb-1">TOTAL ODP (Port)</p>
@@ -324,9 +411,7 @@ export default function Dashboard() {
                 <div
                   onClick={() => handleStatusClick('BLACK')}
                   className={`col-span-1 border border-gray-400 p-2 shadow-inner flex flex-col justify-center cursor-pointer transition-transform hover:scale-105 relative ${
-                    selectedStatus === 'BLACK'
-                      ? 'ring-4 ring-black bg-gray-100'
-                      : 'bg-white'
+                    selectedStatus === 'BLACK' ? 'ring-4 ring-black bg-gray-100' : 'bg-white'
                   }`}
                 >
                   <div className="bg-black text-white text-[10px] font-bold px-3 py-0.5 w-max mx-auto border border-gray-400 absolute -top-2 left-0 right-0">
@@ -428,7 +513,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* LEGEND DENGAN RED = 100% */}
+              {/* LEGEND STATUS (Red = 100% jadi 100%) */}
               <div className="flex justify-around items-center bg-gray-100/80 py-2 border-t border-gray-200 text-[11px] font-bold">
                 <span className="flex items-center">
                   <div className="w-8 h-3 bg-black mr-2"></div>0%
@@ -443,12 +528,12 @@ export default function Dashboard() {
                   <div className="w-8 h-3 bg-[#ea580c] mr-2"></div>&lt;99%
                 </span>
                 <span className="flex items-center">
-                  <div className="w-8 h-3 bg-[#ef4444] mr-2"></div>Red = 100%
+                  <div className="w-8 h-3 bg-[#ef4444] mr-2"></div>100%
                 </span>
               </div>
             </div>
 
-            {/* ODP SHARE KABUPATEN */}
+            {/* ODP SHARE KABUPATEN LEVEL */}
             <div className="bg-white border border-gray-300 shadow-sm">
               <div className="bg-gradient-to-r from-[#4c1d95] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-sm tracking-wide">
                 ODP SHARE KABUPATEN LEVEL
@@ -471,13 +556,17 @@ export default function Dashboard() {
                         angle={-25}
                         textAnchor="end"
                       />
-                      <YAxis tick={{ fontSize: 10, fontWeight: 'bold' }} domain={[0, 100]} />
-                      <Tooltip formatter={(value) => `${value}%`} />
-                      <Bar dataKey="BLACK" stackId="a" fill="#000000" />
-                      <Bar dataKey="GREEN" stackId="a" fill="#16a34a" />
-                      <Bar dataKey="YELLOW" stackId="a" fill="#facc15" />
-                      <Bar dataKey="ORANGE" stackId="a" fill="#ea580c" />
-                      <Bar dataKey="RED" stackId="a" fill="#ef4444" />
+                      <YAxis tick={{ fontSize: 10, fontWeight: 'bold' }} domain={[0, 100]} unit="%" />
+                      
+                      {/* Tooltip Keterangan Detail */}
+                      <Tooltip content={<CustomChartTooltip />} />
+
+                      {/* Batang dengan Label Persentase di Dalamnya */}
+                      <Bar dataKey="BLACK" stackId="a" fill="#000000" label={renderCustomBarLabel} />
+                      <Bar dataKey="GREEN" stackId="a" fill="#16a34a" label={renderCustomBarLabel} />
+                      <Bar dataKey="YELLOW" stackId="a" fill="#facc15" label={renderCustomBarLabel} />
+                      <Bar dataKey="ORANGE" stackId="a" fill="#ea580c" label={renderCustomBarLabel} />
+                      <Bar dataKey="RED" stackId="a" fill="#ef4444" label={renderCustomBarLabel} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -487,7 +576,7 @@ export default function Dashboard() {
 
           {/* ================= KOLOM KANAN ================= */}
           <div className="space-y-4">
-            {/* OCCUPANCY TABLE SORTABLE */}
+            {/* OCCUPANCY & AVAILABLE PORT */}
             <div className="bg-white border border-gray-300 shadow-sm">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-sm tracking-wide">
                 OCCUPANCY & AVAILABLE PORT
@@ -591,13 +680,13 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* MAPS WITH SEARCH */}
+            {/* MAPS LOKASI ODP WITH INSTANT POPUP SEARCH */}
             <div className="bg-white border border-gray-300 shadow-sm relative">
               <div className="bg-gradient-to-r from-[#1e3a8a] to-[#3a3575] text-white p-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 relative">
                 <span className="font-bold text-sm ml-1">MAPS LOKASI ODP</span>
 
-                {/* SEARCH BAR */}
-                <div className="relative w-full sm:w-64 z-[9999]">
+                {/* SEARCH BAR WITH AUTO SUGGESTION */}
+                <div className="relative w-full sm:w-72 z-[9999]">
                   <input
                     type="text"
                     placeholder="Cari ODP, STO, Kab (min 3 huruf)..."
@@ -606,7 +695,7 @@ export default function Dashboard() {
                     className="w-full px-2.5 py-1 text-black rounded text-xs outline-none shadow-sm"
                   />
                   {suggestions.length > 0 && (
-                    <div className="absolute top-full left-0 w-full bg-white text-black mt-1 rounded shadow-xl border border-gray-300 overflow-hidden">
+                    <div className="absolute top-full left-0 w-full bg-white text-black mt-1 rounded shadow-xl border border-gray-300 overflow-hidden max-h-60 overflow-y-auto">
                       {suggestions.map((s, i) => (
                         <div
                           key={i}
@@ -615,10 +704,11 @@ export default function Dashboard() {
                             setSuggestions([]);
                             setSearchTerm(s.odp_name);
                           }}
-                          className="p-2 border-b border-gray-100 hover:bg-blue-50 cursor-pointer text-[10px]"
+                          className="p-2 border-b border-gray-100 hover:bg-blue-50 cursor-pointer text-[10px] transition"
                         >
                           <strong className="text-blue-700">{s.odp_name}</strong> - {s.sto} (
                           {s.kabupaten})
+                          <span className="ml-1 text-gray-500">[{s.status_final}]</span>
                         </div>
                       ))}
                     </div>
