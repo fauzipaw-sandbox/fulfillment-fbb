@@ -14,7 +14,6 @@ import {
 
 const MapComponent = dynamic(() => import('../components/Map'), { ssr: false });
 
-// 12 STO Resmi Whitelist
 const ALLOWED_STOS = [
   'BNT', 'PLK', 'KKN', 'MTW', 'PPS', 'PYM', 'TML', 'AMP', 'KKP', 'KRI', 'KSO', 'PRC'
 ];
@@ -74,17 +73,6 @@ function formatDateFormatted(d) {
   return `${String(d.getDate()).padStart(2, '0')}-${MONTH_NAMES[d.getMonth()]}-${d.getFullYear()}`;
 }
 
-function getWeekNumber(d) {
-  if (!d) return 'Unknown';
-  const target = new Date(d.valueOf());
-  const dayNr = (d.getDay() + 6) % 7;
-  target.setDate(target.getDate() - dayNr + 3);
-  const firstThursday = target.valueOf();
-  target.setMonth(0, 1);
-  if (target.getDay() !== 4) target.setMonth(0, 1 + ((4 - target.getDay() + 7) % 7));
-  return `W${1 + Math.ceil((firstThursday - target) / 604800000)}`;
-}
-
 function parseCleanFloat(val) {
   if (val === undefined || val === null || val === '') return null;
   const cleaned = String(val).replace(/[^0-9.-]/g, '');
@@ -92,11 +80,12 @@ function parseCleanFloat(val) {
   return isNaN(parsed) ? null : parsed;
 }
 
-// Poin 2: Custom Label Segmen Batang yang Membaca Nilai Asli (Sama Persis dengan Popup)
-const renderSegmentLabel = (key) => (props) => {
+// Poin 2: Custom Label di dalam segmen grafik batang (Pasti muncul dan sinkron 100%)
+const renderExactSegmentLabel = (key) => (props) => {
   const { x, y, width, height, payload } = props;
   const val = payload ? payload[key] : null;
-  if (val === undefined || val === null || val < 4 || height < 14) return null;
+
+  if (val === undefined || val === null || val < 3.5 || height < 13) return null;
 
   return (
     <text
@@ -112,6 +101,28 @@ const renderSegmentLabel = (key) => (props) => {
   );
 };
 
+// Poin 1: Custom XAxis Tick dengan Highlight khusus untuk kategori LAINNYA
+const CustomXAxisTick = ({ x, y, payload }) => {
+  const isLainnya = payload.value === 'LAINNYA';
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text
+        x={0}
+        y={0}
+        dy={10}
+        textAnchor="end"
+        fill={isLainnya ? '#dc2626' : '#334155'}
+        fontWeight={isLainnya ? '900' : '700'}
+        fontSize={isLainnya ? 9 : 8}
+        transform="rotate(-25)"
+      >
+        {isLainnya ? '⚠️ LAINNYA' : payload.value}
+      </text>
+    </g>
+  );
+};
+
+// Tooltip Pop-up Grafik Batang dengan Grand Total
 const CustomChartTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     const totalOdpKab = payload[0]?.payload?.total || 0;
@@ -119,7 +130,9 @@ const CustomChartTooltip = ({ active, payload, label }) => {
 
     return (
       <div className="bg-white p-2.5 rounded shadow-xl border border-slate-300 text-xs font-sans space-y-1.5 z-50 min-w-[220px]">
-        <p className="font-extrabold text-slate-800 border-b pb-1 text-center">{label}</p>
+        <p className="font-extrabold text-slate-800 border-b pb-1 text-center">
+          {label === 'LAINNYA' ? 'LAINNYA (Di Luar 9 Kabupaten)' : label}
+        </p>
         <div className="space-y-1">
           {payload.slice().reverse().map((entry, index) => {
             if (!entry.value || entry.value === 0) return null;
@@ -152,7 +165,6 @@ const CustomChartTooltip = ({ active, payload, label }) => {
 export default function Dashboard() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedWeek, setSelectedWeek] = useState('ALL');
   const [sortConfig, setSortConfig] = useState({ key: 'occ', direction: 'desc' });
   const [showUploader, setShowUploader] = useState(false);
   
@@ -161,8 +173,6 @@ export default function Dashboard() {
   const [selectedRx, setSelectedRx] = useState('ALL');
   const [selectedKabupaten, setSelectedKabupaten] = useState('ALL');
   const [selectedPortFilter, setSelectedPortFilter] = useState('ALL');
-  
-  // Poin 3: State Filter Klik Tabel STO & WOK
   const [selectedStoFilter, setSelectedStoFilter] = useState('ALL');
   const [selectedWokFilter, setSelectedWokFilter] = useState('ALL');
 
@@ -217,22 +227,10 @@ export default function Dashboard() {
               ont_rx_level: rxVal,
               rx_category: rxCategory,
               status_final: status,
-              week: getWeekNumber(parsedDate),
             };
           });
 
         setData(enrichedData);
-
-        const weeks = [...new Set(enrichedData.map((d) => d.week).filter((w) => w !== 'Unknown'))].sort((a, b) => {
-          const numA = parseInt(a.replace(/\D/g, '')) || 0;
-          const numB = parseInt(b.replace(/\D/g, '')) || 0;
-          return numA - numB;
-        });
-
-        if (weeks.length > 0) {
-          const latestWeek = weeks[weeks.length - 1];
-          setSelectedWeek(latestWeek);
-        }
       }
     } catch (err) {
       console.error(err);
@@ -243,19 +241,9 @@ export default function Dashboard() {
 
   useEffect(() => { fetchData(); }, []);
 
-  const availableWeeks = useMemo(() => {
-    return [...new Set(data.map((d) => d.week).filter((w) => w !== 'Unknown'))].sort((a, b) => {
-      const numA = parseInt(a.replace(/\D/g, '')) || 0;
-      const numB = parseInt(b.replace(/\D/g, '')) || 0;
-      return numA - numB;
-    });
-  }, [data]);
-
-  const weekFilteredData = useMemo(() => selectedWeek === 'ALL' ? data : data.filter(d => d.week === selectedWeek), [data, selectedWeek]);
-  
-  // Filter Sinkron Seluruh Dashboard Termasuk Pilihan STO / WOK
+  // Filter Sinkron Seluruh Komponen
   const fullyFilteredData = useMemo(() => {
-    return weekFilteredData.filter((d) => {
+    return data.filter((d) => {
       const matchStatus = selectedStatus === 'ALL' || d.status_final === selectedStatus;
       const matchRx = selectedRx === 'ALL' || d.rx_category === selectedRx;
       const matchKab = selectedKabupaten === 'ALL' || d.kabupaten === selectedKabupaten;
@@ -265,15 +253,15 @@ export default function Dashboard() {
       
       return matchStatus && matchRx && matchKab && matchSto && matchWok && matchPort;
     });
-  }, [weekFilteredData, selectedStatus, selectedRx, selectedKabupaten, selectedStoFilter, selectedWokFilter, selectedPortFilter]);
+  }, [data, selectedStatus, selectedRx, selectedKabupaten, selectedStoFilter, selectedWokFilter, selectedPortFilter]);
 
   const headerCutoffText = useMemo(() => {
-    if (weekFilteredData.length === 0) return '*Cut Off Data until -';
-    const dates = weekFilteredData.map((d) => d.parsed_date?.getTime()).filter((t) => t && !isNaN(t));
-    if (dates.length === 0) return `*${selectedWeek === 'ALL' ? 'ALL WEEKS' : selectedWeek} - Cut Off Data`;
+    if (data.length === 0) return '*Cut Off Data until -';
+    const dates = data.map((d) => d.parsed_date?.getTime()).filter((t) => t && !isNaN(t));
+    if (dates.length === 0) return '*Cut Off Data';
     const latestDate = new Date(Math.max(...dates));
-    return `*${selectedWeek === 'ALL' ? getWeekNumber(latestDate) : selectedWeek} - Cut Off Data until ${formatDateFormatted(latestDate)}`;
-  }, [weekFilteredData, selectedWeek]);
+    return `*Cut Off Data until ${formatDateFormatted(latestDate)}`;
+  }, [data]);
 
   // Overview Stats
   const statsOverview = useMemo(() => {
@@ -281,6 +269,7 @@ export default function Dashboard() {
     let colorCounts = { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 };
     let colorPorts = { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 };
     let rxCounts = { GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0, NO_DATA: 0 };
+    let rxPorts = { GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0, NO_DATA: 0 };
 
     fullyFilteredData.forEach(item => {
       totalPort += item.is_total;
@@ -290,13 +279,16 @@ export default function Dashboard() {
         colorCounts[item.status_final]++;
         colorPorts[item.status_final] += item.is_total;
       }
-      if (rxCounts[item.rx_category] !== undefined) rxCounts[item.rx_category]++;
+      if (rxCounts[item.rx_category] !== undefined) {
+        rxCounts[item.rx_category]++;
+        rxPorts[item.rx_category] += item.is_total;
+      }
     });
 
-    return { totalPort, usedPort, avaiPort, colorCounts, colorPorts, rxCounts };
+    return { totalPort, usedPort, avaiPort, colorCounts, colorPorts, rxCounts, rxPorts };
   }, [fullyFilteredData]);
 
-  // Agregasi Chart & Tabel
+  // Chart & Tabel Stats
   const statsFiltered = useMemo(() => {
     const kabMap = {}, flatStosMap = {};
     VALID_KABUPATEN.concat(['LAINNYA']).forEach(k => {
@@ -320,7 +312,6 @@ export default function Dashboard() {
       flatStosMap[key].avai += item.avai;
     });
 
-    // Poin 1 & 2: Normalisasi Chart Data agar pas 100% dan sinkron dengan popup
     const chartData = Object.values(kabMap).filter(k => k.total > 0 || VALID_KABUPATEN.includes(k.name)).map(k => {
       const tot = k.total || 1;
       return {
@@ -344,6 +335,43 @@ export default function Dashboard() {
 
     return { chartData, flatStos };
   }, [fullyFilteredData]);
+
+  // Poin 7: Executive Summary Analysis
+  const summaryAnalysis = useMemo(() => {
+    if (data.length === 0) return null;
+
+    // Top & Lowest Kab
+    const kabCounts = {};
+    const stoOcc = {};
+
+    data.forEach((d) => {
+      kabCounts[d.kabupaten] = (kabCounts[d.kabupaten] || 0) + 1;
+      if (!stoOcc[d.sto]) stoOcc[d.sto] = { used: 0, total: 0 };
+      stoOcc[d.sto].used += d.used;
+      stoOcc[d.sto].total += d.is_total;
+    });
+
+    const sortedKab = Object.entries(kabCounts).sort((a, b) => b[1] - a[1]);
+    const maxKab = sortedKab[0];
+    const minKab = sortedKab[sortedKab.length - 1];
+
+    const stoRanks = Object.entries(stoOcc)
+      .map(([sto, val]) => ({
+        sto,
+        occ: val.total > 0 ? (val.used / val.total) * 100 : 0,
+      }))
+      .sort((a, b) => b.occ - a.occ);
+
+    const highestOccSto = stoRanks[0];
+    const lowestOccSto = stoRanks[stoRanks.length - 1];
+
+    return {
+      maxKab: maxKab ? `${maxKab[0]} (${maxKab[1].toLocaleString()} ODP)` : '-',
+      minKab: minKab ? `${minKab[0]} (${minKab[1].toLocaleString()} ODP)` : '-',
+      highestOccSto: highestOccSto ? `${highestOccSto.sto} (${highestOccSto.occ.toFixed(1)}%)` : '-',
+      lowestOccSto: lowestOccSto ? `${lowestOccSto.sto} (${lowestOccSto.occ.toFixed(1)}%)` : '-',
+    };
+  }, [data]);
 
   const sortedTableData = useMemo(() => {
     let sortableItems = [...statsFiltered.flatStos];
@@ -445,12 +473,11 @@ export default function Dashboard() {
   const avaiTotal = statsOverview.totalPort > 0 ? ((statsOverview.avaiPort / statsOverview.totalPort) * 100).toFixed(1) : '0.0';
   const totalRxValid = totalOdp - statsOverview.rxCounts.NO_DATA;
 
-  // Poin 4: Helper Conditional Formatting % Avail (Semakin Kecil Semakin Merah)
   const getAvailBg = (availPerc) => {
-    if (availPerc <= 1) return 'bg-[#fca5a5] text-red-950 font-bold'; // < 1% Merah Pekat (Habis)
-    if (availPerc <= 15) return 'bg-[#fed7aa] text-orange-950 font-bold'; // 1-15% Oranye (Kritis)
-    if (availPerc <= 40) return 'bg-[#fef08a] text-yellow-950 font-bold'; // 15-40% Kuning (Sedang)
-    return 'bg-[#86efac] text-emerald-950 font-bold'; // > 40% Hijau (Banyak Port)
+    if (availPerc <= 1) return 'bg-[#fca5a5] text-red-950 font-bold';
+    if (availPerc <= 15) return 'bg-[#fed7aa] text-orange-950 font-bold';
+    if (availPerc <= 40) return 'bg-[#fef08a] text-yellow-950 font-bold';
+    return 'bg-[#86efac] text-emerald-950 font-bold';
   };
 
   return (
@@ -471,31 +498,37 @@ export default function Dashboard() {
       )}
 
       <div className="max-w-[1450px] mx-auto space-y-3">
+        {/* Poin 6: Filter Week Dihapus (Show All Data) */}
         <div className="bg-gradient-to-r from-[#211c47] to-[#3a3575] text-white p-3 sm:p-4 flex flex-col md:flex-row justify-between items-start md:items-center border-b-4 border-purple-500 rounded-t-lg shadow-sm gap-2">
           <div>
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-wide uppercase italic">
               ODP PROFILE & UTILIZATION
             </h1>
             <p className="text-[10px] sm:text-xs font-semibold mt-0.5 opacity-90 text-yellow-300">
-              {headerCutoffText}
+              {headerCutoffText} &bull; SHOW ALL DATA
             </p>
           </div>
 
-          <div className="w-full md:w-auto flex items-center justify-between md:justify-end space-x-2 bg-white/10 p-1.5 sm:p-2 rounded border border-white/20">
-            <span className="font-semibold text-xs">Filter Week:</span>
-            <select
-              className="text-gray-900 px-2 py-1 font-bold rounded cursor-pointer outline-none text-xs"
-              value={selectedWeek}
-              onChange={(e) => setSelectedWeek(e.target.value)}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowUploader(!showUploader)}
+              className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded shadow transition"
             >
-              <option value="ALL">Semua Minggu (ALL)</option>
-              {availableWeeks.map((w) => (
-                <option key={w} value={w}>{w}</option>
-              ))}
-            </select>
+              <svg
+                className={`w-3.5 h-3.5 transition-transform ${showUploader ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+              {showUploader ? 'Tutup Upload' : 'Upload Data ODP'}
+            </button>
           </div>
         </div>
 
+        {/* NARASI SUMMARY */}
         <div className="bg-white px-3 sm:px-4 py-2 text-xs sm:text-[13px] border border-gray-200 shadow-sm rounded flex flex-col sm:flex-row justify-between sm:items-center gap-2">
           <div>
             Total <strong className="font-extrabold">jumlah ODP</strong> di Branch Palangkaraya adalah{' '}
@@ -515,28 +548,40 @@ export default function Dashboard() {
               onClick={resetAllFilters}
               className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold whitespace-nowrap self-start sm:self-auto shadow"
             >
-              ✕ Reset Semua Filter ({selectedStoFilter !== 'ALL' ? `STO: ${selectedStoFilter}` : selectedWokFilter !== 'ALL' ? `WOK: ${selectedWokFilter}` : 'Aktif'})
+              ✕ Reset Semua Filter
             </button>
           )}
         </div>
 
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={() => setShowUploader(!showUploader)}
-            className="flex items-center gap-1 px-3 py-1.5 bg-blue-900 text-white font-bold text-xs rounded shadow hover:bg-blue-800 transition"
-          >
-            <svg
-              className={`w-3.5 h-3.5 transition-transform ${showUploader ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-            {showUploader ? 'Tutup Upload' : 'Upload Data ODP (CSV / XLSX)'}
-          </button>
-        </div>
+        {/* Poin 7: BOX SUMMARY ANALYSIS BARU */}
+        {summaryAnalysis && (
+          <div className="bg-white border border-slate-300 rounded shadow-sm p-3">
+            <div className="flex items-center gap-1.5 border-b pb-1.5 mb-2">
+              <span className="text-sm">📊</span>
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                Summary Executive Analysis
+              </h3>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-center text-xs">
+              <div className="bg-slate-50 p-2 rounded border border-slate-200">
+                <span className="text-[9px] text-slate-400 font-bold uppercase block">ODP Terbanyak</span>
+                <span className="font-extrabold text-blue-900 text-[11px] block mt-0.5">{summaryAnalysis.maxKab}</span>
+              </div>
+              <div className="bg-slate-50 p-2 rounded border border-slate-200">
+                <span className="text-[9px] text-slate-400 font-bold uppercase block">ODP Tersedikit</span>
+                <span className="font-extrabold text-slate-800 text-[11px] block mt-0.5">{summaryAnalysis.minKab}</span>
+              </div>
+              <div className="bg-red-50 p-2 rounded border border-red-200">
+                <span className="text-[9px] text-red-700 font-bold uppercase block">Highest OCC STO (Kritis)</span>
+                <span className="font-extrabold text-red-950 text-[11px] block mt-0.5">{summaryAnalysis.highestOccSto}</span>
+              </div>
+              <div className="bg-emerald-50 p-2 rounded border border-emerald-200">
+                <span className="text-[9px] text-emerald-700 font-bold uppercase block">Lowest OCC STO (Idle Port)</span>
+                <span className="font-extrabold text-emerald-950 text-[11px] block mt-0.5">{summaryAnalysis.lowestOccSto}</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {showUploader && (
           <div className="transition-all duration-300">
@@ -598,7 +643,7 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* BLACK ODP dengan Total Port */}
+                {/* BLACK ODP */}
                 <div
                   onClick={() => setSelectedStatus((p) => (p === 'BLACK' ? 'ALL' : 'BLACK'))}
                   className={`col-span-1 border border-gray-400 p-2 shadow-inner flex flex-col justify-center cursor-pointer transition-transform hover:scale-105 rounded relative ${
@@ -696,7 +741,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* KUALITAS REDAMAN (ONT RX LEVEL) */}
+            {/* Poin 5: KUALITAS REDAMAN (ONT RX LEVEL) DENGAN TOTAL PORT */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#059669] via-[#0d9488] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 KUALITAS REDAMAN (ONT RX LEVEL){' '}
@@ -717,6 +762,9 @@ export default function Dashboard() {
                   <p className="text-[10px] font-bold text-emerald-700">
                     {totalRxValid > 0 ? ((statsOverview.rxCounts.GREEN / totalRxValid) * 100).toFixed(1) : 0}%
                   </p>
+                  <p className="text-[9px] font-bold text-emerald-800 mt-0.5">
+                    {(statsOverview.rxPorts.GREEN / 1000).toFixed(1)}K Port
+                  </p>
                 </div>
 
                 <div
@@ -729,6 +777,9 @@ export default function Dashboard() {
                   <p className="text-base sm:text-lg font-black text-yellow-950 mt-1">{statsOverview.rxCounts.YELLOW.toLocaleString()}</p>
                   <p className="text-[10px] font-bold text-yellow-800">
                     {totalRxValid > 0 ? ((statsOverview.rxCounts.YELLOW / totalRxValid) * 100).toFixed(1) : 0}%
+                  </p>
+                  <p className="text-[9px] font-bold text-yellow-800 mt-0.5">
+                    {(statsOverview.rxPorts.YELLOW / 1000).toFixed(1)}K Port
                   </p>
                 </div>
 
@@ -743,6 +794,9 @@ export default function Dashboard() {
                   <p className="text-[10px] font-bold text-orange-800">
                     {totalRxValid > 0 ? ((statsOverview.rxCounts.ORANGE / totalRxValid) * 100).toFixed(1) : 0}%
                   </p>
+                  <p className="text-[9px] font-bold text-orange-800 mt-0.5">
+                    {(statsOverview.rxPorts.ORANGE / 1000).toFixed(1)}K Port
+                  </p>
                 </div>
 
                 <div
@@ -756,11 +810,14 @@ export default function Dashboard() {
                   <p className="text-[10px] font-bold text-red-700">
                     {totalRxValid > 0 ? ((statsOverview.rxCounts.RED / totalRxValid) * 100).toFixed(1) : 0}%
                   </p>
+                  <p className="text-[9px] font-bold text-red-800 mt-0.5">
+                    {(statsOverview.rxPorts.RED / 1000).toFixed(1)}K Port
+                  </p>
                 </div>
               </div>
             </div>
 
-            {/* Poin 1 & 2: ODP SHARE KABUPATEN LEVEL (Y-Axis Bersih & Label Batang Sinkron) */}
+            {/* Poin 1 & 2: ODP SHARE KABUPATEN LEVEL DENGAN HIGHLIGHT "LAINNYA" & LABEL BATANG SINKRON */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#4c1d95] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 ODP SHARE KABUPATEN LEVEL{' '}
@@ -772,11 +829,11 @@ export default function Dashboard() {
                 <h4 className="text-center font-bold text-gray-500 text-xs mb-2">
                   PROFIL ODP BRANCH PALANGKARAYA
                 </h4>
-                <div className="h-60 sm:h-72 w-full">
+                <div className="h-64 sm:h-72 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       data={statsFiltered.chartData}
-                      margin={{ top: 5, right: 0, left: -25, bottom: 35 }}
+                      margin={{ top: 5, right: 0, left: -25, bottom: 40 }}
                       onClick={(e) => {
                         if (e && e.activeLabel) {
                           setSelectedKabupaten((prev) => (prev === e.activeLabel ? 'ALL' : e.activeLabel));
@@ -786,12 +843,9 @@ export default function Dashboard() {
                       <CartesianGrid strokeDasharray="3 3" vertical={false} />
                       <XAxis
                         dataKey="name"
-                        tick={{ fontSize: 8, fontWeight: 'bold' }}
                         interval={0}
-                        angle={-25}
-                        textAnchor="end"
+                        tick={<CustomXAxisTick />}
                       />
-                      {/* Poin 1: YAxis dibatasi domain [0, 100] dengan tick formatter bulat */}
                       <YAxis
                         tick={{ fontSize: 9, fontWeight: 'bold' }}
                         domain={[0, 100]}
@@ -799,12 +853,13 @@ export default function Dashboard() {
                         tickFormatter={(val) => `${Math.round(val)}%`}
                       />
                       <Tooltip content={<CustomChartTooltip />} />
-                      {/* Poin 2: Label Persentase di Segmen Batang Sinkron 100% */}
-                      <Bar dataKey="BLACK" stackId="a" fill="#000000" label={renderSegmentLabel('BLACK')} />
-                      <Bar dataKey="GREEN" stackId="a" fill="#16a34a" label={renderSegmentLabel('GREEN')} />
-                      <Bar dataKey="YELLOW" stackId="a" fill="#facc15" label={renderSegmentLabel('YELLOW')} />
-                      <Bar dataKey="ORANGE" stackId="a" fill="#ea580c" label={renderSegmentLabel('ORANGE')} />
-                      <Bar dataKey="RED" stackId="a" fill="#ef4444" label={renderSegmentLabel('RED')} />
+                      
+                      {/* Poin 2: Label Persentase Tampil & Sinkron dengan Popup */}
+                      <Bar dataKey="BLACK" stackId="a" fill="#000000" label={renderExactSegmentLabel('BLACK')} />
+                      <Bar dataKey="GREEN" stackId="a" fill="#16a34a" label={renderExactSegmentLabel('GREEN')} />
+                      <Bar dataKey="YELLOW" stackId="a" fill="#facc15" label={renderExactSegmentLabel('YELLOW')} />
+                      <Bar dataKey="ORANGE" stackId="a" fill="#ea580c" label={renderExactSegmentLabel('ORANGE')} />
+                      <Bar dataKey="RED" stackId="a" fill="#ef4444" label={renderExactSegmentLabel('RED')} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -912,7 +967,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Poin 3 & 4: OCCUPANCY & AVAILABLE PORT (Tabel Bisa Diklik Filter + Conditional Formatting Avail) */}
+            {/* OCCUPANCY & AVAILABLE PORT (Poin 4: Grand Total Polos Tanpa Conditional Formatting) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 OCCUPANCY & AVAILABLE PORT{' '}
@@ -959,10 +1014,7 @@ export default function Dashboard() {
                       else if (row.occ >= 85) occBg = 'bg-[#fdba74] text-orange-900';
                       else if (row.occ >= 60) occBg = 'bg-[#fde047] text-yellow-900';
 
-                      // Poin 4: Format Warna % Avail (Makin Kecil Makin Merah)
                       const availBg = getAvailBg(row.avai_perc);
-
-                      // Poin 3: Cek status seleksi baris
                       const isStoSelected = selectedStoFilter === row.sto;
                       const isWokSelected = selectedWokFilter === row.wok;
 
@@ -973,20 +1025,18 @@ export default function Dashboard() {
                             isStoSelected || isWokSelected ? 'bg-blue-100 ring-1 ring-blue-500' : 'bg-white hover:bg-slate-100'
                           }`}
                         >
-                          {/* Poin 3: WOK Bisa Diklik untuk Filter */}
                           <td
                             onClick={() => setSelectedWokFilter((prev) => (prev === row.wok ? 'ALL' : row.wok))}
                             className="p-1 border border-gray-300 font-bold text-gray-600 cursor-pointer hover:text-blue-700 hover:underline"
-                            title="Klik untuk filter WOK ini"
+                            title="Klik untuk filter WOK"
                           >
                             {row.wok}
                           </td>
 
-                          {/* Poin 3: STO Bisa Diklik untuk Filter */}
                           <td
                             onClick={() => setSelectedStoFilter((prev) => (prev === row.sto ? 'ALL' : row.sto))}
                             className="p-1 border border-gray-300 font-bold text-gray-700 cursor-pointer hover:text-blue-700 hover:underline"
-                            title="Klik untuk filter STO ini"
+                            title="Klik untuk filter STO"
                           >
                             {row.sto}
                           </td>
@@ -996,15 +1046,16 @@ export default function Dashboard() {
                           <td className="p-1 border border-gray-300 text-gray-600">{row.used.toLocaleString()}</td>
                           <td className="p-1 border border-gray-300 text-gray-600">{row.avai.toLocaleString()}</td>
                           
-                          {/* % OCC Formatting */}
+                          {/* % OCC Baris Normal */}
                           <td className={`p-1 border border-gray-300 font-bold ${occBg}`}>{row.occ.toFixed(1)}%</td>
                           
-                          {/* Poin 4: % Avail Conditional Formatting */}
+                          {/* % Avail Baris Normal */}
                           <td className={`p-1 border border-gray-300 ${availBg}`}>{row.avai_perc.toFixed(1)}%</td>
                         </tr>
                       );
                     })}
 
+                    {/* Poin 4: Grand Total Polos / Standar Tanpa Conditional Formatting */}
                     <tr className="bg-[#0f172a] text-white font-extrabold sticky bottom-0 z-10 shadow-[0_-2px_10px_rgba(0,0,0,0.2)]">
                       <td colSpan={2} className="p-2 border border-slate-700 text-left pl-3 uppercase">
                         Grand Total
@@ -1013,10 +1064,12 @@ export default function Dashboard() {
                       <td className="p-2 border border-slate-700">{tableTotals.is_total.toLocaleString()}</td>
                       <td className="p-2 border border-slate-700">{tableTotals.used.toLocaleString()}</td>
                       <td className="p-2 border border-slate-700">{tableTotals.avai.toLocaleString()}</td>
-                      <td className="p-2 border border-slate-700 text-yellow-300 font-black">
+                      
+                      {/* Netral / Polos */}
+                      <td className="p-2 border border-slate-700 text-white font-bold">
                         {tableTotals.occ.toFixed(1)}%
                       </td>
-                      <td className={`p-2 border border-slate-700 font-black ${getAvailBg(tableTotals.avai_perc)}`}>
+                      <td className="p-2 border border-slate-700 text-white font-bold">
                         {tableTotals.avai_perc.toFixed(1)}%
                       </td>
                     </tr>
