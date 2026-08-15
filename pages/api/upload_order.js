@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '15mb',
+      sizeLimit: '10mb',
     },
   },
 };
@@ -17,7 +17,7 @@ export default async function handler(req, res) {
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !supabaseKey) {
-    return res.status(500).json({ error: 'Database credentials missing' });
+    return res.status(500).json({ error: 'Database credentials missing on server' });
   }
 
   const formattedData = req.body;
@@ -33,7 +33,7 @@ export default async function handler(req, res) {
 
     if (error) {
       console.error('Supabase Upsert Error Orders:', error);
-      return res.status(500).json({ error: error.message });
+      return res.status(500).json({ error: `${error.message} (${error.details || error.hint || ''})` });
     }
 
     return res.status(200).json({ message: 'Data Order successfully upserted' });
