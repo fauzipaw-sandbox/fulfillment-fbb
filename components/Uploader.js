@@ -42,6 +42,20 @@ function extractSto(odpName, existingSto) {
   return match && match[1] ? match[1].toUpperCase() : 'UNKNOWN';
 }
 
+function isAllowedOdp(odpName, existingSto) {
+  if (!odpName) return false;
+  const nameUpper = String(odpName).trim().toUpperCase();
+  if (nameUpper.startsWith('OTB-')) return false;
+
+  const sto = extractSto(odpName, existingSto);
+  if (!ALLOWED_STOS.includes(sto)) return false;
+
+  const hasAllowedStoInName = ALLOWED_STOS.some((code) => nameUpper.includes(code));
+  if (!hasAllowedStoInName) return false;
+
+  return true;
+}
+
 function extractWok(existingWok, sto) {
   if (existingWok && String(existingWok).trim() !== '' && String(existingWok).toUpperCase() !== 'UNKNOWN') {
     return String(existingWok).trim().toUpperCase();
@@ -75,15 +89,7 @@ export default function Uploader({ onUploadSuccess, rawData = [] }) {
     setProgress(0);
 
     const formattedData = rawDataInput
-      .filter((row) => {
-        if (!row.odp_name) return false;
-        const nameUpper = String(row.odp_name).trim().toUpperCase();
-        if (nameUpper.startsWith('OTB-')) return false;
-
-        // Poin 3: Whitelist 12 STO
-        const sto = extractSto(row.odp_name, row.sto);
-        return ALLOWED_STOS.includes(sto);
-      })
+      .filter((row) => isAllowedOdp(row.odp_name, row.sto))
       .map((row) => {
         const isTotal = parseInt(row.is_total) || 0;
         const used = parseInt(row.used) || 0;
@@ -303,7 +309,7 @@ export default function Uploader({ onUploadSuccess, rawData = [] }) {
         ) : (
           <div>
             <p className="text-xs sm:text-sm font-bold text-slate-700">Drag & Drop file di sini, atau klik untuk memilih file</p>
-            <p className="text-[10px] text-slate-400 mt-1">Mendukung format .CSV dan .XLSX (Hanya 12 STO Terdaftar, OTB- diabaikan)</p>
+            <p className="text-[10px] text-slate-400 mt-1">Mendukung format .CSV dan .XLSX (Hanya 12 STO Terdaftar, OTB- & LMD diabaikan)</p>
           </div>
         )}
       </div>
