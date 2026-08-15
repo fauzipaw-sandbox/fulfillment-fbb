@@ -34,12 +34,14 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-function MapController({ data, focusLocation, markerRefs, manualMeasureLine }) {
+function MapController({ data, focusLocation, markerRefs, roadRouteCoordinates, manualMeasureLine }) {
   const map = useMap();
 
   useEffect(() => {
-    if (manualMeasureLine && manualMeasureLine.length === 2) {
-      map.fitBounds(manualMeasureLine, { padding: [50, 50], maxZoom: 16 });
+    if (roadRouteCoordinates && roadRouteCoordinates.length > 0) {
+      map.fitBounds(roadRouteCoordinates, { padding: [40, 40], maxZoom: 16 });
+    } else if (manualMeasureLine && manualMeasureLine.length === 2) {
+      map.fitBounds(manualMeasureLine, { padding: [40, 40], maxZoom: 16 });
     } else if (focusLocation && focusLocation.latitude && focusLocation.longitude) {
       map.flyTo([focusLocation.latitude, focusLocation.longitude], 17, { animate: true });
       const ref = markerRefs.current[focusLocation.odp_name];
@@ -54,7 +56,7 @@ function MapController({ data, focusLocation, markerRefs, manualMeasureLine }) {
         map.fitBounds(validCoords, { padding: [25, 25], maxZoom: 12 });
       }
     }
-  }, [data, focusLocation, manualMeasureLine, map, markerRefs]);
+  }, [data, focusLocation, roadRouteCoordinates, manualMeasureLine, map, markerRefs]);
 
   return null;
 }
@@ -70,7 +72,13 @@ function MapClickHandler({ measureMode, onMapClick }) {
   return null;
 }
 
-export default function Map({ data, focusLocation, manualMeasureLine, manualMeasureInfo }) {
+export default function Map({
+  data,
+  focusLocation,
+  manualMeasureLine,
+  manualMeasureInfo,
+  roadRouteCoordinates,
+}) {
   const defaultCenter = [-1.7, 114.8];
   const markerRefs = useRef({});
   const [clickPoints, setClickPoints] = useState([]);
@@ -94,7 +102,6 @@ export default function Map({ data, focusLocation, manualMeasureLine, manualMeas
     setMeasureActive(false);
   };
 
-  // Hitung akumulasi jarak multi-point
   const totalClickDistance = clickPoints.reduce((acc, curr, idx) => {
     if (idx === 0) return 0;
     const prev = clickPoints[idx - 1];
@@ -117,19 +124,19 @@ export default function Map({ data, focusLocation, manualMeasureLine, manualMeas
               : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
           }`}
         >
-          {measureActive ? '✕ Selesai / Tutup Penggaris' : '📏 Penggaris Multi-Titik'}
+          {measureActive ? '✕ Selesai Penggaris' : '📏 Penggaris Multi-Titik'}
         </button>
 
         {measureActive && (
           <div className="bg-white/95 backdrop-blur p-2 rounded shadow-lg border border-slate-300 text-[11px] text-slate-800 min-w-[190px]">
             <p className="font-bold text-slate-900 border-b pb-1">
-              Titik Terpilih: <span className="text-blue-600 font-extrabold">{clickPoints.length}</span>
+              Titik: <span className="text-blue-600 font-extrabold">{clickPoints.length}</span>
             </p>
             {clickPoints.length < 2 ? (
-              <p className="text-[10px] text-slate-500 mt-1">Klik titik-titik di peta secara berurutan.</p>
+              <p className="text-[10px] text-slate-500 mt-1">Klik berurutan titik-titik di peta.</p>
             ) : (
               <div className="mt-1 space-y-1">
-                <p className="text-[10px] text-slate-600">Total Akumulasi Jarak:</p>
+                <p className="text-[10px] text-slate-600">Total Jarak Garis:</p>
                 <p className="text-sm font-black text-blue-700">
                   {totalClickDistance >= 1
                     ? `${totalClickDistance.toFixed(2)} km`
@@ -162,17 +169,22 @@ export default function Map({ data, focusLocation, manualMeasureLine, manualMeas
           data={data}
           focusLocation={focusLocation}
           markerRefs={markerRefs}
+          roadRouteCoordinates={roadRouteCoordinates}
           manualMeasureLine={manualMeasureLine}
         />
         <MapClickHandler measureMode={measureActive} onMapClick={handleMapClick} />
 
-        {/* 1. Visualisasi Garis Pengukur Input Titik A & B */}
+        {/* 1. Visualisasi Rute Darat Jalan Raya (OSRM Route) */}
+        {roadRouteCoordinates && roadRouteCoordinates.length > 0 && (
+          <Polyline
+            positions={roadRouteCoordinates}
+            pathOptions={{ color: '#2563eb', weight: 5, opacity: 0.85 }}
+          />
+        )}
+
+        {/* 2. Pin Titik A dan Titik B */}
         {manualMeasureLine && manualMeasureLine.length === 2 && (
           <>
-            <Polyline
-              positions={manualMeasureLine}
-              pathOptions={{ color: '#2563eb', weight: 4, dashArray: '6, 6' }}
-            />
             <Marker position={manualMeasureLine[0]}>
               <Popup>
                 <div className="text-xs font-sans">
@@ -184,16 +196,18 @@ export default function Map({ data, focusLocation, manualMeasureLine, manualMeas
             <Marker position={manualMeasureLine[1]}>
               <Popup>
                 <div className="text-xs font-sans">
-                  <p className="font-bold text-green-700">Titik B (Tujuan)</p>
+                  <p className="font-bold text-emerald-700">Titik B (Tujuan)</p>
                   <p>{manualMeasureInfo?.to || '-'}</p>
-                  <p className="font-bold text-blue-900 mt-1">Jarak: {manualMeasureInfo?.km} km</p>
+                  <p className="font-bold text-blue-900 mt-1">
+                    Jarak Darat: {manualMeasureInfo?.km} km ({manualMeasureInfo?.meter} m)
+                  </p>
                 </div>
               </Popup>
             </Marker>
           </>
         )}
 
-        {/* 2. Visualisasi Garis Pengukur Multi-Titik Klik */}
+        {/* 3. Garis Pengukur Multi-Titik Manual */}
         {clickPoints.length > 1 && (
           <Polyline
             positions={clickPoints}
@@ -214,7 +228,7 @@ export default function Map({ data, focusLocation, manualMeasureLine, manualMeas
           </CircleMarker>
         ))}
 
-        {/* 3. Marker Titik ODP */}
+        {/* 4. Titik ODP */}
         {data.map((odp, idx) => {
           if (!odp.latitude || !odp.longitude) return null;
           const color = getColor(odp.status_final);
@@ -243,7 +257,7 @@ export default function Map({ data, focusLocation, manualMeasureLine, manualMeas
                 </div>
               </LeafletTooltip>
 
-              <Popup className="compact-custom-popup" maxWidth={250} minWidth={190}>
+              <Popup className="compact-custom-popup" maxWidth={260} minWidth={200}>
                 <div className="text-[11px] font-sans leading-tight">
                   <div className="border-b pb-1 mb-1">
                     <p className="font-bold text-blue-900 truncate">{odp.odp_name}</p>
@@ -254,19 +268,17 @@ export default function Map({ data, focusLocation, manualMeasureLine, manualMeas
                       >
                         {odp.status_final || 'N/A'}
                       </span>
-                      {odp.rx_category && (
-                        <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-800 border">
-                          RX: {odp.ont_rx_level ? `${odp.ont_rx_level} dBm` : 'N/A'}
-                        </span>
-                      )}
+                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-800 border">
+                        RX: {odp.ont_rx_level !== null ? `${odp.ont_rx_level} dBm` : '-'}
+                      </span>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-x-1 gap-y-0.5 text-[10px] text-slate-700">
                     <p className="truncate"><strong>STO:</strong> {odp.sto || '-'}</p>
                     <p className="truncate"><strong>WOK:</strong> {odp.wok || '-'}</p>
                     <p className="col-span-2 truncate"><strong>Datel:</strong> {odp.datel || '-'}</p>
-                    <p className="col-span-2 truncate"><strong>STO Desc:</strong> {odp.sto_desc || '-'}</p>
-                    <p className="col-span-2 truncate"><strong>Kab:</strong> {odp.kabupaten || '-'}</p>
+                    <p className="col-span-2 truncate"><strong>Desc:</strong> {odp.sto_desc || '-'}</p>
+                    <p className="col-span-2 truncate"><strong>Kec/Kab:</strong> {odp.kecamatan || '-'}/{odp.kabupaten || '-'}</p>
                     <p><strong>Port:</strong> {odp.used || 0}/{odp.is_total || 0}</p>
                     <p><strong>OCC:</strong> {odp.is_total > 0 ? `${Math.round((odp.used / odp.is_total) * 100)}%` : '0%'}</p>
                   </div>
