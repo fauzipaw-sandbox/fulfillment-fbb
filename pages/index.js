@@ -207,8 +207,6 @@ export default function Dashboard() {
             let kab = (item.kabupaten || '').trim().toUpperCase();
             let finalKab = VALID_KABUPATEN.includes(kab) ? kab : 'LAINNYA';
 
-            // Logika ONT RX Level Baru:
-            // > -18 GREEN, -21 s/d -18 YELLOW, -25 s/d -21 ORANGE, < -25 RED
             const rxVal = parseCleanFloat(item.ont_rx_level);
             let rxCategory = 'NO_DATA';
             if (rxVal !== null) {
@@ -527,12 +525,13 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
           {/* ================= KOLOM KIRI ================= */}
           <div className="space-y-3 sm:space-y-4">
-            {/* OVERVIEW ODP PROFILE */}
+            
+            {/* 1. OVERVIEW ODP PROFILE */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
-              <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
-                OVERVIEW ODP PROFILE{' '}
-                <span className="text-[10px] font-normal text-purple-200">
-                  {selectedStatus !== 'ALL' ? `[Filter: ${selectedStatus}]` : '(Klik box untuk filter)'}
+              <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
+                <span className="font-extrabold text-xs sm:text-sm tracking-wide">OVERVIEW ODP PROFILE</span>
+                <span className="bg-white/20 hover:bg-white/30 text-white text-[9.5px] font-semibold px-2 py-0.5 rounded-full border border-white/20 backdrop-blur-sm">
+                  {selectedStatus !== 'ALL' ? `Filter: ${selectedStatus}` : 'Klik box untuk filter'}
                 </span>
               </div>
 
@@ -676,17 +675,17 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* KUALITAS REDAMAN (ONT RX LEVEL) - DIBALIK DARI < -25 dBm KE > -18 dBm */}
+            {/* 2. KUALITAS REDAMAN (ONT RX LEVEL) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
-              <div className="bg-gradient-to-r from-[#059669] via-[#0d9488] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
-                KUALITAS REDAMAN (ONT RX LEVEL){' '}
-                <span className="text-[10px] font-normal text-emerald-200">
-                  {selectedRx !== 'ALL' ? `[Filter: ${selectedRx}]` : '(Klik box untuk filter)'}
+              <div className="bg-gradient-to-r from-[#059669] via-[#0d9488] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
+                <span className="font-extrabold text-xs sm:text-sm tracking-wide">KUALITAS REDAMAN (ONT RX LEVEL)</span>
+                <span className="bg-white/20 hover:bg-white/30 text-white text-[9.5px] font-semibold px-2 py-0.5 rounded-full border border-white/20 backdrop-blur-sm">
+                  {selectedRx !== 'ALL' ? `Filter: ${selectedRx}` : 'Klik box untuk filter'}
                 </span>
               </div>
 
               <div className="p-2 sm:p-3 grid grid-cols-4 gap-2 text-center">
-                {/* 1. RED (< -25 dBm) */}
+                {/* 1. RED */}
                 <div
                   onClick={() => setSelectedRx((p) => (p === 'RED' ? 'ALL' : 'RED'))}
                   className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
@@ -703,7 +702,7 @@ export default function Dashboard() {
                   </p>
                 </div>
 
-                {/* 2. ORANGE (-25 s/d -21 dBm) */}
+                {/* 2. ORANGE */}
                 <div
                   onClick={() => setSelectedRx((p) => (p === 'ORANGE' ? 'ALL' : 'ORANGE'))}
                   className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
@@ -720,7 +719,7 @@ export default function Dashboard() {
                   </p>
                 </div>
 
-                {/* 3. YELLOW (-21 s/d -18 dBm) */}
+                {/* 3. YELLOW */}
                 <div
                   onClick={() => setSelectedRx((p) => (p === 'YELLOW' ? 'ALL' : 'YELLOW'))}
                   className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
@@ -737,7 +736,7 @@ export default function Dashboard() {
                   </p>
                 </div>
 
-                {/* 4. GREEN (> -18 dBm) */}
+                {/* 4. GREEN */}
                 <div
                   onClick={() => setSelectedRx((p) => (p === 'GREEN' ? 'ALL' : 'GREEN'))}
                   className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
@@ -756,12 +755,12 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* ODP SHARE KABUPATEN LEVEL */}
+            {/* 3. ODP SHARE KABUPATEN LEVEL */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
-              <div className="bg-gradient-to-r from-[#4c1d95] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
-                ODP SHARE KABUPATEN LEVEL{' '}
-                <span className="text-[10px] font-normal text-purple-200">
-                  {selectedKabupaten !== 'ALL' ? `[Filter: ${selectedKabupaten}]` : '(Klik batang untuk filter)'}
+              <div className="bg-gradient-to-r from-[#4c1d95] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
+                <span className="font-extrabold text-xs sm:text-sm tracking-wide">ODP SHARE KABUPATEN LEVEL</span>
+                <span className="bg-white/20 hover:bg-white/30 text-white text-[9.5px] font-semibold px-2 py-0.5 rounded-full border border-white/20 backdrop-blur-sm">
+                  {selectedKabupaten !== 'ALL' ? `Filter: ${selectedKabupaten}` : 'Klik batang untuk filter'}
                 </span>
               </div>
               <div className="p-2 sm:p-4 pt-4 sm:pt-6">
@@ -807,7 +806,7 @@ export default function Dashboard() {
 
           {/* ================= KOLOM KANAN ================= */}
           <div className="space-y-3 sm:space-y-4">
-            {/* MAPS LOKASI ODP */}
+            {/* 1. MAPS LOKASI ODP */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm relative">
               <div className="bg-gradient-to-r from-[#1e3a8a] to-[#3a3575] text-white p-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                 <div className="flex items-center gap-2">
@@ -905,12 +904,12 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* OCCUPANCY & AVAILABLE PORT */}
+            {/* 2. OCCUPANCY & AVAILABLE PORT */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
-              <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
-                OCCUPANCY & AVAILABLE PORT{' '}
-                <span className="text-[10px] font-normal text-purple-200">
-                  (Klik STO / WOK untuk filter)
+              <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
+                <span className="font-extrabold text-xs sm:text-sm tracking-wide">OCCUPANCY & AVAILABLE PORT</span>
+                <span className="bg-white/20 hover:bg-white/30 text-white text-[9.5px] font-semibold px-2 py-0.5 rounded-full border border-white/20 backdrop-blur-sm">
+                  {selectedStoFilter !== 'ALL' ? `STO: ${selectedStoFilter}` : selectedWokFilter !== 'ALL' ? `WOK: ${selectedWokFilter}` : 'Klik STO / WOK untuk filter'}
                 </span>
               </div>
 
