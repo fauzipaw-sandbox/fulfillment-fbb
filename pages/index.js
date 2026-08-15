@@ -31,7 +31,20 @@ const getWeekNumber = (dateString) => {
   return `W${weekNo}`;
 };
 
-// Komponen Label persentase di dalam batang grafik
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 const renderCustomBarLabel = ({ x, y, width, height, value }) => {
   if (!value || value < 3 || height < 12) return null;
   return (
@@ -48,11 +61,10 @@ const renderCustomBarLabel = ({ x, y, width, height, value }) => {
   );
 };
 
-// Custom Tooltip Popup untuk Grafik
 const CustomChartTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-white p-2.5 rounded shadow-lg border border-slate-300 text-xs font-sans space-y-1.5 z-50">
+      <div className="bg-white p-2.5 rounded shadow-lg border border-slate-300 text-xs font-sans space-y-1 z-50">
         <p className="font-bold text-slate-800 border-b pb-1 text-center">{label}</p>
         <div className="space-y-1">
           {payload.slice().reverse().map((entry, index) => {
@@ -89,14 +101,18 @@ export default function Dashboard() {
   const [selectedWeek, setSelectedWeek] = useState('ALL');
   const [sortConfig, setSortConfig] = useState({ key: 'occ', direction: 'desc' });
 
-  // State Toggle Uploader (Default: Hide)
   const [showUploader, setShowUploader] = useState(false);
-
-  // State Interaktif Status & Search Bar Maps
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [focusedOdp, setFocusedOdp] = useState(null);
+
+  // State Fitur Measurement Jarak Darat
+  const [showMeasureModal, setShowMeasureModal] = useState(false);
+  const [pointAInput, setPointAInput] = useState('');
+  const [pointBInput, setPointBInput] = useState('');
+  const [measureResult, setMeasureResult] = useState(null);
+  const [manualMeasureLine, setManualMeasureLine] = useState(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -282,6 +298,46 @@ export default function Dashboard() {
     }
   };
 
+  // Helper Parse Titik (Lat,Long atau ODP Name)
+  const parsePoint = (input) => {
+    if (!input) return null;
+    const clean = input.trim();
+    if (clean.includes(',')) {
+      const parts = clean.split(',').map((p) => parseFloat(p.trim()));
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        return { name: clean, lat: parts[0], lon: parts[1] };
+      }
+    }
+    const found = data.find((d) => d.odp_name && d.odp_name.toLowerCase() === clean.toLowerCase());
+    if (found && found.latitude && found.longitude) {
+      return { name: found.odp_name, lat: found.latitude, lon: found.longitude };
+    }
+    return null;
+  };
+
+  const handleCalculateManualDistance = () => {
+    const pA = parsePoint(pointAInput);
+    const pB = parsePoint(pointBInput);
+
+    if (!pA) {
+      alert('Titik A tidak valid! Masukkan Lat,Long (contoh: -2.21, 113.92) atau nama ODP yang valid.');
+      return;
+    }
+    if (!pB) {
+      alert('Titik B tidak valid! Masukkan Lat,Long (contoh: -2.21, 113.92) atau nama ODP yang valid.');
+      return;
+    }
+
+    const distKm = calculateDistance(pA.lat, pA.lon, pB.lat, pB.lon);
+    setMeasureResult({
+      from: pA.name,
+      to: pB.name,
+      km: distKm.toFixed(2),
+      meter: Math.round(distKm * 1000).toLocaleString(),
+    });
+    setManualMeasureLine([[pA.lat, pA.lon], [pB.lat, pB.lon]]);
+  };
+
   const totalOdp = weekFilteredData.length;
   const occTotal =
     statsOverview.totalPort > 0
@@ -293,27 +349,28 @@ export default function Dashboard() {
       : '0.0';
 
   return (
-    <div className="min-h-screen p-4 text-gray-800 font-sans text-xs bg-[#f1f5f9]">
+    <div className="min-h-screen p-2 sm:p-4 text-gray-800 font-sans text-xs bg-[#f1f5f9]">
       <Head>
         <title>ODP Profile & Utilization</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
       </Head>
 
-      <div className="max-w-[1350px] mx-auto space-y-3">
+      <div className="max-w-[1400px] mx-auto space-y-3">
         {/* HEADER UTAMA & FILTER WEEK */}
-        <div className="bg-gradient-to-r from-[#211c47] to-[#3a3575] text-white p-4 flex flex-col md:flex-row justify-between items-start md:items-center border-b-4 border-purple-500 rounded-t-lg shadow-sm">
+        <div className="bg-gradient-to-r from-[#211c47] to-[#3a3575] text-white p-3 sm:p-4 flex flex-col md:flex-row justify-between items-start md:items-center border-b-4 border-purple-500 rounded-t-lg shadow-sm gap-2">
           <div>
-            <h1 className="text-3xl font-extrabold tracking-wide uppercase italic">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-wide uppercase italic">
               ODP PROFILE & UTILIZATION
             </h1>
-            <p className="text-xs font-semibold mt-1 opacity-90">
+            <p className="text-[10px] sm:text-xs font-semibold mt-0.5 opacity-90">
               *{selectedWeek === 'ALL' ? 'ALL WEEKS' : selectedWeek} - Cutoff Data {cutoffDate}
             </p>
           </div>
 
-          <div className="mt-3 md:mt-0 flex items-center space-x-3 bg-white/10 p-2 rounded border border-white/20">
-            <span className="font-semibold text-sm">Filter Week:</span>
+          <div className="w-full md:w-auto flex items-center justify-between md:justify-end space-x-2 bg-white/10 p-1.5 sm:p-2 rounded border border-white/20">
+            <span className="font-semibold text-xs">Filter Week:</span>
             <select
-              className="text-gray-900 px-3 py-1 font-bold rounded cursor-pointer outline-none shadow-sm"
+              className="text-gray-900 px-2 py-1 font-bold rounded cursor-pointer outline-none text-xs"
               value={selectedWeek}
               onChange={(e) => setSelectedWeek(e.target.value)}
             >
@@ -327,8 +384,8 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* NARRATIVE SUMMARY */}
-        <div className="bg-white px-4 py-2 text-[13px] border border-gray-200 shadow-sm rounded">
+        {/* NARRATIVE EXECUTIVE SUMMARY */}
+        <div className="bg-white px-3 sm:px-4 py-2 text-xs sm:text-[13px] border border-gray-200 shadow-sm rounded leading-relaxed">
           The total <strong className="font-extrabold">number of ODP</strong> in Branch Palangkaraya
           was <strong className="font-extrabold">{(totalOdp / 1000).toFixed(1)}K</strong> (
           {(statsOverview.totalPort / 1000).toFixed(1)} K Port) which is Occupancy{' '}
@@ -342,11 +399,12 @@ export default function Dashboard() {
           available ports for <strong className="font-extrabold">new sales.</strong>
         </div>
 
-        {/* TOGGLE TOMBOL UPLOADER (DEFAULT HIDE) */}
+        {/* TOGGLE TOMBOL UPLOADER */}
         <div className="flex justify-end">
           <button
+            type="button"
             onClick={() => setShowUploader(!showUploader)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-900 text-white font-bold text-xs rounded shadow hover:bg-blue-800 transition"
+            className="flex items-center gap-1 px-3 py-1.5 bg-blue-900 text-white font-bold text-xs rounded shadow hover:bg-blue-800 transition"
           >
             <svg
               className={`w-3.5 h-3.5 transition-transform ${showUploader ? 'rotate-180' : ''}`}
@@ -356,53 +414,55 @@ export default function Dashboard() {
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
-            {showUploader ? 'Tutup Form Upload' : 'Upload / Update Data ODP (CSV / XLSX)'}
+            {showUploader ? 'Tutup Upload' : 'Upload Data ODP (CSV / XLSX)'}
           </button>
         </div>
 
-        {/* UPLOADER CONTAINER */}
         {showUploader && (
           <div className="transition-all duration-300">
             <Uploader onUploadSuccess={fetchData} />
           </div>
         )}
 
-        {/* MAIN DASHBOARD */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        {/* GRID UTAMA RESPONSIVE */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
+          
           {/* ================= KOLOM KIRI ================= */}
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
+            
             {/* OVERVIEW ODP PROFILE */}
-            <div className="bg-white border border-gray-300 shadow-sm">
-              <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-sm tracking-wide">
+            <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
+              <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 OVERVIEW ODP PROFILE{' '}
                 <span className="text-[10px] font-normal text-purple-200">
-                  (Klik box untuk filter {selectedStatus !== 'ALL' ? `[Filter: ${selectedStatus}]` : ''})
+                  {selectedStatus !== 'ALL' ? `[Filter: ${selectedStatus}]` : '(Klik box status)'}
                 </span>
               </div>
-              <div className="p-3 grid grid-cols-3 gap-3 text-center">
+              
+              <div className="p-2 sm:p-3 grid grid-cols-3 gap-2 sm:gap-3 text-center">
                 {/* Summary Port */}
-                <div className="col-span-1 space-y-2">
-                  <div className="border border-gray-200 bg-gray-50/50 p-2 shadow-sm">
-                    <p className="text-[10px] font-bold text-gray-600 mb-1">TOTAL ODP (Port)</p>
-                    <p className="text-xl font-black">
+                <div className="col-span-1 space-y-1.5 sm:space-y-2">
+                  <div className="border border-gray-200 bg-gray-50/50 p-1.5 sm:p-2 rounded">
+                    <p className="text-[8px] sm:text-[9px] font-bold text-gray-500 uppercase">TOTAL ODP (Port)</p>
+                    <p className="text-sm sm:text-base font-extrabold text-slate-900 mt-0.5">
                       {totalOdp.toLocaleString()}{' '}
-                      <span className="text-sm font-bold">
+                      <span className="text-[10px] sm:text-xs font-bold text-slate-600">
                         ({(statsOverview.totalPort / 1000).toFixed(1)} K)
                       </span>
                     </p>
                   </div>
-                  <div className="border border-gray-200 bg-gray-50/50 p-2 shadow-sm">
-                    <p className="text-[10px] font-bold text-gray-600 mb-1">USED PORT</p>
-                    <p className="text-xl font-black">
+                  <div className="border border-gray-200 bg-gray-50/50 p-1.5 sm:p-2 rounded">
+                    <p className="text-[8px] sm:text-[9px] font-bold text-gray-500 uppercase">USED PORT</p>
+                    <p className="text-sm sm:text-base font-extrabold text-slate-900 mt-0.5">
                       {(statsOverview.usedPort / 1000).toFixed(1)} K{' '}
-                      <span className="text-sm font-bold">({occTotal}%)</span>
+                      <span className="text-[10px] sm:text-xs font-bold text-slate-600">({occTotal}%)</span>
                     </p>
                   </div>
-                  <div className="border border-gray-200 bg-gray-50/50 p-2 shadow-sm">
-                    <p className="text-[10px] font-bold text-gray-600 mb-1">AVAI PORT</p>
-                    <p className="text-xl font-black">
+                  <div className="border border-gray-200 bg-gray-50/50 p-1.5 sm:p-2 rounded">
+                    <p className="text-[8px] sm:text-[9px] font-bold text-gray-500 uppercase">AVAI PORT</p>
+                    <p className="text-sm sm:text-base font-extrabold text-slate-900 mt-0.5">
                       {(statsOverview.avaiPort / 1000).toFixed(1)} K{' '}
-                      <span className="text-sm font-bold">({avaiTotal}%)</span>
+                      <span className="text-[10px] sm:text-xs font-bold text-slate-600">({avaiTotal}%)</span>
                     </p>
                   </div>
                 </div>
@@ -410,40 +470,40 @@ export default function Dashboard() {
                 {/* BLACK ODP */}
                 <div
                   onClick={() => handleStatusClick('BLACK')}
-                  className={`col-span-1 border border-gray-400 p-2 shadow-inner flex flex-col justify-center cursor-pointer transition-transform hover:scale-105 relative ${
-                    selectedStatus === 'BLACK' ? 'ring-4 ring-black bg-gray-100' : 'bg-white'
+                  className={`col-span-1 border border-gray-400 p-2 shadow-inner flex flex-col justify-center cursor-pointer transition-transform hover:scale-105 rounded relative ${
+                    selectedStatus === 'BLACK' ? 'ring-3 ring-black bg-gray-100' : 'bg-white'
                   }`}
                 >
-                  <div className="bg-black text-white text-[10px] font-bold px-3 py-0.5 w-max mx-auto border border-gray-400 absolute -top-2 left-0 right-0">
+                  <div className="bg-black text-white text-[9px] font-bold px-2 py-0.5 w-max mx-auto border border-gray-400 absolute -top-2 left-0 right-0 rounded-sm">
                     BLACK ODP
                   </div>
-                  <p className="text-4xl font-black mt-4">
+                  <p className="text-2xl sm:text-3xl font-black mt-3">
                     {statsOverview.colorCounts.BLACK.toLocaleString()}
                   </p>
-                  <p className="text-sm font-bold mt-1">
+                  <p className="text-xs font-bold text-slate-600 mt-0.5">
                     {totalOdp > 0
                       ? ((statsOverview.colorCounts.BLACK / totalOdp) * 100).toFixed(1)
                       : 0}
                     %
                   </p>
-                  <p className="text-[10px] text-gray-500 font-bold mt-2">[Not change]</p>
+                  <p className="text-[9px] text-gray-400 font-medium mt-1">[Not change]</p>
                 </div>
 
                 {/* COLORED ODP */}
-                <div className="col-span-1 grid grid-cols-2 gap-2">
+                <div className="col-span-1 grid grid-cols-2 gap-1.5 sm:gap-2">
                   <div
                     onClick={() => handleStatusClick('YELLOW')}
                     className={`text-center cursor-pointer p-1 rounded transition-transform hover:scale-105 ${
-                      selectedStatus === 'YELLOW' ? 'ring-2 ring-yellow-500 bg-yellow-50 shadow' : ''
+                      selectedStatus === 'YELLOW' ? 'ring-2 ring-yellow-500 bg-yellow-50 shadow' : 'bg-slate-50 border border-slate-200'
                     }`}
                   >
-                    <div className="bg-[#facc15] text-black text-[10px] font-bold px-1 py-0.5 shadow">
-                      YELLOW ODP
+                    <div className="bg-[#facc15] text-slate-900 text-[8px] font-bold px-0.5 py-0.5 rounded-sm">
+                      YELLOW
                     </div>
-                    <p className="text-xl font-black mt-1">
+                    <p className="text-sm sm:text-base font-extrabold mt-1">
                       {statsOverview.colorCounts.YELLOW.toLocaleString()}
                     </p>
-                    <p className="text-xs font-bold">
+                    <p className="text-[10px] font-bold text-slate-600">
                       {totalOdp > 0
                         ? ((statsOverview.colorCounts.YELLOW / totalOdp) * 100).toFixed(1)
                         : 0}
@@ -454,16 +514,16 @@ export default function Dashboard() {
                   <div
                     onClick={() => handleStatusClick('GREEN')}
                     className={`text-center cursor-pointer p-1 rounded transition-transform hover:scale-105 ${
-                      selectedStatus === 'GREEN' ? 'ring-2 ring-green-600 bg-green-50 shadow' : ''
+                      selectedStatus === 'GREEN' ? 'ring-2 ring-green-600 bg-green-50 shadow' : 'bg-slate-50 border border-slate-200'
                     }`}
                   >
-                    <div className="bg-[#16a34a] text-white text-[10px] font-bold px-1 py-0.5 shadow">
-                      GREEN ODP
+                    <div className="bg-[#16a34a] text-white text-[8px] font-bold px-0.5 py-0.5 rounded-sm">
+                      GREEN
                     </div>
-                    <p className="text-xl font-black mt-1">
+                    <p className="text-sm sm:text-base font-extrabold mt-1">
                       {statsOverview.colorCounts.GREEN.toLocaleString()}
                     </p>
-                    <p className="text-xs font-bold text-green-600">
+                    <p className="text-[10px] font-bold text-emerald-700">
                       {totalOdp > 0
                         ? ((statsOverview.colorCounts.GREEN / totalOdp) * 100).toFixed(1)
                         : 0}
@@ -473,17 +533,17 @@ export default function Dashboard() {
 
                   <div
                     onClick={() => handleStatusClick('ORANGE')}
-                    className={`text-center mt-3 cursor-pointer p-1 rounded transition-transform hover:scale-105 ${
-                      selectedStatus === 'ORANGE' ? 'ring-2 ring-orange-500 bg-orange-50 shadow' : ''
+                    className={`text-center cursor-pointer p-1 rounded transition-transform hover:scale-105 ${
+                      selectedStatus === 'ORANGE' ? 'ring-2 ring-orange-500 bg-orange-50 shadow' : 'bg-slate-50 border border-slate-200'
                     }`}
                   >
-                    <div className="bg-[#ea580c] text-white text-[10px] font-bold px-1 py-0.5 shadow">
-                      ORANGE ODP
+                    <div className="bg-[#ea580c] text-white text-[8px] font-bold px-0.5 py-0.5 rounded-sm">
+                      ORANGE
                     </div>
-                    <p className="text-xl font-black mt-1">
+                    <p className="text-sm sm:text-base font-extrabold mt-1">
                       {statsOverview.colorCounts.ORANGE.toLocaleString()}
                     </p>
-                    <p className="text-xs font-bold">
+                    <p className="text-[10px] font-bold text-slate-600">
                       {totalOdp > 0
                         ? ((statsOverview.colorCounts.ORANGE / totalOdp) * 100).toFixed(1)
                         : 0}
@@ -493,17 +553,17 @@ export default function Dashboard() {
 
                   <div
                     onClick={() => handleStatusClick('RED')}
-                    className={`text-center mt-3 cursor-pointer p-1 rounded transition-transform hover:scale-105 ${
-                      selectedStatus === 'RED' ? 'ring-2 ring-red-600 bg-red-50 shadow' : ''
+                    className={`text-center cursor-pointer p-1 rounded transition-transform hover:scale-105 ${
+                      selectedStatus === 'RED' ? 'ring-2 ring-red-600 bg-red-50 shadow' : 'bg-slate-50 border border-slate-200'
                     }`}
                   >
-                    <div className="bg-[#ef4444] text-white text-[10px] font-bold px-1 py-0.5 shadow">
-                      RED ODP
+                    <div className="bg-[#ef4444] text-white text-[8px] font-bold px-0.5 py-0.5 rounded-sm">
+                      RED
                     </div>
-                    <p className="text-xl font-black mt-1">
+                    <p className="text-sm sm:text-base font-extrabold mt-1">
                       {statsOverview.colorCounts.RED.toLocaleString()}
                     </p>
-                    <p className="text-xs font-bold text-red-600">
+                    <p className="text-[10px] font-bold text-red-600">
                       {totalOdp > 0
                         ? ((statsOverview.colorCounts.RED / totalOdp) * 100).toFixed(1)
                         : 0}
@@ -513,55 +573,41 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* LEGEND STATUS (Red = 100% jadi 100%) */}
-              <div className="flex justify-around items-center bg-gray-100/80 py-2 border-t border-gray-200 text-[11px] font-bold">
-                <span className="flex items-center">
-                  <div className="w-8 h-3 bg-black mr-2"></div>0%
-                </span>
-                <span className="flex items-center">
-                  <div className="w-8 h-3 bg-[#16a34a] mr-2"></div>&lt;60%
-                </span>
-                <span className="flex items-center">
-                  <div className="w-8 h-3 bg-[#facc15] mr-2"></div>&lt;85%
-                </span>
-                <span className="flex items-center">
-                  <div className="w-8 h-3 bg-[#ea580c] mr-2"></div>&lt;99%
-                </span>
-                <span className="flex items-center">
-                  <div className="w-8 h-3 bg-[#ef4444] mr-2"></div>100%
-                </span>
+              {/* LEGEND STATUS */}
+              <div className="grid grid-cols-5 border-t border-slate-200 bg-[#f8fafc] py-1.5 text-center text-[9px] sm:text-[10px] font-bold text-slate-700">
+                <span className="flex items-center justify-center"><div className="w-3.5 sm:w-5 h-2 bg-black mr-1 rounded-sm"></div>0%</span>
+                <span className="flex items-center justify-center"><div className="w-3.5 sm:w-5 h-2 bg-[#16a34a] mr-1 rounded-sm"></div>&lt;60%</span>
+                <span className="flex items-center justify-center"><div className="w-3.5 sm:w-5 h-2 bg-[#facc15] mr-1 rounded-sm"></div>&lt;85%</span>
+                <span className="flex items-center justify-center"><div className="w-3.5 sm:w-5 h-2 bg-[#ea580c] mr-1 rounded-sm"></div>&lt;99%</span>
+                <span className="flex items-center justify-center"><div className="w-3.5 sm:w-5 h-2 bg-[#ef4444] mr-1 rounded-sm"></div>100%</span>
               </div>
             </div>
 
             {/* ODP SHARE KABUPATEN LEVEL */}
-            <div className="bg-white border border-gray-300 shadow-sm">
-              <div className="bg-gradient-to-r from-[#4c1d95] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-sm tracking-wide">
+            <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
+              <div className="bg-gradient-to-r from-[#4c1d95] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 ODP SHARE KABUPATEN LEVEL
               </div>
-              <div className="p-4 pt-6">
-                <h4 className="text-center font-bold text-gray-500 mb-2">
+              <div className="p-2 sm:p-4 pt-4 sm:pt-6">
+                <h4 className="text-center font-bold text-gray-500 text-xs mb-2">
                   PROFIL ODP BRANCH PALANGKARAYA
                 </h4>
-                <div className="h-64">
+                <div className="h-60 sm:h-72 w-full">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
                       data={statsFiltered.chartData}
-                      margin={{ top: 5, right: 0, left: -25, bottom: 25 }}
+                      margin={{ top: 5, right: 0, left: -25, bottom: 35 }}
                     >
                       <CartesianGrid strokeDasharray="3 3" vertical={false} />
                       <XAxis
                         dataKey="name"
-                        tick={{ fontSize: 9, fontWeight: 'bold' }}
+                        tick={{ fontSize: 8, fontWeight: 'bold' }}
                         interval={0}
                         angle={-25}
                         textAnchor="end"
                       />
-                      <YAxis tick={{ fontSize: 10, fontWeight: 'bold' }} domain={[0, 100]} unit="%" />
-                      
-                      {/* Tooltip Keterangan Detail */}
+                      <YAxis tick={{ fontSize: 9, fontWeight: 'bold' }} domain={[0, 100]} unit="%" />
                       <Tooltip content={<CustomChartTooltip />} />
-
-                      {/* Batang dengan Label Persentase di Dalamnya */}
                       <Bar dataKey="BLACK" stackId="a" fill="#000000" label={renderCustomBarLabel} />
                       <Bar dataKey="GREEN" stackId="a" fill="#16a34a" label={renderCustomBarLabel} />
                       <Bar dataKey="YELLOW" stackId="a" fill="#facc15" label={renderCustomBarLabel} />
@@ -572,74 +618,152 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
+
           </div>
 
           {/* ================= KOLOM KANAN ================= */}
-          <div className="space-y-4">
-            {/* OCCUPANCY & AVAILABLE PORT */}
-            <div className="bg-white border border-gray-300 shadow-sm">
-              <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-sm tracking-wide">
+          <div className="space-y-3 sm:space-y-4">
+            
+            {/* 1. MAPS LOKASI ODP (PINDAH KE PALING ATAS DI KANAN) */}
+            <div className="bg-white border border-gray-300 shadow-sm rounded-sm relative">
+              <div className="bg-gradient-to-r from-[#1e3a8a] to-[#3a3575] text-white p-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-xs sm:text-sm">MAPS LOKASI ODP</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowMeasureModal(!showMeasureModal)}
+                    className="px-2 py-0.5 bg-blue-700 hover:bg-blue-600 text-white rounded text-[10px] font-semibold flex items-center gap-1 shadow"
+                  >
+                    <span>📐</span> Ukur Jarak Input
+                  </button>
+                </div>
+
+                {/* SEARCH BAR WITH AUTO SUGGESTION */}
+                <div className="relative w-full sm:w-64 z-[1001]">
+                  <input
+                    type="text"
+                    placeholder="Cari ODP / STO / Kab..."
+                    value={searchTerm}
+                    onChange={handleSearchChange}
+                    className="w-full px-2.5 py-1 text-black rounded text-xs outline-none shadow-sm"
+                  />
+                  {suggestions.length > 0 && (
+                    <div className="absolute top-full left-0 w-full bg-white text-black mt-1 rounded shadow-xl border border-gray-300 overflow-hidden max-h-52 overflow-y-auto">
+                      {suggestions.map((s, i) => (
+                        <div
+                          key={i}
+                          onClick={() => {
+                            setFocusedOdp(s);
+                            setSuggestions([]);
+                            setSearchTerm(s.odp_name);
+                          }}
+                          className="p-2 border-b border-gray-100 hover:bg-blue-50 cursor-pointer text-[10px] transition"
+                        >
+                          <strong className="text-blue-700">{s.odp_name}</strong> - {s.sto} ({s.kabupaten})
+                          <span className="ml-1 text-gray-500">[{s.status_final}]</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Form Input Pengukur Jarak */}
+              {showMeasureModal && (
+                <div className="bg-slate-50 p-2.5 border-b border-slate-200 text-xs space-y-2">
+                  <p className="font-bold text-slate-800 text-[11px]">Hitung Jarak Berdasarkan ODP Name / Koordinat (Lat,Long):</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-slate-500 font-semibold">Titik A (Nama ODP / Lat,Long):</label>
+                      <input
+                        type="text"
+                        placeholder="Contoh: ODP-PLK-FAA/01 atau -2.21, 113.92"
+                        value={pointAInput}
+                        onChange={(e) => setPointAInput(e.target.value)}
+                        className="w-full p-1 border rounded text-xs mt-0.5 bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-500 font-semibold">Titik B (Nama ODP / Lat,Long):</label>
+                      <input
+                        type="text"
+                        placeholder="Contoh: ODP-PLK-FAA/05 atau -2.22, 113.93"
+                        value={pointBInput}
+                        onChange={(e) => setPointBInput(e.target.value)}
+                        className="w-full p-1 border rounded text-xs mt-0.5 bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      type="button"
+                      onClick={handleCalculateManualDistance}
+                      className="px-3 py-1 bg-blue-600 text-white font-bold rounded text-[11px] hover:bg-blue-700 shadow"
+                    >
+                      Hitung Jarak Darat
+                    </button>
+                    {measureResult && (
+                      <p className="font-bold text-blue-900 text-xs">
+                        Hasil: {measureResult.km} km ({measureResult.meter} m)
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="h-[280px] sm:h-[350px] p-1 bg-gray-100">
+                {loading ? (
+                  <div className="flex h-full items-center justify-center font-bold text-gray-400">
+                    Memuat Peta ODP...
+                  </div>
+                ) : (
+                  <MapComponent
+                    data={fullyFilteredData}
+                    focusLocation={focusedOdp}
+                    manualMeasureLine={manualMeasureLine}
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* 2. OCCUPANCY & AVAILABLE PORT (DI BAWAH MAPS) */}
+            <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
+              <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 OCCUPANCY & AVAILABLE PORT
               </div>
 
-              <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
-                <table className="w-full text-center border-collapse">
-                  <thead className="bg-[#0f172a] text-white text-[10px] sticky top-0 z-10 shadow-md cursor-pointer">
+              <div className="overflow-x-auto max-h-[340px] overflow-y-auto">
+                <table className="w-full text-center border-collapse min-w-[500px]">
+                  <thead className="bg-[#0f172a] text-white text-[9px] sm:text-[10px] sticky top-0 z-10 shadow-md cursor-pointer">
                     <tr>
-                      <th
-                        className="p-2 border border-gray-400 hover:bg-gray-800 transition"
-                        onClick={() => requestSort('wok')}
-                      >
+                      <th className="p-1.5 border border-gray-400 hover:bg-gray-800" onClick={() => requestSort('wok')}>
                         WOK {sortConfig.key === 'wok' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                       </th>
-                      <th
-                        className="p-2 border border-gray-400 hover:bg-gray-800 transition"
-                        onClick={() => requestSort('sto')}
-                      >
+                      <th className="p-1.5 border border-gray-400 hover:bg-gray-800" onClick={() => requestSort('sto')}>
                         STO {sortConfig.key === 'sto' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                       </th>
-                      <th
-                        className="p-2 border border-gray-400 hover:bg-gray-800 transition"
-                        onClick={() => requestSort('odp_count')}
-                      >
-                        # Odp_name{' '}
-                        {sortConfig.key === 'odp_count' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                      <th className="p-1.5 border border-gray-400 hover:bg-gray-800" onClick={() => requestSort('odp_count')}>
+                        # Odp {sortConfig.key === 'odp_count' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                       </th>
-                      <th
-                        className="p-2 border border-gray-400 hover:bg-gray-800 transition"
-                        onClick={() => requestSort('is_total')}
-                      >
-                        # ls_total{' '}
-                        {sortConfig.key === 'is_total' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                      <th className="p-1.5 border border-gray-400 hover:bg-gray-800" onClick={() => requestSort('is_total')}>
+                        # Port {sortConfig.key === 'is_total' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                       </th>
-                      <th
-                        className="p-2 border border-gray-400 hover:bg-gray-800 transition"
-                        onClick={() => requestSort('used')}
-                      >
+                      <th className="p-1.5 border border-gray-400 hover:bg-gray-800" onClick={() => requestSort('used')}>
                         # Used {sortConfig.key === 'used' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                       </th>
-                      <th
-                        className="p-2 border border-gray-400 hover:bg-gray-800 transition"
-                        onClick={() => requestSort('avai')}
-                      >
+                      <th className="p-1.5 border border-gray-400 hover:bg-gray-800" onClick={() => requestSort('avai')}>
                         # Avail {sortConfig.key === 'avai' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                       </th>
-                      <th
-                        className="p-2 border border-gray-400 hover:bg-gray-800 transition bg-[#3b82f6]"
-                        onClick={() => requestSort('occ')}
-                      >
+                      <th className="p-1.5 border border-gray-400 hover:bg-gray-800 bg-[#3b82f6]" onClick={() => requestSort('occ')}>
                         % OCC {sortConfig.key === 'occ' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                       </th>
-                      <th
-                        className="p-2 border border-gray-400 hover:bg-gray-800 transition"
-                        onClick={() => requestSort('avai_perc')}
-                      >
-                        % Avail{' '}
-                        {sortConfig.key === 'avai_perc' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                      <th className="p-1.5 border border-gray-400 hover:bg-gray-800" onClick={() => requestSort('avai_perc')}>
+                        % Avail {sortConfig.key === 'avai_perc' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="text-[10px]">
+                  <tbody className="text-[9px] sm:text-[10px]">
                     {sortedTableData.map((row, idx) => {
                       let occBg = 'bg-[#86efac] text-green-900';
                       if (row.occ === 0) occBg = 'bg-gray-200 text-gray-800';
@@ -654,24 +778,12 @@ export default function Dashboard() {
                         >
                           <td className="p-1 border border-gray-300 font-bold text-gray-600">{row.wok}</td>
                           <td className="p-1 border border-gray-300 font-bold text-gray-700">{row.sto}</td>
-                          <td className="p-1 border border-gray-300 text-gray-600">
-                            {row.odp_count.toLocaleString()}
-                          </td>
-                          <td className="p-1 border border-gray-300 text-gray-600">
-                            {row.is_total.toLocaleString()}
-                          </td>
-                          <td className="p-1 border border-gray-300 text-gray-600">
-                            {row.used.toLocaleString()}
-                          </td>
-                          <td className="p-1 border border-gray-300 text-gray-600">
-                            {row.avai.toLocaleString()}
-                          </td>
-                          <td className={`p-1 border border-gray-300 font-bold ${occBg}`}>
-                            {row.occ.toFixed(1)}%
-                          </td>
-                          <td className="p-1 border border-gray-300 font-bold bg-gray-50 text-gray-600">
-                            {row.avai_perc.toFixed(1)}%
-                          </td>
+                          <td className="p-1 border border-gray-300 text-gray-600">{row.odp_count.toLocaleString()}</td>
+                          <td className="p-1 border border-gray-300 text-gray-600">{row.is_total.toLocaleString()}</td>
+                          <td className="p-1 border border-gray-300 text-gray-600">{row.used.toLocaleString()}</td>
+                          <td className="p-1 border border-gray-300 text-gray-600">{row.avai.toLocaleString()}</td>
+                          <td className={`p-1 border border-gray-300 font-bold ${occBg}`}>{row.occ.toFixed(1)}%</td>
+                          <td className="p-1 border border-gray-300 font-bold bg-gray-50 text-gray-600">{row.avai_perc.toFixed(1)}%</td>
                         </tr>
                       );
                     })}
@@ -680,52 +792,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* MAPS LOKASI ODP WITH INSTANT POPUP SEARCH */}
-            <div className="bg-white border border-gray-300 shadow-sm relative">
-              <div className="bg-gradient-to-r from-[#1e3a8a] to-[#3a3575] text-white p-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 relative">
-                <span className="font-bold text-sm ml-1">MAPS LOKASI ODP</span>
-
-                {/* SEARCH BAR WITH AUTO SUGGESTION */}
-                <div className="relative w-full sm:w-72 z-[9999]">
-                  <input
-                    type="text"
-                    placeholder="Cari ODP, STO, Kab (min 3 huruf)..."
-                    value={searchTerm}
-                    onChange={handleSearchChange}
-                    className="w-full px-2.5 py-1 text-black rounded text-xs outline-none shadow-sm"
-                  />
-                  {suggestions.length > 0 && (
-                    <div className="absolute top-full left-0 w-full bg-white text-black mt-1 rounded shadow-xl border border-gray-300 overflow-hidden max-h-60 overflow-y-auto">
-                      {suggestions.map((s, i) => (
-                        <div
-                          key={i}
-                          onClick={() => {
-                            setFocusedOdp(s);
-                            setSuggestions([]);
-                            setSearchTerm(s.odp_name);
-                          }}
-                          className="p-2 border-b border-gray-100 hover:bg-blue-50 cursor-pointer text-[10px] transition"
-                        >
-                          <strong className="text-blue-700">{s.odp_name}</strong> - {s.sto} (
-                          {s.kabupaten})
-                          <span className="ml-1 text-gray-500">[{s.status_final}]</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="h-[360px] p-1 bg-gray-100">
-                {loading ? (
-                  <div className="flex h-full items-center justify-center font-bold text-gray-400">
-                    Memuat Peta ODP...
-                  </div>
-                ) : (
-                  <MapComponent data={fullyFilteredData} focusLocation={focusedOdp} />
-                )}
-              </div>
-            </div>
           </div>
         </div>
       </div>
