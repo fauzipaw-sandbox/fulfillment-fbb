@@ -58,7 +58,6 @@ function cleanString(val) {
 
 function cleanNumericString(val) {
   if (val === undefined || val === null || val === '' || String(val).toLowerCase() === 'nan') return null;
-  // Jika formatnya 162215215399.0 buang desimal .0
   const str = String(val).trim();
   if (str.endsWith('.0')) return str.slice(0, -2);
   return str;
@@ -170,7 +169,7 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
     }
   };
 
-  // 2. Process Upload Data Order (Tabel orders_kalimantan)
+  // 2. Process Upload Data Order (Mengarah ke /api/upload?type=order)
   const processOrderData = async (rawDataInput) => {
     setLoading(true);
     setProgress(0);
@@ -266,14 +265,13 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
       return;
     }
 
-    // Gunakan batch 200 baris agar ukuran request aman
     const BATCH_SIZE = 200;
     let successCount = 0;
 
     try {
       for (let i = 0; i < totalRecords; i += BATCH_SIZE) {
         const chunk = formattedData.slice(i, i + BATCH_SIZE);
-        const res = await fetch('/api/upload-order', {
+        const res = await fetch('/api/upload?type=order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(chunk),
