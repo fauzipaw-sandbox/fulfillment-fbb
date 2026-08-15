@@ -93,6 +93,15 @@ export default function Map({
     return '#111827';
   };
 
+  // Poin 4: Pewarnaan Nilai ONT RX Level
+  const getRxColor = (rxVal) => {
+    if (rxVal === null || rxVal === undefined) return '#64748b';
+    if (rxVal > -18) return '#16a34a';
+    if (rxVal >= -21) return '#ca8a04';
+    if (rxVal >= -25) return '#ea580c';
+    return '#dc2626';
+  };
+
   const handleMapClick = (latlng) => {
     setClickPoints((prev) => [...prev, latlng]);
   };
@@ -110,7 +119,6 @@ export default function Map({
 
   return (
     <div className="relative w-full h-full">
-      {/* Floating Control: Layer Selector (Street / Satellite) & Measure */}
       <div className="absolute top-2 right-2 z-[1000] flex items-center gap-1.5">
         <div className="bg-white rounded shadow border border-slate-300 overflow-hidden flex text-[10px] font-bold">
           <button
@@ -178,7 +186,7 @@ export default function Map({
       >
         {mapType === 'satellite' ? (
           <TileLayer
-            attribution='Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+            attribution='Tiles &copy; Esri'
             url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
           />
         ) : (
@@ -233,6 +241,7 @@ export default function Map({
         {data.map((odp, idx) => {
           if (!odp.latitude || !odp.longitude) return null;
           const color = getColor(odp.status_final);
+          const rxColor = getRxColor(odp.ont_rx_level);
           const formattedRx = odp.ont_rx_level !== null ? `${Number(odp.ont_rx_level).toFixed(2)} dBm` : '-';
           const occVal = odp.is_total > 0 ? Math.round((odp.used / odp.is_total) * 100) : 0;
 
@@ -245,7 +254,6 @@ export default function Map({
                 if (el) markerRefs.current[odp.odp_name] = el;
               }}
               eventHandlers={{
-                // Poin 2: Auto popup saat mouse mengarah (mouseover)
                 mouseover: (e) => {
                   e.target.openPopup();
                 },
@@ -295,7 +303,9 @@ export default function Map({
                     </div>
                     <div>
                       <span className="text-slate-400 block text-[7.5px] uppercase font-bold">ONT RX LEVEL</span>
-                      <span className="font-bold text-slate-800">{formattedRx}</span>
+                      <span className="font-black" style={{ color: rxColor }}>
+                        {formattedRx}
+                      </span>
                     </div>
                     {odp.sto_desc && (
                       <div className="col-span-2">
