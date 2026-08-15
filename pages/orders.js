@@ -33,37 +33,34 @@ const WOK_GROUP_MAP = {
   PYM: 'PALANGKARAYA',
 };
 
+// Urutan Durasi Custom: 3 HARI -> 7 HARI -> 30 HARI -> 3 BULAN
+const DURATION_ORDER = ['3 HARI', '7 HARI', '30 HARI', '3 BULAN'];
+
+function sortDurationColumns(cols) {
+  return [...cols].sort((a, b) => {
+    const idxA = DURATION_ORDER.indexOf(a);
+    const idxB = DURATION_ORDER.indexOf(b);
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    if (idxA !== -1) return -1;
+    if (idxB !== -1) return 1;
+    return a.localeCompare(b);
+  });
+}
+
+const DURATION_COLORS = {
+  '3 HARI': '#22c55e',  // Hijau
+  '7 HARI': '#f97316',  // Oranye
+  '30 HARI': '#3b82f6', // Biru
+  '3 BULAN': '#a855f7', // Ungu
+  DEFAULT: '#64748b',
+};
+
 const FALLOUT_KEYWORDS = [
-  'ODP BELUM GO LIVE',
-  'ODP FULL',
-  'ODP JAUH',
-  'ODP LOSS',
-  'ODP RETI',
-  'ODP RUSAK',
-  'TIDAK ADA ODP',
-  'KENDALA JALUR/RUTE TARIKAN',
-  'KENDALA IKR/IKG',
-  'KENDALA IZIN',
-  'KENDALA MATERIAL/NTE',
-  'KENDALA PERANGKAT',
-  'ALAMAT TIDAK DITEMUKAN',
-  'INDIKASI CABUT PASANG',
-  'PELANGGAN MASIH RAGU',
-  'PELANGGAN TIDAK MERASA PASANG',
-  'RUMAH KOSONG',
-  'CROSS JALAN',
-  'DOUBLE INPUT',
-  'GANTI PAKET',
-  'LIMITASI ONU',
-  'TIANG',
-  'BATAL',
-  'PENDING',
-  'SYSTEM',
-  'ACTIVATION',
-  'DATA',
-  'RNA',
-  'ODP',
-  'LAINNYA',
+  'ODP BELUM GO LIVE', 'ODP FULL', 'ODP JAUH', 'ODP LOSS', 'ODP RETI', 'ODP RUSAK', 'TIDAK ADA ODP',
+  'KENDALA JALUR/RUTE TARIKAN', 'KENDALA IKR/IKG', 'KENDALA IZIN', 'KENDALA MATERIAL/NTE', 'KENDALA PERANGKAT',
+  'ALAMAT TIDAK DITEMUKAN', 'INDIKASI CABUT PASANG', 'PELANGGAN MASIH RAGU', 'PELANGGAN TIDAK MERASA PASANG',
+  'RUMAH KOSONG', 'CROSS JALAN', 'DOUBLE INPUT', 'GANTI PAKET', 'LIMITASI ONU', 'TIANG', 'BATAL',
+  'PENDING', 'SYSTEM', 'ACTIVATION', 'DATA', 'RNA', 'ODP', 'LAINNYA',
 ];
 
 function normalizeFalloutReason(rawVal) {
@@ -82,12 +79,6 @@ function normalizeFalloutReason(rawVal) {
   return 'LAINNYA';
 }
 
-const DURATION_COLORS = {
-  '3 HARI': '#22c55e',
-  '7 HARI': '#f97316',
-  DEFAULT: '#3b82f6',
-};
-
 export default function OrdersPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -98,10 +89,12 @@ export default function OrdersPage() {
   const [selectedSto, setSelectedSto] = useState('ALL');
   const [selectedDuration, setSelectedDuration] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
+  const [selectedFallout, setSelectedFallout] = useState('ALL');
 
   // Bottom Table State
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortConfig, setSortConfig] = useState({ key: 'order_ts', direction: 'desc' });
   const rowsPerPage = 50;
 
   const fetchOrders = async () => {
@@ -139,17 +132,19 @@ export default function OrdersPage() {
     fetchOrders();
   }, []);
 
+  // Filter Sinkron Seluruh Komponen
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
       const matchWok = selectedWok === 'ALL' || o.wok === selectedWok;
       const matchSto = selectedSto === 'ALL' || o.sto_co === selectedSto;
       const matchDur = selectedDuration === 'ALL' || o.order_duration_cat === selectedDuration;
       const matchStat = selectedStatus === 'ALL' || o.order_status_clean === selectedStatus;
-      return matchWok && matchSto && matchDur && matchStat;
+      const matchFallout = selectedFallout === 'ALL' || o.fallout_reason_clean === selectedFallout;
+      return matchWok && matchSto && matchDur && matchStat && matchFallout;
     });
-  }, [orders, selectedWok, selectedSto, selectedDuration, selectedStatus]);
+  }, [orders, selectedWok, selectedSto, selectedDuration, selectedStatus, selectedFallout]);
 
-  // Pivot Duration
+  // Pivot 1: WOK & STO vs Duration
   const pivotDuration = useMemo(() => {
     const durColumnsSet = new Set();
     const map = {};
@@ -170,7 +165,7 @@ export default function OrdersPage() {
       map[wok].stos[sto].colCounts[dur] = (map[wok].stos[sto].colCounts[dur] || 0) + 1;
     });
 
-    const columns = Array.from(durColumnsSet).sort();
+    const columns = sortDurationColumns(Array.from(durColumnsSet));
     const grandColTotals = {};
     columns.forEach((c) => (grandColTotals[c] = 0));
     let totalAll = 0;
@@ -185,7 +180,7 @@ export default function OrdersPage() {
     return { tree: map, columns, grandColTotals, totalAll };
   }, [filteredOrders]);
 
-  // Pivot Status
+  // Pivot 2: WOK & STO vs Status
   const pivotStatus = useMemo(() => {
     const statusSet = new Set();
     const map = {};
@@ -221,7 +216,7 @@ export default function OrdersPage() {
     return { tree: map, columns, grandColTotals, totalAll };
   }, [filteredOrders]);
 
-  // Pivot Fallout
+  // Pivot 3: Duration vs Fallout
   const pivotFallout = useMemo(() => {
     const tree = {};
     let totalAll = 0;
@@ -240,19 +235,22 @@ export default function OrdersPage() {
     return { tree, totalAll };
   }, [filteredOrders]);
 
-  // Chart Data
+  // Chart Data (Duration Fallout)
   const chartData = useMemo(() => {
     const list = [];
-    const durKeys = Object.keys(pivotFallout.tree).sort();
+    const sortedDurKeys = sortDurationColumns(Object.keys(pivotFallout.tree));
 
-    durKeys.forEach((durKey) => {
-      const reasonsObj = pivotFallout.tree[durKey].reasons;
-      Object.entries(reasonsObj).forEach(([reason, count]) => {
+    sortedDurKeys.forEach((durKey) => {
+      const reasonsObj = pivotFallout.tree[durKey]?.reasons || {};
+      const sortedReasons = Object.entries(reasonsObj).sort((a, b) => b[1] - a[1]);
+
+      sortedReasons.forEach(([reason, count]) => {
         list.push({
           duration: durKey,
           reason: reason,
           count: count,
           fillColor: DURATION_COLORS[durKey] || DURATION_COLORS.DEFAULT,
+          fullLabel: `${reason} (${durKey})`,
         });
       });
     });
@@ -260,25 +258,48 @@ export default function OrdersPage() {
     return list;
   }, [pivotFallout]);
 
-  // Table Data
-  const bottomTableData = useMemo(() => {
-    if (!searchTerm.trim()) return filteredOrders;
-    const s = searchTerm.toLowerCase();
-    return filteredOrders.filter(
-      (o) =>
-        (o.order_id && o.order_id.toLowerCase().includes(s)) ||
-        (o.name && o.name.toLowerCase().includes(s)) ||
-        (o.odp_name && o.odp_name.toLowerCase().includes(s)) ||
-        (o.sto_co && o.sto_co.toLowerCase().includes(s)) ||
-        (o.fallout_reason_clean && o.fallout_reason_clean.toLowerCase().includes(s))
-    );
-  }, [filteredOrders, searchTerm]);
+  // Sort Handler
+  const requestSort = (key) => {
+    let direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
 
-  const totalPages = Math.ceil(bottomTableData.length / rowsPerPage) || 1;
+  // Bottom Table Data dengan Sorting Semua Kolom
+  const sortedBottomTableData = useMemo(() => {
+    let filtered = filteredOrders;
+    if (searchTerm.trim()) {
+      const s = searchTerm.toLowerCase();
+      filtered = filtered.filter(
+        (o) =>
+          (o.order_id && o.order_id.toLowerCase().includes(s)) ||
+          (o.name && o.name.toLowerCase().includes(s)) ||
+          (o.odp_name && o.odp_name.toLowerCase().includes(s)) ||
+          (o.sto_co && o.sto_co.toLowerCase().includes(s)) ||
+          (o.fallout_reason_clean && o.fallout_reason_clean.toLowerCase().includes(s))
+      );
+    }
+
+    return [...filtered].sort((a, b) => {
+      let valA = a[sortConfig.key] ?? '';
+      let valB = b[sortConfig.key] ?? '';
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
+      }
+      return sortConfig.direction === 'asc'
+        ? String(valA).localeCompare(String(valB))
+        : String(valB).localeCompare(String(valA));
+    });
+  }, [filteredOrders, searchTerm, sortConfig]);
+
+  const totalPages = Math.ceil(sortedBottomTableData.length / rowsPerPage) || 1;
   const paginatedData = useMemo(() => {
     const start = (currentPage - 1) * rowsPerPage;
-    return bottomTableData.slice(start, start + rowsPerPage);
-  }, [bottomTableData, currentPage]);
+    return sortedBottomTableData.slice(start, start + rowsPerPage);
+  }, [sortedBottomTableData, currentPage]);
 
   const handleExportCSV = () => {
     if (filteredOrders.length === 0) return alert('Tidak ada data untuk di-download.');
@@ -298,6 +319,7 @@ export default function OrdersPage() {
     setSelectedSto('ALL');
     setSelectedDuration('ALL');
     setSelectedStatus('ALL');
+    setSelectedFallout('ALL');
   };
 
   return (
@@ -314,6 +336,7 @@ export default function OrdersPage() {
       )}
 
       <div className="max-w-[1450px] mx-auto space-y-3">
+        {/* Header Bar */}
         <div className="bg-gradient-to-r from-[#211c47] to-[#4c1d95] text-white p-3 sm:p-4 rounded-lg flex flex-col md:flex-row justify-between items-start md:items-center shadow gap-2">
           <div>
             <h1 className="text-lg sm:text-2xl font-black uppercase italic tracking-wide">
@@ -335,9 +358,11 @@ export default function OrdersPage() {
           </div>
         </div>
 
+        {/* Filter Bar */}
         <div className="bg-white p-2.5 rounded shadow-xs border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-bold text-slate-600 text-[11px]">Filter Cepat:</span>
+            <span className="font-bold text-slate-600 text-[11px]">Filter:</span>
+
             <select
               value={selectedWok}
               onChange={(e) => setSelectedWok(e.target.value)}
@@ -369,15 +394,26 @@ export default function OrdersPage() {
                 <option key={d} value={d}>{d}</option>
               ))}
             </select>
+
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              className="p-1 border rounded font-semibold text-slate-700 bg-slate-50 text-[11px]"
+            >
+              <option value="ALL">Semua Status</option>
+              {pivotStatus.columns.map((st) => (
+                <option key={st} value={st}>{st}</option>
+              ))}
+            </select>
           </div>
 
-          {(selectedWok !== 'ALL' || selectedSto !== 'ALL' || selectedDuration !== 'ALL' || selectedStatus !== 'ALL') && (
+          {(selectedWok !== 'ALL' || selectedSto !== 'ALL' || selectedDuration !== 'ALL' || selectedStatus !== 'ALL' || selectedFallout !== 'ALL') && (
             <button
               type="button"
               onClick={resetFilters}
-              className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded font-bold text-[10px] shadow"
+              className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded font-bold text-[10px] shadow"
             >
-              ✕ Reset Filter
+              ✕ Reset Semua Filter
             </button>
           )}
         </div>
@@ -391,12 +427,14 @@ export default function OrdersPage() {
           </div>
         )}
 
+        {/* ================= SECTION ATAS: 2 PIVOT TABLE ================= */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
-          {/* PIVOT 1 */}
+          
+          {/* PIVOT 1: DURATION */}
           <div className="bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase">
               <span>Count of order_id &bull; Duration SLA</span>
-              <span className="text-[10px] text-emerald-400 font-semibold">Row: WOK / STO</span>
+              <span className="text-[10px] text-emerald-400 font-semibold">(Klik sel untuk filter)</span>
             </div>
             <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
               <table className="w-full text-center border-collapse text-[10.5px]">
@@ -406,10 +444,14 @@ export default function OrdersPage() {
                     {pivotDuration.columns.map((c) => (
                       <th
                         key={c}
-                        className={`p-1.5 border border-slate-600 cursor-pointer ${
-                          c === '3 HARI' ? 'bg-[#bbf7d0] text-emerald-950 font-black' : c === '7 HARI' ? 'bg-[#fed7aa] text-orange-950 font-black' : ''
+                        className={`p-1.5 border border-slate-600 cursor-pointer hover:opacity-80 ${
+                          c === '3 HARI' ? 'bg-[#bbf7d0] text-emerald-950 font-black' :
+                          c === '7 HARI' ? 'bg-[#fed7aa] text-orange-950 font-black' :
+                          c === '30 HARI' ? 'bg-[#bfdbfe] text-blue-950 font-black' :
+                          c === '3 BULAN' ? 'bg-[#e9d5ff] text-purple-950 font-black' : 'bg-slate-700'
                         }`}
                         onClick={() => setSelectedDuration((prev) => (prev === c ? 'ALL' : c))}
+                        title="Klik untuk filter kolom ini"
                       >
                         {c}
                       </th>
@@ -428,7 +470,14 @@ export default function OrdersPage() {
                           &oplus; {wok.name}
                         </td>
                         {pivotDuration.columns.map((c) => (
-                          <td key={c} className="p-1.5 border border-slate-300">
+                          <td
+                            key={c}
+                            className="p-1.5 border border-slate-300 cursor-pointer hover:bg-emerald-100"
+                            onClick={() => {
+                              setSelectedWok(wok.name);
+                              setSelectedDuration(c);
+                            }}
+                          >
                             {wok.colCounts[c] || ''}
                           </td>
                         ))}
@@ -449,7 +498,14 @@ export default function OrdersPage() {
                             {sto.name}
                           </td>
                           {pivotDuration.columns.map((c) => (
-                            <td key={c} className="p-1 border border-slate-200 text-slate-600">
+                            <td
+                              key={c}
+                              className="p-1 border border-slate-200 text-slate-600 cursor-pointer hover:bg-blue-100"
+                              onClick={() => {
+                                setSelectedSto(sto.name);
+                                setSelectedDuration(c);
+                              }}
+                            >
                               {sto.colCounts[c] || ''}
                             </td>
                           ))}
@@ -477,11 +533,11 @@ export default function OrdersPage() {
             </div>
           </div>
 
-          {/* PIVOT 2 */}
+          {/* PIVOT 2: STATUS */}
           <div className="bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase">
               <span>Count of order_id &bull; Order Status</span>
-              <span className="text-[10px] text-blue-400 font-semibold">Row: WOK / STO</span>
+              <span className="text-[10px] text-blue-400 font-semibold">(Klik sel untuk filter)</span>
             </div>
             <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
               <table className="w-full text-center border-collapse text-[10.5px]">
@@ -491,7 +547,7 @@ export default function OrdersPage() {
                     {pivotStatus.columns.map((st) => (
                       <th
                         key={st}
-                        className="p-1.5 border border-slate-600 font-bold bg-[#e0f2fe] text-blue-950 cursor-pointer max-w-[110px] truncate"
+                        className="p-1.5 border border-slate-600 font-bold bg-[#e0f2fe] text-blue-950 cursor-pointer max-w-[110px] truncate hover:opacity-80"
                         title={st}
                         onClick={() => setSelectedStatus((prev) => (prev === st ? 'ALL' : st))}
                       >
@@ -512,7 +568,14 @@ export default function OrdersPage() {
                           &oplus; {wok.name}
                         </td>
                         {pivotStatus.columns.map((st) => (
-                          <td key={st} className="p-1.5 border border-slate-300">
+                          <td
+                            key={st}
+                            className="p-1.5 border border-slate-300 cursor-pointer hover:bg-blue-100"
+                            onClick={() => {
+                              setSelectedWok(wok.name);
+                              setSelectedStatus(st);
+                            }}
+                          >
                             {wok.colCounts[st] || ''}
                           </td>
                         ))}
@@ -533,7 +596,14 @@ export default function OrdersPage() {
                             {sto.name}
                           </td>
                           {pivotStatus.columns.map((st) => (
-                            <td key={st} className="p-1 border border-slate-200 text-slate-600">
+                            <td
+                              key={st}
+                              className="p-1 border border-slate-200 text-slate-600 cursor-pointer hover:bg-blue-100"
+                              onClick={() => {
+                                setSelectedSto(sto.name);
+                                setSelectedStatus(st);
+                              }}
+                            >
                               {sto.colCounts[st] || ''}
                             </td>
                           ))}
@@ -562,12 +632,14 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        {/* SECTION PIVOT FALLOUT & CHART */}
+        {/* ================= SECTION TENGAH: PIVOT FALLOUT & DURATION FALLOUT CHART ================= */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4">
+          
+          {/* PIVOT 3: FALLOUT */}
           <div className="xl:col-span-1 bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase">
               <span>Row Labels &bull; Fallout Reason</span>
-              <span className="text-[10px] text-yellow-300">Count of order_id</span>
+              <span className="text-[10px] text-yellow-300">(Klik untuk filter)</span>
             </div>
             <div className="overflow-x-auto max-h-[340px] overflow-y-auto">
               <table className="w-full text-left border-collapse text-[10.5px]">
@@ -578,29 +650,42 @@ export default function OrdersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.values(pivotFallout.tree).map((dur) => (
-                    <React.Fragment key={dur.name}>
-                      <tr className="bg-slate-100 font-black text-slate-900 border-b border-slate-300">
-                        <td className="p-1.5 border border-slate-300 pl-2">
-                          &oplus; {dur.name}
-                        </td>
-                        <td className="p-1.5 border border-slate-300 text-right pr-4 font-black">
-                          {dur.total}
-                        </td>
-                      </tr>
-
-                      {Object.entries(dur.reasons).map(([reason, cnt]) => (
-                        <tr key={reason} className="border-b border-slate-200 hover:bg-slate-50 bg-white">
-                          <td className="p-1 border border-slate-200 pl-6 font-semibold text-slate-700">
-                            {reason}
+                  {sortDurationColumns(Object.keys(pivotFallout.tree)).map((durKey) => {
+                    const dur = pivotFallout.tree[durKey];
+                    return (
+                      <React.Fragment key={dur.name}>
+                        <tr
+                          className="bg-slate-100 font-black text-slate-900 border-b border-slate-300 cursor-pointer hover:bg-slate-200"
+                          onClick={() => setSelectedDuration((prev) => (prev === dur.name ? 'ALL' : dur.name))}
+                        >
+                          <td className="p-1.5 border border-slate-300 pl-2">
+                            &oplus; {dur.name}
                           </td>
-                          <td className="p-1 border border-slate-200 text-right pr-4 text-slate-800 font-bold">
-                            {cnt}
+                          <td className="p-1.5 border border-slate-300 text-right pr-4 font-black">
+                            {dur.total}
                           </td>
                         </tr>
-                      ))}
-                    </React.Fragment>
-                  ))}
+
+                        {Object.entries(dur.reasons).map(([reason, cnt]) => (
+                          <tr
+                            key={reason}
+                            className="border-b border-slate-200 hover:bg-red-50/70 cursor-pointer transition bg-white"
+                            onClick={() => {
+                              setSelectedDuration(dur.name);
+                              setSelectedFallout((prev) => (prev === reason ? 'ALL' : reason));
+                            }}
+                          >
+                            <td className="p-1 border border-slate-200 pl-6 font-semibold text-slate-700">
+                              {reason}
+                            </td>
+                            <td className="p-1 border border-slate-200 text-right pr-4 text-slate-800 font-bold">
+                              {cnt}
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })}
 
                   <tr className="bg-[#0f172a] text-white font-black sticky bottom-0 z-10 shadow">
                     <td className="p-2 border border-slate-700 uppercase">Grand Total</td>
@@ -613,6 +698,7 @@ export default function OrdersPage() {
             </div>
           </div>
 
+          {/* DIAGRAM BATANG DURATION FALLOUT */}
           <div className="xl:col-span-2 bg-white border border-slate-300 shadow-xs rounded p-3">
             <h4 className="text-center font-extrabold text-slate-800 text-xs sm:text-sm tracking-wide uppercase mb-2">
               DURATION FALLOUT
@@ -627,6 +713,13 @@ export default function OrdersPage() {
                   <BarChart
                     data={chartData}
                     margin={{ top: 20, right: 10, left: -20, bottom: 50 }}
+                    onClick={(e) => {
+                      if (e && e.activePayload && e.activePayload.length) {
+                        const payload = e.activePayload[0].payload;
+                        setSelectedDuration(payload.duration);
+                        setSelectedFallout((prev) => (prev === payload.reason ? 'ALL' : payload.reason));
+                      }
+                    }}
                   >
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis
@@ -659,6 +752,7 @@ export default function OrdersPage() {
                               <p className="font-black text-slate-900">{d.reason}</p>
                               <p className="text-[11px] font-bold text-slate-600">Durasi: {d.duration}</p>
                               <p className="text-xs font-black text-blue-700 mt-1">Total: {d.count} Order</p>
+                              <p className="text-[9px] text-slate-400 mt-0.5">(Klik batang untuk filter)</p>
                             </div>
                           );
                         }
@@ -688,18 +782,25 @@ export default function OrdersPage() {
                 </ResponsiveContainer>
               )}
             </div>
-            <div className="flex items-center justify-center gap-4 text-[10px] font-bold text-slate-600 mt-2 border-t pt-1.5">
+            {/* Legend Durasi Lengkap */}
+            <div className="flex flex-wrap items-center justify-center gap-4 text-[10px] font-bold text-slate-600 mt-2 border-t pt-1.5">
               <span className="flex items-center gap-1">
                 <span className="w-3 h-3 bg-[#22c55e] rounded-xs inline-block"></span> 3 HARI
               </span>
               <span className="flex items-center gap-1">
                 <span className="w-3 h-3 bg-[#f97316] rounded-xs inline-block"></span> 7 HARI
               </span>
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-3 bg-[#3b82f6] rounded-xs inline-block"></span> 30 HARI
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-3 bg-[#a855f7] rounded-xs inline-block"></span> 3 BULAN
+              </span>
             </div>
           </div>
         </div>
 
-        {/* RAW DATA TABLE */}
+        {/* ================= SECTION BAWAH: FULL SORTABLE & CLICKABLE SYNC TABLE ================= */}
         <div className="bg-white border border-slate-300 shadow-xs rounded overflow-hidden mt-4">
           <div className="bg-gradient-to-r from-[#0f172a] via-[#1e293b] to-[#334155] text-white p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <div>
@@ -707,15 +808,15 @@ export default function OrdersPage() {
                 <span>📦</span> DATA DETAIL ORDER FULFILLMENT
               </h2>
               <p className="text-[10px] text-slate-300 mt-0.5">
-                Menampilkan <strong>{bottomTableData.length.toLocaleString()}</strong> dari{' '}
-                <strong>{orders.length.toLocaleString()}</strong> total order
+                Menampilkan <strong>{sortedBottomTableData.length.toLocaleString()}</strong> dari{' '}
+                <strong>{orders.length.toLocaleString()}</strong> total order &bull; <em>Klik header kolom untuk sort, klik isi sel untuk filter</em>
               </p>
             </div>
 
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full sm:w-auto">
               <input
                 type="text"
-                placeholder="Cari Order ID, Nama, ODP, STO..."
+                placeholder="Cari Order ID, Nama, ODP, STO, Fallout..."
                 value={searchTerm}
                 onChange={(e) => {
                   setSearchTerm(e.target.value);
@@ -735,24 +836,51 @@ export default function OrdersPage() {
 
           <div className="overflow-x-auto max-h-[460px] overflow-y-auto">
             <table className="w-full text-left border-collapse text-[10px] whitespace-nowrap">
-              <thead className="bg-[#3b0764] text-white uppercase font-bold sticky top-0 z-10 shadow">
+              <thead className="bg-[#3b0764] text-white uppercase font-bold sticky top-0 z-10 shadow cursor-pointer select-none">
                 <tr>
-                  <th className="p-2 border border-purple-800">No</th>
-                  <th className="p-2 border border-purple-800">Order ID</th>
-                  <th className="p-2 border border-purple-800">Order Status</th>
-                  <th className="p-2 border border-purple-800">Nama Pelanggan</th>
-                  <th className="p-2 border border-purple-800">No HP</th>
-                  <th className="p-2 border border-purple-800">STO</th>
-                  <th className="p-2 border border-purple-800">WOK</th>
-                  <th className="p-2 border border-purple-800">ODP Name</th>
-                  <th className="p-2 border border-purple-800">Product Name</th>
-                  <th className="p-2 border border-purple-800">Duration Cat</th>
-                  <th className="p-2 border border-purple-800">Fallout Reason (Clean)</th>
-                  <th className="p-2 border border-purple-800">Raw Fallout Reason</th>
-                  <th className="p-2 border border-purple-800">Price</th>
-                  <th className="p-2 border border-purple-800">Order Date</th>
-                  <th className="p-2 border border-purple-800">PS Date</th>
-                  <th className="p-2 border border-purple-800">SF Name</th>
+                  <th className="p-2 border border-purple-800 text-center">No</th>
+                  <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('order_id')}>
+                    Order ID {sortConfig.key === 'order_id' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                  </th>
+                  <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('order_status_clean')}>
+                    Order Status {sortConfig.key === 'order_status_clean' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                  </th>
+                  <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('name')}>
+                    Nama Pelanggan {sortConfig.key === 'name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                  </th>
+                  <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('no_handphone')}>
+                    No HP {sortConfig.key === 'no_handphone' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                  </th>
+                  <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('sto_co')}>
+                    STO {sortConfig.key === 'sto_co' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                  </th>
+                  <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('wok')}>
+                    WOK {sortConfig.key === 'wok' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                  </th>
+                  <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('odp_name')}>
+                    ODP Name {sortConfig.key === 'odp_name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                  </th>
+                  <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('product_commercial_name')}>
+                    Product Name {sortConfig.key === 'product_commercial_name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                  </th>
+                  <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('order_duration_cat')}>
+                    Duration Cat {sortConfig.key === 'order_duration_cat' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                  </th>
+                  <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('fallout_reason_clean')}>
+                    Fallout Reason {sortConfig.key === 'fallout_reason_clean' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                  </th>
+                  <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('price_package')}>
+                    Price {sortConfig.key === 'price_package' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                  </th>
+                  <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('order_ts')}>
+                    Order Date {sortConfig.key === 'order_ts' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                  </th>
+                  <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('ps_ts')}>
+                    PS Date {sortConfig.key === 'ps_ts' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                  </th>
+                  <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('sf_name')}>
+                    SF Name {sortConfig.key === 'sf_name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                  </th>
                   <th className="p-2 border border-purple-800">Alamat</th>
                   <th className="p-2 border border-purple-800">Latitude</th>
                   <th className="p-2 border border-purple-800">Longitude</th>
@@ -761,7 +889,7 @@ export default function OrdersPage() {
               <tbody>
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={19} className="p-4 text-center text-slate-400 font-bold">
+                    <td colSpan={18} className="p-4 text-center text-slate-400 font-bold">
                       Tidak ada data Order yang cocok dengan filter atau pencarian.
                     </td>
                   </tr>
@@ -775,22 +903,49 @@ export default function OrdersPage() {
                       >
                         <td className="p-1.5 border border-slate-200 text-center font-bold text-slate-500">{rowNumber}</td>
                         <td className="p-1.5 border border-slate-200 font-black text-purple-900">{row.order_id}</td>
-                        <td className="p-1.5 border border-slate-200 font-bold">{row.order_status_clean}</td>
+                        <td
+                          className="p-1.5 border border-slate-200 font-bold text-slate-800 cursor-pointer hover:text-blue-700 hover:underline"
+                          onClick={() => setSelectedStatus((p) => (p === row.order_status_clean ? 'ALL' : row.order_status_clean))}
+                          title="Klik untuk filter status ini"
+                        >
+                          {row.order_status_clean}
+                        </td>
                         <td className="p-1.5 border border-slate-200 font-semibold">{row.name || '-'}</td>
                         <td className="p-1.5 border border-slate-200 font-mono text-[9px]">{row.no_handphone || row.no_handphone_mask || '-'}</td>
-                        <td className="p-1.5 border border-slate-200 font-bold">{row.sto_co || '-'}</td>
-                        <td className="p-1.5 border border-slate-200">{row.wok || '-'}</td>
+                        <td
+                          className="p-1.5 border border-slate-200 font-bold text-slate-800 cursor-pointer hover:text-blue-700 hover:underline"
+                          onClick={() => setSelectedSto((p) => (p === row.sto_co ? 'ALL' : row.sto_co))}
+                          title="Klik untuk filter STO ini"
+                        >
+                          {row.sto_co || '-'}
+                        </td>
+                        <td
+                          className="p-1.5 border border-slate-200 cursor-pointer hover:text-blue-700 hover:underline"
+                          onClick={() => setSelectedWok((p) => (p === row.wok ? 'ALL' : row.wok))}
+                          title="Klik untuk filter WOK ini"
+                        >
+                          {row.wok || '-'}
+                        </td>
                         <td className="p-1.5 border border-slate-200 font-bold text-blue-800">{row.odp_name || '-'}</td>
                         <td className="p-1.5 border border-slate-200">{row.product_commercial_name || '-'}</td>
-                        <td className="p-1.5 border border-slate-200 font-bold text-emerald-800">{row.order_duration_cat || '-'}</td>
-                        <td className="p-1.5 border border-slate-200 text-red-600 font-bold">
+                        <td
+                          className="p-1.5 border border-slate-200 font-bold text-emerald-800 cursor-pointer hover:text-blue-700 hover:underline"
+                          onClick={() => setSelectedDuration((p) => (p === row.order_duration_cat ? 'ALL' : row.order_duration_cat))}
+                          title="Klik untuk filter durasi ini"
+                        >
+                          {row.order_duration_cat || '-'}
+                        </td>
+                        <td
+                          className="p-1.5 border border-slate-200 text-red-600 font-bold cursor-pointer hover:underline"
+                          onClick={() => row.fallout_reason_clean && setSelectedFallout((p) => (p === row.fallout_reason_clean ? 'ALL' : row.fallout_reason_clean))}
+                          title="Klik untuk filter fallout ini"
+                        >
                           {row.fallout_reason_clean ? (
                             <span className="bg-red-50 px-1.5 py-0.5 rounded border border-red-200">
                               {row.fallout_reason_clean}
                             </span>
                           ) : '-'}
                         </td>
-                        <td className="p-1.5 border border-slate-200 text-slate-500 max-w-[200px] truncate" title={row.fallout_reason}>{row.fallout_reason || '-'}</td>
                         <td className="p-1.5 border border-slate-200 text-right">{row.price_package ? Number(row.price_package).toLocaleString() : '-'}</td>
                         <td className="p-1.5 border border-slate-200">{row.order_ts || '-'}</td>
                         <td className="p-1.5 border border-slate-200">{row.ps_ts || '-'}</td>
@@ -806,47 +961,50 @@ export default function OrdersPage() {
             </table>
           </div>
 
-          <div className="bg-slate-50 p-2.5 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-2 text-xs font-semibold">
-            <span className="text-slate-600">
-              Halaman <strong>{currentPage}</strong> dari <strong>{totalPages}</strong> (Total <strong>{bottomTableData.length.toLocaleString()}</strong> data)
-            </span>
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="bg-slate-50 p-2.5 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-2 text-xs font-semibold">
+              <span className="text-slate-600">
+                Halaman <strong>{currentPage}</strong> dari <strong>{totalPages}</strong> (Total <strong>{sortedBottomTableData.length.toLocaleString()}</strong> data)
+              </span>
 
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setCurrentPage(1)}
-                disabled={currentPage === 1}
-                className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
-              >
-                &laquo; Pertama
-              </button>
-              <button
-                type="button"
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
-              >
-                &lsaquo; Prev
-              </button>
-              <span className="px-2 font-bold text-slate-700">{currentPage} / {totalPages}</span>
-              <button
-                type="button"
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
-              >
-                Next &rsaquo;
-              </button>
-              <button
-                type="button"
-                onClick={() => setCurrentPage(totalPages)}
-                disabled={currentPage === totalPages}
-                className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
-              >
-                Terakhir &raquo;
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                >
+                  &laquo; Pertama
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                >
+                  &lsaquo; Prev
+                </button>
+                <span className="px-2 font-bold text-slate-700">{currentPage} / {totalPages}</span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                >
+                  Next &rsaquo;
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                >
+                  Terakhir &raquo;
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </Sidebar>
