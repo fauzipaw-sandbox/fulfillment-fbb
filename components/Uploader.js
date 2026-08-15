@@ -2,7 +2,6 @@ import { useState, useRef } from 'react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 
-// 9 Kabupaten Resmi
 const VALID_KABUPATEN = [
   'BARITO SELATAN',
   'KOTA PALANGKARAYA',
@@ -15,7 +14,6 @@ const VALID_KABUPATEN = [
   'MURUNG RAYA',
 ];
 
-// Lookup Table STO -> WOK
 const STO_WOK_MAP = {
   AMP: 'BARITO - KAPUAS',
   BNT: 'BARITO - KAPUAS',
@@ -31,26 +29,31 @@ const STO_WOK_MAP = {
   PYM: 'PALANGKARAYA',
 };
 
-// Helper Ekstrak STO dari ODP Name
 function extractSto(odpName, existingSto) {
-  if (existingSto && existingSto.trim() !== '' && existingSto.toUpperCase() !== 'UNKNOWN') {
-    return existingSto.trim().toUpperCase();
+  if (existingSto && String(existingSto).trim() !== '' && String(existingSto).toUpperCase() !== 'UNKNOWN') {
+    return String(existingSto).trim().toUpperCase();
   }
   if (!odpName) return 'UNKNOWN';
-  const match = odpName.match(/ODP-([A-Z0-9]{3})/i);
-  if (match && match[1]) return match[1].toUpperCase();
-  return 'UNKNOWN';
+  const match = String(odpName).match(/ODP-([A-Z0-9]{3})/i);
+  return match && match[1] ? match[1].toUpperCase() : 'UNKNOWN';
 }
 
-// Helper Ekstrak WOK
 function extractWok(existingWok, sto) {
-  if (existingWok && existingWok.trim() !== '' && existingWok.toUpperCase() !== 'UNKNOWN') {
-    return existingWok.trim().toUpperCase();
+  if (existingWok && String(existingWok).trim() !== '' && String(existingWok).toUpperCase() !== 'UNKNOWN') {
+    return String(existingWok).trim().toUpperCase();
   }
   if (sto && STO_WOK_MAP[sto.toUpperCase()]) {
     return STO_WOK_MAP[sto.toUpperCase()];
   }
   return 'PALANGKARAYA';
+}
+
+function parseCleanFloat(val) {
+  if (val === undefined || val === null || val === '') return null;
+  if (typeof val === 'number') return isNaN(val) ? null : val;
+  const cleaned = String(val).replace(/[^0-9.-]/g, '');
+  const parsed = parseFloat(cleaned);
+  return isNaN(parsed) ? null : parsed;
 }
 
 export default function Uploader({ onUploadSuccess }) {
@@ -77,39 +80,49 @@ export default function Uploader({ onUploadSuccess }) {
         else if (rsk > 0.85 && rsk < 0.99) statusFinal = 'ORANGE';
         else if (rsk >= 0.99) statusFinal = 'RED';
 
-        // Normalisasi STO & WOK
         const finalSto = extractSto(row.odp_name, row.sto);
         const finalWok = extractWok(row.wok, finalSto);
 
-        // Normalisasi Kabupaten
         let rawKab = (row.kabupaten || '').trim().toUpperCase();
         let finalKab = VALID_KABUPATEN.includes(rawKab) ? rawKab : 'LAINNYA';
 
-        // ONT RX Level
-        let rxVal = null;
-        if (row.ont_rx_level !== undefined && row.ont_rx_level !== null && row.ont_rx_level !== '') {
-          rxVal = parseFloat(row.ont_rx_level);
-          if (isNaN(rxVal)) rxVal = null;
-        }
+        const rxVal = parseCleanFloat(row.ont_rx_level);
 
         return {
-          odp_name: row.odp_name,
-          event_date: row.event_date || null,
+          event_date: row.event_date ? String(row.event_date) : null,
           noss_id: parseInt(row.noss_id) || null,
-          witel: row.witel || 'KALTIMTARA',
+          odp_name: row.odp_name ? String(row.odp_name).trim() : null,
+          odp_index: row.odp_index ? String(row.odp_index) : null,
+          witel: row.witel ? String(row.witel) : 'KALTIMTARA',
+          datel: row.datel ? String(row.datel) : null,
           sto: finalSto,
-          sto_desc: row.sto_desc || null,
-          datel: row.datel || null,
-          ont_rx_level: rxVal,
-          longitude: parseFloat(row.longitude) || null,
-          latitude: parseFloat(row.latitude) || null,
-          avai,
-          used,
+          sto_desc: row.sto_desc ? String(row.sto_desc) : null,
+          longitude: parseCleanFloat(row.longitude),
+          latitude: parseCleanFloat(row.latitude),
+          avai: avai,
+          used: used,
+          rsv: parseInt(row.rsv) || 0,
+          rsk: parseCleanFloat(row.rsk) || rsk,
           is_total: isTotal,
+          status: row.status ? String(row.status) : null,
           status_final: statusFinal,
+          regional: row.regional ? String(row.regional) : null,
+          id_desa: row.id_desa ? String(row.id_desa) : null,
+          desa: row.desa ? String(row.desa) : null,
+          id_kec: row.id_kec ? String(row.id_kec) : null,
+          kecamatan: row.kecamatan ? String(row.kecamatan) : null,
+          id_kab: row.id_kab ? String(row.id_kab) : null,
           kabupaten: finalKab,
-          branch: row.branch || 'PALANGKARAYA',
+          distance: parseCleanFloat(row.distance),
+          osrm_distance: parseCleanFloat(row.osrm_distance),
+          no_speedy_ct0: row.no_speedy_ct0 ? String(row.no_speedy_ct0) : null,
+          branch: row.branch ? String(row.branch) : 'PALANGKARAYA',
           wok: finalWok,
+          nop: row.nop ? String(row.nop) : null,
+          olt: row.olt ? String(row.olt) : null,
+          last_update_valins: row.last_update_valins ? String(row.last_update_valins) : null,
+          valins_at: row.valins_at ? String(row.valins_at) : null,
+          ont_rx_level: rxVal,
         };
       })
       .filter((item) => item.odp_name);
@@ -137,7 +150,7 @@ export default function Uploader({ onUploadSuccess }) {
         successCount += chunk.length;
         setProgress(Math.round((successCount / totalRecords) * 100));
       }
-      alert(`Sukses mengunggah ${totalRecords.toLocaleString()} data!`);
+      alert(`Sukses mengunggah ${totalRecords.toLocaleString()} data ke Supabase!`);
       if (onUploadSuccess) onUploadSuccess();
     } catch (err) {
       alert('Gagal upload: ' + err.message);
@@ -201,7 +214,7 @@ export default function Uploader({ onUploadSuccess }) {
         />
         {loading ? (
           <div className="space-y-2">
-            <div className="font-bold text-blue-600 text-xs sm:text-sm">Mengunggah Data ({progress}%)...</div>
+            <div className="font-bold text-blue-600 text-xs sm:text-sm">Menyimpan Semua Kolom ({progress}%)...</div>
             <div className="w-full bg-slate-200 rounded-full h-2">
               <div
                 className="bg-blue-600 h-2 rounded-full transition-all duration-300"
@@ -212,7 +225,7 @@ export default function Uploader({ onUploadSuccess }) {
         ) : (
           <div>
             <p className="text-xs sm:text-sm font-bold text-slate-700">Drag & Drop file di sini, atau klik untuk memilih file</p>
-            <p className="text-[10px] text-slate-400 mt-1">Mendukung format .CSV dan .XLSX</p>
+            <p className="text-[10px] text-slate-400 mt-1">Mendukung format .CSV dan .XLSX (Semua 34 Kolom Terpetakan)</p>
           </div>
         )}
       </div>
