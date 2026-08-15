@@ -15,30 +15,15 @@ import {
 const MapComponent = dynamic(() => import('../components/Map'), { ssr: false });
 
 const VALID_KABUPATEN = [
-  'BARITO SELATAN',
-  'KOTA PALANGKARAYA',
-  'GUNUNG MAS',
-  'BARITO UTARA',
-  'BARITO TIMUR',
-  'KAPUAS',
-  'KATINGAN',
-  'PULANG PISAU',
-  'MURUNG RAYA',
+  'BARITO SELATAN', 'KOTA PALANGKARAYA', 'GUNUNG MAS', 'BARITO UTARA',
+  'BARITO TIMUR', 'KAPUAS', 'KATINGAN', 'PULANG PISAU', 'MURUNG RAYA',
 ];
 
 const STO_WOK_MAP = {
-  AMP: 'BARITO - KAPUAS',
-  BNT: 'BARITO - KAPUAS',
-  KKP: 'BARITO - KAPUAS',
-  MTW: 'BARITO - KAPUAS',
-  PPS: 'BARITO - KAPUAS',
-  PRC: 'BARITO - KAPUAS',
-  TML: 'BARITO - KAPUAS',
-  KKN: 'PALANGKARAYA',
-  KRI: 'PALANGKARAYA',
-  KSO: 'PALANGKARAYA',
-  PLK: 'PALANGKARAYA',
-  PYM: 'PALANGKARAYA',
+  AMP: 'BARITO - KAPUAS', BNT: 'BARITO - KAPUAS', KKP: 'BARITO - KAPUAS',
+  MTW: 'BARITO - KAPUAS', PPS: 'BARITO - KAPUAS', PRC: 'BARITO - KAPUAS',
+  TML: 'BARITO - KAPUAS', KKN: 'PALANGKARAYA', KRI: 'PALANGKARAYA',
+  KSO: 'PALANGKARAYA', PLK: 'PALANGKARAYA', PYM: 'PALANGKARAYA',
 };
 
 const MONTH_NAMES = [
@@ -50,9 +35,7 @@ function parseDateRobust(raw) {
   if (!raw) return null;
   if (typeof raw === 'number' || (!isNaN(raw) && !String(raw).includes('-') && !String(raw).includes('/'))) {
     const num = parseFloat(raw);
-    if (num > 30000 && num < 60000) {
-      return new Date(Math.round((num - 25569) * 86400 * 1000));
-    }
+    if (num > 30000 && num < 60000) return new Date(Math.round((num - 25569) * 86400 * 1000));
   }
   const d = new Date(raw);
   return isNaN(d.getTime()) ? null : d;
@@ -60,10 +43,7 @@ function parseDateRobust(raw) {
 
 function formatDateFormatted(d) {
   if (!d) return '-';
-  const day = String(d.getDate()).padStart(2, '0');
-  const month = MONTH_NAMES[d.getMonth()];
-  const year = d.getFullYear();
-  return `${day}-${month}-${year}`;
+  return `${String(d.getDate()).padStart(2, '0')}-${MONTH_NAMES[d.getMonth()]}-${d.getFullYear()}`;
 }
 
 function getWeekNumber(d) {
@@ -73,36 +53,20 @@ function getWeekNumber(d) {
   target.setDate(target.getDate() - dayNr + 3);
   const firstThursday = target.valueOf();
   target.setMonth(0, 1);
-  if (target.getDay() !== 4) {
-    target.setMonth(0, 1 + ((4 - target.getDay() + 7) % 7));
-  }
-  const weekNo = 1 + Math.ceil((firstThursday - target) / 604800000);
-  return `W${weekNo}`;
+  if (target.getDay() !== 4) target.setMonth(0, 1 + ((4 - target.getDay() + 7) % 7));
+  return `W${1 + Math.ceil((firstThursday - target) / 604800000)}`;
 }
 
 function parseCleanFloat(val) {
   if (val === undefined || val === null || val === '') return null;
-  if (typeof val === 'number') return isNaN(val) ? null : val;
   const cleaned = String(val).replace(/[^0-9.-]/g, '');
   const parsed = parseFloat(cleaned);
   return isNaN(parsed) ? null : parsed;
 }
 
-// Label di Batang Grafik (Sinkron 100% Persentase)
 const renderCustomBarLabel = ({ x, y, width, height, value }) => {
   if (!value || value < 3 || height < 12) return null;
-  return (
-    <text
-      x={x + width / 2}
-      y={y + height / 2 + 3}
-      fill="#ffffff"
-      textAnchor="middle"
-      fontSize={8}
-      fontWeight="bold"
-    >
-      {`${Math.round(value)}%`}
-    </text>
-  );
+  return <text x={x + width / 2} y={y + height / 2 + 3} fill="#ffffff" textAnchor="middle" fontSize={8} fontWeight="bold">{`${value}%`}</text>;
 };
 
 const CustomChartTooltip = ({ active, payload, label }) => {
@@ -113,22 +77,15 @@ const CustomChartTooltip = ({ active, payload, label }) => {
         <div className="space-y-1">
           {payload.slice().reverse().map((entry, index) => {
             if (!entry.value || entry.value === 0) return null;
-            const statusKey = entry.dataKey;
-            const count = entry.payload?.rawCounts?.[statusKey] || 0;
-            const ports = entry.payload?.rawPorts?.[statusKey] || 0;
-
+            const count = entry.payload?.rawCounts?.[entry.dataKey] || 0;
+            const ports = entry.payload?.rawPorts?.[entry.dataKey] || 0;
             return (
-              <div key={`item-${index}`} className="flex items-center justify-between gap-3 text-[11px]">
+              <div key={index} className="flex items-center justify-between gap-3 text-[11px]">
                 <span className="flex items-center font-bold" style={{ color: entry.fill }}>
-                  <span
-                    className="w-2.5 h-2.5 inline-block mr-1.5 rounded-sm shadow-sm"
-                    style={{ backgroundColor: entry.fill }}
-                  ></span>
-                  {statusKey}:
+                  <span className="w-2.5 h-2.5 inline-block mr-1.5 rounded-sm" style={{ backgroundColor: entry.fill }}></span>
+                  {entry.dataKey}:
                 </span>
-                <span className="font-semibold text-slate-700">
-                  <strong className="text-slate-900">{entry.value}%</strong> ({count.toLocaleString()} ODP | {ports.toLocaleString()} Port)
-                </span>
+                <span className="font-semibold text-slate-700"><strong className="text-slate-900">{entry.value}%</strong> ({count.toLocaleString()} ODP | {ports.toLocaleString()} Port)</span>
               </div>
             );
           })}
@@ -144,14 +101,11 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [selectedWeek, setSelectedWeek] = useState('ALL');
   const [sortConfig, setSortConfig] = useState({ key: 'occ', direction: 'desc' });
-
   const [showUploader, setShowUploader] = useState(false);
-  
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [selectedRx, setSelectedRx] = useState('ALL');
   const [selectedKabupaten, setSelectedKabupaten] = useState('ALL');
   const [selectedPortFilter, setSelectedPortFilter] = useState('ALL');
-
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [focusedOdp, setFocusedOdp] = useState(null);
@@ -170,45 +124,26 @@ export default function Dashboard() {
       const res = await fetch('/api/odp');
       if (res.ok) {
         const odpData = await res.json();
-        const enrichedData = (odpData || []).map((item) => {
+        const enrichedData = odpData.map((item) => {
           const isTotal = parseInt(item.is_total) || 0;
           const used = parseInt(item.used) || 0;
           const avai = parseInt(item.avai) || Math.max(0, isTotal - used);
           const rsk = isTotal > 0 ? used / isTotal : 0;
-
-          let status = 'BLACK';
-          if (rsk === 0) status = 'BLACK';
-          else if (rsk > 0 && rsk <= 0.6) status = 'GREEN';
-          else if (rsk > 0.6 && rsk <= 0.85) status = 'YELLOW';
-          else if (rsk > 0.85 && rsk < 0.99) status = 'ORANGE';
-          else if (rsk >= 0.99) status = 'RED';
-
+          let status = rsk === 0 ? 'BLACK' : rsk <= 0.6 ? 'GREEN' : rsk <= 0.85 ? 'YELLOW' : rsk < 0.99 ? 'ORANGE' : 'RED';
+          
           let sto = (item.sto || '').trim().toUpperCase();
-          if (!sto || sto === 'UNKNOWN') {
-            const match = (item.odp_name || '').match(/ODP-([A-Z0-9]{3})/i);
-            sto = match && match[1] ? match[1].toUpperCase() : 'UNKNOWN';
-          }
-
+          if (!sto || sto === 'UNKNOWN') sto = (item.odp_name || '').match(/ODP-([A-Z0-9]{3})/i)?.[1].toUpperCase() || 'UNKNOWN';
+          
           let wok = (item.wok || '').trim().toUpperCase();
-          if (!wok || wok === 'UNKNOWN') {
-            wok = STO_WOK_MAP[sto] || 'PALANGKARAYA';
-          }
+          if (!wok || wok === 'UNKNOWN') wok = STO_WOK_MAP[sto] || 'PALANGKARAYA';
 
           let kab = (item.kabupaten || '').trim().toUpperCase();
           let finalKab = VALID_KABUPATEN.includes(kab) ? kab : 'LAINNYA';
 
           const rxVal = parseCleanFloat(item.ont_rx_level);
-          let rxCategory = 'NO_DATA';
-          if (rxVal !== null) {
-            if (rxVal > -18) rxCategory = 'GREEN';
-            else if (rxVal >= -21) rxCategory = 'YELLOW';
-            else if (rxVal >= -25) rxCategory = 'ORANGE';
-            else rxCategory = 'RED';
-          }
+          const rxCategory = rxVal === null ? 'NO_DATA' : rxVal > -18 ? 'GREEN' : rxVal >= -21 ? 'YELLOW' : rxVal >= -25 ? 'ORANGE' : 'RED';
 
           const parsedDate = parseDateRobust(item.event_date);
-          const week = parsedDate ? getWeekNumber(parsedDate) : 'Unknown';
-
           return {
             ...item,
             sto,
@@ -222,145 +157,93 @@ export default function Dashboard() {
             ont_rx_level: rxVal,
             rx_category: rxCategory,
             status_final: status,
-            week,
+            week: getWeekNumber(parsedDate),
           };
         });
         setData(enrichedData);
       }
     } catch (err) {
-      console.error('Fetch error:', err);
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
-  const availableWeeks = useMemo(() => {
-    return [...new Set(data.map((d) => d.week).filter((w) => w !== 'Unknown'))].sort();
-  }, [data]);
-
-  const weekFilteredData = useMemo(() => {
-    return selectedWeek === 'ALL' ? data : data.filter((d) => d.week === selectedWeek);
-  }, [data, selectedWeek]);
-
+  const availableWeeks = useMemo(() => [...new Set(data.map(d => d.week).filter(w => w !== 'Unknown'))].sort(), [data]);
+  const weekFilteredData = useMemo(() => selectedWeek === 'ALL' ? data : data.filter(d => d.week === selectedWeek), [data, selectedWeek]);
+  
   const fullyFilteredData = useMemo(() => {
     return weekFilteredData.filter((d) => {
       const matchStatus = selectedStatus === 'ALL' || d.status_final === selectedStatus;
       const matchRx = selectedRx === 'ALL' || d.rx_category === selectedRx;
       const matchKab = selectedKabupaten === 'ALL' || d.kabupaten === selectedKabupaten;
-      const matchPort =
-        selectedPortFilter === 'ALL' ||
-        (selectedPortFilter === 'USED' && d.used > 0) ||
-        (selectedPortFilter === 'AVAI' && d.avai > 0);
-
+      const matchPort = selectedPortFilter === 'ALL' || (selectedPortFilter === 'USED' && d.used > 0) || (selectedPortFilter === 'AVAI' && d.avai > 0);
       return matchStatus && matchRx && matchKab && matchPort;
     });
   }, [weekFilteredData, selectedStatus, selectedRx, selectedKabupaten, selectedPortFilter]);
 
   const headerCutoffText = useMemo(() => {
     if (weekFilteredData.length === 0) return '*Cut Off Data until -';
-    const dates = weekFilteredData
-      .map((d) => d.parsed_date?.getTime())
-      .filter((t) => t && !isNaN(t));
-
+    const dates = weekFilteredData.map((d) => d.parsed_date?.getTime()).filter((t) => t && !isNaN(t));
     if (dates.length === 0) return `*${selectedWeek === 'ALL' ? 'ALL WEEKS' : selectedWeek} - Cut Off Data`;
-
     const latestDate = new Date(Math.max(...dates));
-    const weekName = selectedWeek === 'ALL' ? getWeekNumber(latestDate) : selectedWeek;
-    return `*${weekName} - Cut Off Data until ${formatDateFormatted(latestDate)}`;
+    return `*${selectedWeek === 'ALL' ? getWeekNumber(latestDate) : selectedWeek} - Cut Off Data until ${formatDateFormatted(latestDate)}`;
   }, [weekFilteredData, selectedWeek]);
 
   const statsOverview = useMemo(() => {
-    let totalPort = 0;
-    let usedPort = 0;
-    let avaiPort = 0;
+    let totalPort = 0, usedPort = 0, avaiPort = 0;
     let colorCounts = { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 };
     let rxCounts = { GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0, NO_DATA: 0 };
-
-    weekFilteredData.forEach((item) => {
-      totalPort += item.is_total;
-      usedPort += item.used;
-      avaiPort += item.avai;
-      if (colorCounts[item.status_final] !== undefined) colorCounts[item.status_final] += 1;
-      if (rxCounts[item.rx_category] !== undefined) rxCounts[item.rx_category] += 1;
+    weekFilteredData.forEach(item => {
+      totalPort += item.is_total; usedPort += item.used; avaiPort += item.avai;
+      if (colorCounts[item.status_final] !== undefined) colorCounts[item.status_final]++;
+      if (rxCounts[item.rx_category] !== undefined) rxCounts[item.rx_category]++;
     });
-
     return { totalPort, usedPort, avaiPort, colorCounts, rxCounts };
   }, [weekFilteredData]);
 
-  // Statistik Chart & Tabel (Sinkron 100% Persentase)
   const statsFiltered = useMemo(() => {
-    const kabMap = {};
-    const flatStosMap = {};
+    const kabMap = {}, flatStosMap = {};
+    VALID_KABUPATEN.concat(['LAINNYA']).forEach(k => {
+      kabMap[k] = { name: k, rawCounts: { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 }, rawPorts: { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 }, total: 0 };
+    });
 
-    VALID_KABUPATEN.concat(['LAINNYA']).forEach((k) => {
-      kabMap[k] = {
-        name: k,
-        BLACK: 0,
-        GREEN: 0,
-        YELLOW: 0,
-        ORANGE: 0,
-        RED: 0,
-        rawCounts: { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 },
-        rawPorts: { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 },
-        total: 0,
+    weekFilteredData.forEach(item => {
+      const kab = item.kabupaten;
+      if (!kabMap[kab]) {
+        kabMap[kab] = { name: kab, rawCounts: { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 }, rawPorts: { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 }, total: 0 };
+      }
+      kabMap[kab].rawCounts[item.status_final]++;
+      kabMap[kab].rawPorts[item.status_final] += item.is_total;
+      kabMap[kab].total++;
+    });
+
+    const chartData = Object.values(kabMap).filter(k => k.total > 0 || VALID_KABUPATEN.includes(k.name)).map(k => {
+      const tot = k.total || 1;
+      return {
+        name: k.name,
+        BLACK: parseFloat(((k.rawCounts.BLACK / tot) * 100).toFixed(1)),
+        GREEN: parseFloat(((k.rawCounts.GREEN / tot) * 100).toFixed(1)),
+        YELLOW: parseFloat(((k.rawCounts.YELLOW / tot) * 100).toFixed(1)),
+        ORANGE: parseFloat(((k.rawCounts.ORANGE / tot) * 100).toFixed(1)),
+        RED: parseFloat(((k.rawCounts.RED / tot) * 100).toFixed(1)),
+        rawCounts: k.rawCounts,
+        rawPorts: k.rawPorts,
       };
     });
 
-    // Perhitungan di grafik batang menggunakan basis data `weekFilteredData` (total per kabupaten secara utuh) agar persentasenya tidak berubah-ubah saat diklik filternya
-    weekFilteredData.forEach((item) => {
-      const kab = item.kabupaten;
-      if (!kabMap[kab]) {
-        kabMap[kab] = {
-          name: kab,
-          BLACK: 0,
-          GREEN: 0,
-          YELLOW: 0,
-          ORANGE: 0,
-          RED: 0,
-          rawCounts: { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 },
-          rawPorts: { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 },
-          total: 0,
-        };
-      }
-      kabMap[kab].rawCounts[item.status_final] += 1;
-      kabMap[kab].rawPorts[item.status_final] += item.is_total;
-      kabMap[kab].total += 1;
-    });
-
-    const chartData = Object.values(kabMap)
-      .filter((k) => k.total > 0 || VALID_KABUPATEN.includes(k.name))
-      .map((k) => {
-        const tot = k.total || 1;
-        return {
-          name: k.name,
-          BLACK: parseFloat(((k.rawCounts.BLACK / tot) * 100).toFixed(1)),
-          GREEN: parseFloat(((k.rawCounts.GREEN / tot) * 100).toFixed(1)),
-          YELLOW: parseFloat(((k.rawCounts.YELLOW / tot) * 100).toFixed(1)),
-          ORANGE: parseFloat(((k.rawCounts.ORANGE / tot) * 100).toFixed(1)),
-          RED: parseFloat(((k.rawCounts.RED / tot) * 100).toFixed(1)),
-          rawCounts: k.rawCounts,
-          rawPorts: k.rawPorts,
-        };
-      });
-
-    fullyFilteredData.forEach((item) => {
-      const wok = item.wok;
-      const sto = item.sto;
-      const key = `${wok}_${sto}`;
-      if (!flatStosMap[key]) {
-        flatStosMap[key] = { wok, sto, odp_count: 0, is_total: 0, used: 0, avai: 0 };
-      }
-      flatStosMap[key].odp_count += 1;
+    fullyFilteredData.forEach(item => {
+      const key = `${item.wok}_${item.sto}`;
+      if (!flatStosMap[key]) flatStosMap[key] = { wok: item.wok, sto: item.sto, odp_count: 0, is_total: 0, used: 0, avai: 0 };
+      flatStosMap[key].odp_count++;
       flatStosMap[key].is_total += item.is_total;
       flatStosMap[key].used += item.used;
       flatStosMap[key].avai += item.avai;
     });
 
-    const flatStos = Object.values(flatStosMap).map((row) => ({
+    const flatStos = Object.values(flatStosMap).map(row => ({
       ...row,
       occ: row.is_total > 0 ? (row.used / row.is_total) * 100 : 0,
       avai_perc: row.is_total > 0 ? (row.avai / row.is_total) * 100 : 0,
@@ -382,10 +265,7 @@ export default function Dashboard() {
   }, [statsFiltered.flatStos, sortConfig]);
 
   const tableTotals = useMemo(() => {
-    let odp = 0;
-    let is_total = 0;
-    let used = 0;
-    let avai = 0;
+    let odp = 0, is_total = 0, used = 0, avai = 0;
     statsFiltered.flatStos.forEach((r) => {
       odp += r.odp_count;
       is_total += r.is_total;
@@ -399,9 +279,7 @@ export default function Dashboard() {
 
   const requestSort = (key) => {
     let direction = 'desc';
-    if (sortConfig.key === key && sortConfig.direction === 'desc') {
-      direction = 'asc';
-    }
+    if (sortConfig.key === key && sortConfig.direction === 'desc') direction = 'asc';
     setSortConfig({ key, direction });
   };
 
@@ -410,14 +288,7 @@ export default function Dashboard() {
     setSearchTerm(val);
     if (val.length >= 3) {
       const lower = val.toLowerCase();
-      const suggs = fullyFilteredData
-        .filter(
-          (d) =>
-            (d.odp_name && d.odp_name.toLowerCase().includes(lower)) ||
-            (d.kabupaten && d.kabupaten.toLowerCase().includes(lower)) ||
-            (d.sto && d.sto.toLowerCase().includes(lower))
-        )
-        .slice(0, 8);
+      const suggs = fullyFilteredData.filter(d => (d.odp_name && d.odp_name.toLowerCase().includes(lower)) || (d.kabupaten && d.kabupaten.toLowerCase().includes(lower)) || (d.sto && d.sto.toLowerCase().includes(lower))).slice(0, 8);
       setSuggestions(suggs);
     } else {
       setSuggestions([]);
@@ -429,46 +300,33 @@ export default function Dashboard() {
     const clean = input.trim();
     if (clean.includes(',')) {
       const parts = clean.split(',').map((p) => parseFloat(p.trim()));
-      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-        return { name: clean, lat: parts[0], lon: parts[1] };
-      }
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) return { name: clean, lat: parts[0], lon: parts[1] };
     }
     const found = data.find((d) => d.odp_name && d.odp_name.toLowerCase() === clean.toLowerCase());
-    if (found && found.latitude && found.longitude) {
-      return { name: found.odp_name, lat: found.latitude, lon: found.longitude };
-    }
+    if (found && found.latitude && found.longitude) return { name: found.odp_name, lat: found.latitude, lon: found.longitude };
     return null;
   };
 
   const handleCalculateRoadDistance = async () => {
     const pA = parsePoint(pointAInput);
     const pB = parsePoint(pointBInput);
-
     if (!pA || !pB) {
-      alert('Masukkan Titik A dan B yang valid (Nama ODP atau Lat,Long)!');
+      alert('Masukkan Titik A dan B yang valid!');
       return;
     }
-
     setIsRouting(true);
     try {
       const url = `https://router.project-osrm.org/route/v1/driving/${pA.lon},${pA.lat};${pB.lon},${pB.lat}?overview=full&geometries=geojson`;
       const res = await fetch(url);
       const json = await res.json();
-
       if (json.code === 'Ok' && json.routes && json.routes.length > 0) {
         const route = json.routes[0];
         const distanceMeters = route.distance;
         const distanceKm = distanceMeters / 1000;
         const latlngs = route.geometry.coordinates.map((c) => [c[1], c[0]]);
-
         setRoadRouteCoordinates(latlngs);
         setManualMeasureLine([[pA.lat, pA.lon], [pB.lat, pB.lon]]);
-        setMeasureResult({
-          from: pA.name,
-          to: pB.name,
-          km: distanceKm.toFixed(2),
-          meter: Math.round(distanceMeters).toLocaleString(),
-        });
+        setMeasureResult({ from: pA.name, to: pB.name, km: distanceKm.toFixed(2), meter: Math.round(distanceMeters).toLocaleString() });
       } else {
         throw new Error('Rute tidak ditemukan');
       }
@@ -488,15 +346,8 @@ export default function Dashboard() {
   };
 
   const totalOdp = weekFilteredData.length;
-  const occTotal =
-    statsOverview.totalPort > 0
-      ? ((statsOverview.usedPort / statsOverview.totalPort) * 100).toFixed(1)
-      : '0.0';
-  const avaiTotal =
-    statsOverview.totalPort > 0
-      ? ((statsOverview.avaiPort / statsOverview.totalPort) * 100).toFixed(1)
-      : '0.0';
-
+  const occTotal = statsOverview.totalPort > 0 ? ((statsOverview.usedPort / statsOverview.totalPort) * 100).toFixed(1) : '0.0';
+  const avaiTotal = statsOverview.totalPort > 0 ? ((statsOverview.avaiPort / statsOverview.totalPort) * 100).toFixed(1) : '0.0';
   const totalRxValid = totalOdp - statsOverview.rxCounts.NO_DATA;
 
   return (
@@ -506,7 +357,6 @@ export default function Dashboard() {
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
       </Head>
 
-      {/* 5. ANIMASI LOADING PERTAMA KALI */}
       {loading && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/70 backdrop-blur-sm flex flex-col items-center justify-center text-white">
           <div className="relative flex items-center justify-center mb-4">
@@ -518,7 +368,6 @@ export default function Dashboard() {
       )}
 
       <div className="max-w-[1450px] mx-auto space-y-3">
-        {/* HEADER UTAMA */}
         <div className="bg-gradient-to-r from-[#211c47] to-[#3a3575] text-white p-3 sm:p-4 flex flex-col md:flex-row justify-between items-start md:items-center border-b-4 border-purple-500 rounded-t-lg shadow-sm gap-2">
           <div>
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-wide uppercase italic">
@@ -538,15 +387,12 @@ export default function Dashboard() {
             >
               <option value="ALL">Semua Minggu (ALL)</option>
               {availableWeeks.map((w) => (
-                <option key={w} value={w}>
-                  {w}
-                </option>
+                <option key={w} value={w}>{w}</option>
               ))}
             </select>
           </div>
         </div>
 
-        {/* 5. NARASI DALAM BAHASA INDONESIA */}
         <div className="bg-white px-3 sm:px-4 py-2 text-xs sm:text-[13px] border border-gray-200 shadow-sm rounded flex flex-col sm:flex-row justify-between sm:items-center gap-2">
           <div>
             Total <strong className="font-extrabold">jumlah ODP</strong> di Branch Palangkaraya adalah{' '}
@@ -571,7 +417,6 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* TOGGLE UPLOADER */}
         <div className="flex justify-end">
           <button
             type="button"
@@ -596,13 +441,8 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* MAIN DASHBOARD */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
-          
-          {/* ================= KOLOM KIRI ================= */}
           <div className="space-y-3 sm:space-y-4">
-            
-            {/* 1. OVERVIEW ODP PROFILE */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 OVERVIEW ODP PROFILE{' '}
@@ -612,33 +452,24 @@ export default function Dashboard() {
               </div>
 
               <div className="p-2 sm:p-3 grid grid-cols-3 gap-2 sm:gap-3 text-center">
-                
-                {/* 4. CARD PORT (TOTAL ODP, USED PORT HIJAU, AVAI PORT MERAH & BISA DIKLIK) */}
                 <div className="col-span-1 space-y-1.5 sm:space-y-2">
                   <div
                     onClick={() => setSelectedPortFilter('ALL')}
                     className={`border p-1.5 sm:p-2 rounded cursor-pointer transition-transform hover:scale-105 ${
-                      selectedPortFilter === 'ALL'
-                        ? 'border-blue-300 bg-blue-50/70 shadow-sm'
-                        : 'border-slate-200 bg-slate-50'
+                      selectedPortFilter === 'ALL' ? 'border-blue-300 bg-blue-50/70 shadow-sm' : 'border-slate-200 bg-slate-50'
                     }`}
                   >
                     <p className="text-[8px] sm:text-[9px] font-bold text-blue-800 uppercase">TOTAL ODP (Port)</p>
                     <p className="text-sm sm:text-base font-extrabold text-slate-900 mt-0.5">
                       {totalOdp.toLocaleString()}{' '}
-                      <span className="text-[10px] sm:text-xs font-bold text-slate-600">
-                        ({(statsOverview.totalPort / 1000).toFixed(1)} K)
-                      </span>
+                      <span className="text-[10px] sm:text-xs font-bold text-slate-600">({(statsOverview.totalPort / 1000).toFixed(1)} K)</span>
                     </p>
                   </div>
 
-                  {/* USED PORT (HIJAU) */}
                   <div
                     onClick={() => setSelectedPortFilter('USED')}
                     className={`border p-1.5 sm:p-2 rounded cursor-pointer transition-transform hover:scale-105 ${
-                      selectedPortFilter === 'USED'
-                        ? 'border-emerald-600 bg-emerald-100 ring-2 ring-emerald-500 shadow'
-                        : 'border-emerald-300 bg-emerald-50/80 hover:bg-emerald-100'
+                      selectedPortFilter === 'USED' ? 'border-emerald-600 bg-emerald-100 ring-2 ring-emerald-500 shadow' : 'border-emerald-300 bg-emerald-50/80 hover:bg-emerald-100'
                     }`}
                   >
                     <p className="text-[8px] sm:text-[9px] font-black text-emerald-800 uppercase">USED PORT (Active)</p>
@@ -648,13 +479,10 @@ export default function Dashboard() {
                     </p>
                   </div>
 
-                  {/* AVAI PORT (MERAH - TARGET SALES) */}
                   <div
                     onClick={() => setSelectedPortFilter('AVAI')}
                     className={`border p-1.5 sm:p-2 rounded cursor-pointer transition-transform hover:scale-105 ${
-                      selectedPortFilter === 'AVAI'
-                        ? 'border-red-600 bg-red-100 ring-2 ring-red-500 shadow'
-                        : 'border-red-300 bg-red-50/80 hover:bg-red-100'
+                      selectedPortFilter === 'AVAI' ? 'border-red-600 bg-red-100 ring-2 ring-red-500 shadow' : 'border-red-300 bg-red-50/80 hover:bg-red-100'
                     }`}
                   >
                     <p className="text-[8px] sm:text-[9px] font-black text-red-800 uppercase">AVAI PORT (Sales Target)</p>
@@ -665,7 +493,6 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* BLACK ODP (Tanpa [Not change]) */}
                 <div
                   onClick={() => setSelectedStatus((p) => (p === 'BLACK' ? 'ALL' : 'BLACK'))}
                   className={`col-span-1 border border-gray-400 p-2 shadow-inner flex flex-col justify-center cursor-pointer transition-transform hover:scale-105 rounded relative ${
@@ -679,14 +506,10 @@ export default function Dashboard() {
                     {statsOverview.colorCounts.BLACK.toLocaleString()}
                   </p>
                   <p className="text-xs font-bold text-slate-600 mt-0.5">
-                    {totalOdp > 0
-                      ? ((statsOverview.colorCounts.BLACK / totalOdp) * 100).toFixed(1)
-                      : 0}
-                    %
+                    {totalOdp > 0 ? ((statsOverview.colorCounts.BLACK / totalOdp) * 100).toFixed(1) : 0}%
                   </p>
                 </div>
 
-                {/* COLORED ODP */}
                 <div className="col-span-1 grid grid-cols-2 gap-1.5 sm:gap-2">
                   <div
                     onClick={() => setSelectedStatus((p) => (p === 'YELLOW' ? 'ALL' : 'YELLOW'))}
@@ -694,17 +517,10 @@ export default function Dashboard() {
                       selectedStatus === 'YELLOW' ? 'ring-2 ring-yellow-500 bg-yellow-50 shadow' : 'bg-slate-50 border border-slate-200'
                     }`}
                   >
-                    <div className="bg-[#facc15] text-slate-900 text-[8px] font-bold px-0.5 py-0.5 rounded-sm">
-                      YELLOW
-                    </div>
-                    <p className="text-sm sm:text-base font-extrabold mt-1">
-                      {statsOverview.colorCounts.YELLOW.toLocaleString()}
-                    </p>
+                    <div className="bg-[#facc15] text-slate-900 text-[8px] font-bold px-0.5 py-0.5 rounded-sm">YELLOW</div>
+                    <p className="text-sm sm:text-base font-extrabold mt-1">{statsOverview.colorCounts.YELLOW.toLocaleString()}</p>
                     <p className="text-[10px] font-bold text-slate-600">
-                      {totalOdp > 0
-                        ? ((statsOverview.colorCounts.YELLOW / totalOdp) * 100).toFixed(1)
-                        : 0}
-                      %
+                      {totalOdp > 0 ? ((statsOverview.colorCounts.YELLOW / totalOdp) * 100).toFixed(1) : 0}%
                     </p>
                   </div>
 
@@ -714,17 +530,10 @@ export default function Dashboard() {
                       selectedStatus === 'GREEN' ? 'ring-2 ring-green-600 bg-green-50 shadow' : 'bg-slate-50 border border-slate-200'
                     }`}
                   >
-                    <div className="bg-[#16a34a] text-white text-[8px] font-bold px-0.5 py-0.5 rounded-sm">
-                      GREEN
-                    </div>
-                    <p className="text-sm sm:text-base font-extrabold mt-1">
-                      {statsOverview.colorCounts.GREEN.toLocaleString()}
-                    </p>
+                    <div className="bg-[#16a34a] text-white text-[8px] font-bold px-0.5 py-0.5 rounded-sm">GREEN</div>
+                    <p className="text-sm sm:text-base font-extrabold mt-1">{statsOverview.colorCounts.GREEN.toLocaleString()}</p>
                     <p className="text-[10px] font-bold text-emerald-700">
-                      {totalOdp > 0
-                        ? ((statsOverview.colorCounts.GREEN / totalOdp) * 100).toFixed(1)
-                        : 0}
-                      %
+                      {totalOdp > 0 ? ((statsOverview.colorCounts.GREEN / totalOdp) * 100).toFixed(1) : 0}%
                     </p>
                   </div>
 
@@ -734,17 +543,10 @@ export default function Dashboard() {
                       selectedStatus === 'ORANGE' ? 'ring-2 ring-orange-500 bg-orange-50 shadow' : 'bg-slate-50 border border-slate-200'
                     }`}
                   >
-                    <div className="bg-[#ea580c] text-white text-[8px] font-bold px-0.5 py-0.5 rounded-sm">
-                      ORANGE
-                    </div>
-                    <p className="text-sm sm:text-base font-extrabold mt-1">
-                      {statsOverview.colorCounts.ORANGE.toLocaleString()}
-                    </p>
+                    <div className="bg-[#ea580c] text-white text-[8px] font-bold px-0.5 py-0.5 rounded-sm">ORANGE</div>
+                    <p className="text-sm sm:text-base font-extrabold mt-1">{statsOverview.colorCounts.ORANGE.toLocaleString()}</p>
                     <p className="text-[10px] font-bold text-slate-600">
-                      {totalOdp > 0
-                        ? ((statsOverview.colorCounts.ORANGE / totalOdp) * 100).toFixed(1)
-                        : 0}
-                      %
+                      {totalOdp > 0 ? ((statsOverview.colorCounts.ORANGE / totalOdp) * 100).toFixed(1) : 0}%
                     </p>
                   </div>
 
@@ -754,17 +556,10 @@ export default function Dashboard() {
                       selectedStatus === 'RED' ? 'ring-2 ring-red-600 bg-red-50 shadow' : 'bg-slate-50 border border-slate-200'
                     }`}
                   >
-                    <div className="bg-[#ef4444] text-white text-[8px] font-bold px-0.5 py-0.5 rounded-sm">
-                      RED
-                    </div>
-                    <p className="text-sm sm:text-base font-extrabold mt-1">
-                      {statsOverview.colorCounts.RED.toLocaleString()}
-                    </p>
+                    <div className="bg-[#ef4444] text-white text-[8px] font-bold px-0.5 py-0.5 rounded-sm">RED</div>
+                    <p className="text-sm sm:text-base font-extrabold mt-1">{statsOverview.colorCounts.RED.toLocaleString()}</p>
                     <p className="text-[10px] font-bold text-red-600">
-                      {totalOdp > 0
-                        ? ((statsOverview.colorCounts.RED / totalOdp) * 100).toFixed(1)
-                        : 0}
-                      %
+                      {totalOdp > 0 ? ((statsOverview.colorCounts.RED / totalOdp) * 100).toFixed(1) : 0}%
                     </p>
                   </div>
                 </div>
@@ -779,7 +574,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* 2. CARD TABEL ONT RX LEVEL */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#059669] via-[#0d9488] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 KUALITAS REDAMAN (ONT RX LEVEL){' '}
@@ -796,9 +590,7 @@ export default function Dashboard() {
                   }`}
                 >
                   <div className="bg-emerald-600 text-white text-[9px] font-bold py-0.5 rounded-sm">&gt; -18 dBm</div>
-                  <p className="text-base sm:text-lg font-black text-emerald-900 mt-1">
-                    {statsOverview.rxCounts.GREEN.toLocaleString()}
-                  </p>
+                  <p className="text-base sm:text-lg font-black text-emerald-900 mt-1">{statsOverview.rxCounts.GREEN.toLocaleString()}</p>
                   <p className="text-[10px] font-bold text-emerald-700">
                     {totalRxValid > 0 ? ((statsOverview.rxCounts.GREEN / totalRxValid) * 100).toFixed(1) : 0}%
                   </p>
@@ -811,9 +603,7 @@ export default function Dashboard() {
                   }`}
                 >
                   <div className="bg-yellow-400 text-black text-[9px] font-bold py-0.5 rounded-sm">-19 s/d -21</div>
-                  <p className="text-base sm:text-lg font-black text-yellow-950 mt-1">
-                    {statsOverview.rxCounts.YELLOW.toLocaleString()}
-                  </p>
+                  <p className="text-base sm:text-lg font-black text-yellow-950 mt-1">{statsOverview.rxCounts.YELLOW.toLocaleString()}</p>
                   <p className="text-[10px] font-bold text-yellow-800">
                     {totalRxValid > 0 ? ((statsOverview.rxCounts.YELLOW / totalRxValid) * 100).toFixed(1) : 0}%
                   </p>
@@ -826,9 +616,7 @@ export default function Dashboard() {
                   }`}
                 >
                   <div className="bg-orange-500 text-white text-[9px] font-bold py-0.5 rounded-sm">-21 s/d -25</div>
-                  <p className="text-base sm:text-lg font-black text-orange-950 mt-1">
-                    {statsOverview.rxCounts.ORANGE.toLocaleString()}
-                  </p>
+                  <p className="text-base sm:text-lg font-black text-orange-950 mt-1">{statsOverview.rxCounts.ORANGE.toLocaleString()}</p>
                   <p className="text-[10px] font-bold text-orange-800">
                     {totalRxValid > 0 ? ((statsOverview.rxCounts.ORANGE / totalRxValid) * 100).toFixed(1) : 0}%
                   </p>
@@ -841,9 +629,7 @@ export default function Dashboard() {
                   }`}
                 >
                   <div className="bg-red-600 text-white text-[9px] font-bold py-0.5 rounded-sm">&lt; -25 dBm</div>
-                  <p className="text-base sm:text-lg font-black text-red-950 mt-1">
-                    {statsOverview.rxCounts.RED.toLocaleString()}
-                  </p>
+                  <p className="text-base sm:text-lg font-black text-red-950 mt-1">{statsOverview.rxCounts.RED.toLocaleString()}</p>
                   <p className="text-[10px] font-bold text-red-700">
                     {totalRxValid > 0 ? ((statsOverview.rxCounts.RED / totalRxValid) * 100).toFixed(1) : 0}%
                   </p>
@@ -851,7 +637,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* 3. PROFIL ODP BRANCH PALANGKARAYA (PERSENTASE SINKRON 100%) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#4c1d95] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 ODP SHARE KABUPATEN LEVEL{' '}
@@ -894,13 +679,9 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
-
           </div>
 
-          {/* ================= KOLOM KANAN ================= */}
           <div className="space-y-3 sm:space-y-4">
-            
-            {/* 1. MAPS LOKASI ODP */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm relative">
               <div className="bg-gradient-to-r from-[#1e3a8a] to-[#3a3575] text-white p-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                 <div className="flex items-center gap-2">
@@ -998,7 +779,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* 2. OCCUPANCY & AVAILABLE PORT (GRAND TOTAL ROW AKTIF) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 OCCUPANCY & AVAILABLE PORT
@@ -1059,7 +839,6 @@ export default function Dashboard() {
                       );
                     })}
 
-                    {/* GRAND TOTAL ROW */}
                     <tr className="bg-[#0f172a] text-white font-extrabold sticky bottom-0 z-10 shadow-[0_-2px_10px_rgba(0,0,0,0.2)]">
                       <td colSpan={2} className="p-2 border border-slate-700 text-left pl-3 uppercase">
                         Grand Total
@@ -1077,7 +856,6 @@ export default function Dashboard() {
                 </table>
               </div>
             </div>
-
           </div>
         </div>
       </div>
