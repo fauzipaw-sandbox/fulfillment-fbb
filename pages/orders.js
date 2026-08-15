@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import Head from 'next/head';
 import Papa from 'papaparse';
 import Sidebar from '../components/Sidebar';
 import Uploader from '../components/Uploader';
+import { useData } from '../context/DataContext';
 import {
   BarChart,
   Bar,
@@ -18,21 +19,6 @@ import {
 const ALLOWED_STOS = [
   'BNT', 'PLK', 'KKN', 'MTW', 'PPS', 'PYM', 'TML', 'AMP', 'KKP', 'KRI', 'KSO', 'PRC'
 ];
-
-const WOK_GROUP_MAP = {
-  AMP: 'BARITO - KAPUAS',
-  BNT: 'BARITO - KAPUAS',
-  KKP: 'BARITO - KAPUAS',
-  MTW: 'BARITO - KAPUAS',
-  PPS: 'BARITO - KAPUAS',
-  PRC: 'BARITO - KAPUAS',
-  TML: 'BARITO - KAPUAS',
-  KKN: 'PALANGKARAYA',
-  KRI: 'PALANGKARAYA',
-  KSO: 'PALANGKARAYA',
-  PLK: 'PALANGKARAYA',
-  PYM: 'PALANGKARAYA',
-};
 
 const DURATION_ORDER = ['3 HARI', '7 HARI', '30 HARI', '3 BULAN'];
 
@@ -55,33 +41,23 @@ const DURATION_COLORS = {
   DEFAULT: '#64748b',
 };
 
-const FALLOUT_KEYWORDS = [
-  'ODP BELUM GO LIVE', 'ODP FULL', 'ODP JAUH', 'ODP LOSS', 'ODP RETI', 'ODP RUSAK', 'TIDAK ADA ODP',
-  'KENDALA JALUR/RUTE TARIKAN', 'KENDALA IKR/IKG', 'KENDALA IZIN', 'KENDALA MATERIAL/NTE', 'KENDALA PERANGKAT',
-  'ALAMAT TIDAK DITEMUKAN', 'INDIKASI CABUT PASANG', 'PELANGGAN MASIH RAGU', 'PELANGGAN TIDAK MERASA PASANG',
-  'RUMAH KOSONG', 'CROSS JALAN', 'DOUBLE INPUT', 'GANTI PAKET', 'LIMITASI ONU', 'TIANG', 'BATAL',
-  'PENDING', 'SYSTEM', 'ACTIVATION', 'DATA', 'RNA', 'ODP', 'LAINNYA',
+const MONTH_NAMES = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 
-function normalizeFalloutReason(rawVal) {
-  if (!rawVal || String(rawVal).trim() === '' || String(rawVal).toLowerCase() === 'nan' || String(rawVal).toLowerCase() === 'null') {
-    return null;
-  }
-  const cleanStr = String(rawVal).toUpperCase().replace(/_/g, ' ');
-  for (const kw of FALLOUT_KEYWORDS) {
-    const kwClean = kw.toUpperCase().replace(/_/g, ' ');
-    const escaped = kwClean.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-    const regex = new RegExp(`(?<![A-Z0-9])${escaped}(?![A-Z0-9])`, 'i');
-    if (regex.test(cleanStr)) {
-      return kwClean;
-    }
-  }
-  return 'LAINNYA';
+function formatFullDateTime(d) {
+  if (!d || isNaN(d.getTime())) return '-';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = MONTH_NAMES[d.getMonth()];
+  const year = d.getFullYear();
+  const hours = String(d.getHours()).padStart(2, '0');
+  const mins = String(d.getMinutes()).padStart(2, '0');
+  return `${day} ${month} ${year} ${hours}:${mins}`;
 }
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { ordersData: orders, ordersLoaded, reloadOrders, reloadAll } = useData();
   const [showUploader, setShowUploader] = useState(false);
 
   // Filter States
@@ -91,7 +67,7 @@ export default function OrdersPage() {
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [selectedFallout, setSelectedFallout] = useState('ALL');
 
-  // Pivot Sorting States (Default Sort by Grand Total Descending)
+  // Pivot Sorting States
   const [pivot1Sort, setPivot1Sort] = useState({ key: 'total', direction: 'desc' });
   const [pivot2Sort, setPivot2Sort] = useState({ key: 'total', direction: 'desc' });
 
@@ -101,40 +77,19 @@ export default function OrdersPage() {
   const [sortConfig, setSortConfig] = useState({ key: 'order_ts', direction: 'desc' });
   const rowsPerPage = 50;
 
-  const fetchOrders = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/orders');
-      if (res.ok) {
-        const data = await res.json();
-        const enriched = (data || []).map((row) => {
-          const sto = (row.sto_co || '').trim().toUpperCase();
-          const wok = (row.wok && row.wok.trim() !== '') ? row.wok.trim().toUpperCase() : (WOK_GROUP_MAP[sto] || 'PALANGKARAYA');
-          const dur = (row.order_duration_cat && row.order_duration_cat.trim() !== '') ? row.order_duration_cat.trim().toUpperCase() : 'LAINNYA';
-          const status = (row.order_status_desc || row.process_state || 'UNKNOWN').trim().toUpperCase();
-          const falloutClean = normalizeFalloutReason(row.fallout_reason || row.fallout_category);
+  // Header Cut-Off Date Range (Earliest to Latest dengan Jam)
+  const headerCutoffText = useMemo(() => {
+    if (!orders || orders.length === 0) return '*Cut Off Data -';
+    const dates = orders
+      .map((o) => (o.order_ts ? new Date(o.order_ts).getTime() : null))
+      .filter((t) => t && !isNaN(t));
 
-          return {
-            ...row,
-            sto_co: sto,
-            wok,
-            order_duration_cat: dur,
-            order_status_clean: status,
-            fallout_reason_clean: falloutClean,
-          };
-        });
-        setOrders(enriched);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    if (dates.length === 0) return '*Cut Off Data';
+    const earliest = new Date(Math.min(...dates));
+    const latest = new Date(Math.max(...dates));
 
-  useEffect(() => {
-    fetchOrders();
-  }, []);
+    return `*Cut Off Data (${formatFullDateTime(earliest)} - ${formatFullDateTime(latest)})`;
+  }, [orders]);
 
   // Filter Sinkron
   const filteredOrders = useMemo(() => {
@@ -181,7 +136,6 @@ export default function OrdersPage() {
       });
     });
 
-    // Sorting Tree Berdasarkan Header / Default Total Descending
     const sortedWoks = Object.values(map).sort((a, b) => {
       let valA = pivot1Sort.key === 'total' ? a.total : (a.colCounts[pivot1Sort.key] || 0);
       let valB = pivot1Sort.key === 'total' ? b.total : (b.colCounts[pivot1Sort.key] || 0);
@@ -212,7 +166,7 @@ export default function OrdersPage() {
       map[wok].colCounts[st] = (map[wok].colCounts[st] || 0) + 1;
 
       map[wok].stos[sto].total++;
-      map[wok].stos[sto].colCounts[st] = (map[wok].stos[sto].colCounts[st] || 0) + 1;
+      map[wok].stos[sto].colCounts[st] = (map[wok].stos[sto].colCounts[dur] || 0) + 1;
     });
 
     const columns = Array.from(statusSet).sort();
@@ -227,7 +181,6 @@ export default function OrdersPage() {
       });
     });
 
-    // Sorting Tree Berdasarkan Header / Default Total Descending
     const sortedWoks = Object.values(map).sort((a, b) => {
       let valA = pivot2Sort.key === 'total' ? a.total : (a.colCounts[pivot2Sort.key] || 0);
       let valB = pivot2Sort.key === 'total' ? b.total : (b.colCounts[pivot2Sort.key] || 0);
@@ -259,7 +212,7 @@ export default function OrdersPage() {
     return { tree, totalAll };
   }, [filteredOrders]);
 
-  // Chart Data (Duration Fallout: Makin ke kanan makin banyak jumlahnya)
+  // Chart Data (Duration Fallout: Ascending within Group)
   const { chartData, dividerIndices } = useMemo(() => {
     const list = [];
     const dividers = [];
@@ -268,7 +221,6 @@ export default function OrdersPage() {
     let currentIndex = 0;
     sortedDurKeys.forEach((durKey, idx) => {
       const reasonsObj = pivotFallout.tree[durKey]?.reasons || {};
-      // Diurutkan Ascending (Makin ke kanan makin banyak)
       const sortedReasons = Object.entries(reasonsObj).sort((a, b) => a[1] - b[1]);
 
       sortedReasons.forEach(([reason, count]) => {
@@ -291,7 +243,6 @@ export default function OrdersPage() {
     return { chartData: list, dividerIndices: dividers };
   }, [pivotFallout]);
 
-  // Sorting Handler Pivot
   const handlePivot1Sort = (key) => {
     let direction = 'desc';
     if (pivot1Sort.key === key && pivot1Sort.direction === 'desc') direction = 'asc';
@@ -304,14 +255,12 @@ export default function OrdersPage() {
     setPivot2Sort({ key, direction });
   };
 
-  // Sorting Handler Bottom Table
   const requestSort = (key) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
     setSortConfig({ key, direction });
   };
 
-  // Bottom Table Data
   const sortedBottomTableData = useMemo(() => {
     let filtered = filteredOrders;
     if (searchTerm.trim()) {
@@ -372,7 +321,7 @@ export default function OrdersPage() {
         <title>Trend Order & Fallout Analysis</title>
       </Head>
 
-      {loading && (
+      {!ordersLoaded && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/70 backdrop-blur-xs flex flex-col items-center justify-center text-white">
           <div className="w-12 h-12 border-4 border-purple-400 border-t-transparent rounded-full animate-spin mb-3"></div>
           <p className="text-xs font-black tracking-wider animate-pulse">MEMUAT DATA ORDERS...</p>
@@ -380,14 +329,14 @@ export default function OrdersPage() {
       )}
 
       <div className="max-w-[1450px] mx-auto space-y-3">
-        {/* Header Bar */}
+        {/* Header Bar dengan Rentang Cut Off Tanggal & Jam */}
         <div className="bg-gradient-to-r from-[#211c47] to-[#4c1d95] text-white p-3 sm:p-4 rounded-lg flex flex-col md:flex-row justify-between items-start md:items-center shadow gap-2">
           <div>
             <h1 className="text-lg sm:text-2xl font-black uppercase italic tracking-wide">
               TREND ORDER & FALLOUT FULFILLMENT
             </h1>
             <p className="text-[10px] sm:text-xs font-semibold text-yellow-300 mt-0.5">
-              Cabang Palangkaraya &bull; Total Terfilter: {filteredOrders.length.toLocaleString()} Orders
+              {headerCutoffText}
             </p>
           </div>
 
@@ -465,13 +414,13 @@ export default function OrdersPage() {
         {showUploader && (
           <div className="transition-all duration-300">
             <Uploader
-              onUploadOdpSuccess={() => {}}
-              onUploadOrderSuccess={fetchOrders}
+              onUploadOdpSuccess={reloadAll}
+              onUploadOrderSuccess={reloadOrders}
             />
           </div>
         )}
 
-        {/* ================= SECTION ATAS: 2 PIVOT TABLE ================= */}
+        {/* PIVOT SECTION */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
           
           {/* PIVOT 1: DURATION */}
@@ -597,7 +546,7 @@ export default function OrdersPage() {
                     );
                   })}
 
-                  {/* Baris Grand Total (Bisa Diklik) */}
+                  {/* Grand Total Baris (Bisa Diklik) */}
                   <tr className="bg-[#0f172a] text-white font-black sticky bottom-0 z-10 shadow cursor-pointer">
                     <td
                       className="p-2 border border-slate-700 text-left pl-3 uppercase hover:text-yellow-300"
@@ -750,7 +699,6 @@ export default function OrdersPage() {
                     );
                   })}
 
-                  {/* Baris Grand Total (Bisa Diklik) */}
                   <tr className="bg-[#0f172a] text-white font-black sticky bottom-0 z-10 shadow cursor-pointer">
                     <td
                       className="p-2 border border-slate-700 text-left pl-3 uppercase hover:text-yellow-300"
@@ -786,10 +734,8 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        {/* ================= SECTION TENGAH: PIVOT FALLOUT & DURATION FALLOUT CHART ================= */}
+        {/* SECTION FALLOUT & CHART */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4">
-          
-          {/* PIVOT 3: FALLOUT (DENGAN DIVIDER PER KATEGORI HARI) */}
           <div className="xl:col-span-1 bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase">
               <span>Row Labels &bull; Fallout Reason</span>
@@ -806,12 +752,10 @@ export default function OrdersPage() {
                 <tbody>
                   {sortDurationColumns(Object.keys(pivotFallout.tree)).map((durKey, durIdx) => {
                     const dur = pivotFallout.tree[durKey];
-                    // Urutkan fallout reasons di dalam tabel dari kecil ke besar (sinkron dengan chart)
                     const sortedReasons = Object.entries(dur.reasons).sort((a, b) => a[1] - b[1]);
 
                     return (
                       <React.Fragment key={dur.name}>
-                        {/* Divider Header Kategori Hari */}
                         <tr
                           className={`font-black text-slate-900 border-b border-slate-300 cursor-pointer ${
                             durIdx > 0 ? 'border-t-2 border-t-slate-400' : ''
@@ -851,7 +795,6 @@ export default function OrdersPage() {
                     );
                   })}
 
-                  {/* Grand Total Pivot Fallout */}
                   <tr className="bg-[#0f172a] text-white font-black sticky bottom-0 z-10 shadow cursor-pointer">
                     <td
                       className="p-2 border border-slate-700 uppercase hover:text-yellow-300"
@@ -876,14 +819,14 @@ export default function OrdersPage() {
             </div>
           </div>
 
-          {/* DIAGRAM BATANG DURATION FALLOUT (DENGAN DIVIDER & MAKIN KE KANAN MAKIN TINGGI) */}
+          {/* DIAGRAM BATANG DURATION FALLOUT */}
           <div className="xl:col-span-2 bg-white border border-slate-300 shadow-xs rounded p-3">
             <div className="flex items-center justify-between border-b pb-1.5 mb-2">
               <h4 className="font-extrabold text-slate-800 text-xs sm:text-sm tracking-wide uppercase">
                 DURATION FALLOUT
               </h4>
               <span className="text-[10px] text-slate-400 font-semibold italic">
-                *Urutan per kelompok: makin ke kanan makin banyak
+                *Makin ke kanan makin banyak
               </span>
             </div>
 
@@ -944,7 +887,6 @@ export default function OrdersPage() {
                       }}
                     />
 
-                    {/* Garis Divider Antar Kategori Hari di Diagram */}
                     {dividerIndices.map((xVal, dIdx) => (
                       <ReferenceLine
                         key={`div-${dIdx}`}
@@ -979,7 +921,6 @@ export default function OrdersPage() {
               )}
             </div>
 
-            {/* Legend Durasi Lengkap */}
             <div className="flex flex-wrap items-center justify-center gap-4 text-[10px] font-bold text-slate-600 mt-2 border-t pt-1.5">
               <span className="flex items-center gap-1">
                 <span className="w-3 h-3 bg-[#22c55e] rounded-xs inline-block"></span> 3 HARI
@@ -997,7 +938,7 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        {/* ================= SECTION BAWAH: FULL SORTABLE & CLICKABLE SYNC TABLE ================= */}
+        {/* BOTTOM RAW DATA TABLE */}
         <div className="bg-white border border-slate-300 shadow-xs rounded overflow-hidden mt-4">
           <div className="bg-gradient-to-r from-[#0f172a] via-[#1e293b] to-[#334155] text-white p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <div>
@@ -1158,7 +1099,7 @@ export default function OrdersPage() {
             </table>
           </div>
 
-          {/* Pagination Controls */}
+          {/* Pagination */}
           {totalPages > 1 && (
             <div className="bg-slate-50 p-2.5 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-2 text-xs font-semibold">
               <span className="text-slate-600">
