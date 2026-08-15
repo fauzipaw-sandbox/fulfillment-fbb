@@ -14,6 +14,11 @@ import {
 
 const MapComponent = dynamic(() => import('../components/Map'), { ssr: false });
 
+// Poin 3: 12 STO Resmi Whitelist
+const ALLOWED_STOS = [
+  'BNT', 'PLK', 'KKN', 'MTW', 'PPS', 'PYM', 'TML', 'AMP', 'KKP', 'KRI', 'KSO', 'PRC'
+];
+
 const VALID_KABUPATEN = [
   'BARITO SELATAN', 'KOTA PALANGKARAYA', 'GUNUNG MAS', 'BARITO UTARA',
   'BARITO TIMUR', 'KAPUAS', 'KATINGAN', 'PULANG PISAU', 'MURUNG RAYA',
@@ -64,7 +69,7 @@ function parseCleanFloat(val) {
   return isNaN(parsed) ? null : parsed;
 }
 
-// Custom Label Segmen Batang
+// Poin 2: Custom Label Segmen Batang yang Membaca Nilai Asli (Bukan Akumulasi Stack)
 const renderSegmentLabel = (key) => (props) => {
   const { x, y, width, height, payload } = props;
   const val = payload ? payload[key] : null;
@@ -84,10 +89,14 @@ const renderSegmentLabel = (key) => (props) => {
   );
 };
 
+// Poin 2: Tooltip Pop-up dengan Grand Total ODP & Port
 const CustomChartTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
+    const totalOdpKab = payload[0]?.payload?.total || 0;
+    const totalPortKab = Object.values(payload[0]?.payload?.rawPorts || {}).reduce((a, b) => a + b, 0);
+
     return (
-      <div className="bg-white p-2.5 rounded shadow-xl border border-slate-300 text-xs font-sans space-y-1.5 z-50 min-w-[210px]">
+      <div className="bg-white p-2.5 rounded shadow-xl border border-slate-300 text-xs font-sans space-y-1.5 z-50 min-w-[220px]">
         <p className="font-extrabold text-slate-800 border-b pb-1 text-center">{label}</p>
         <div className="space-y-1">
           {payload.slice().reverse().map((entry, index) => {
@@ -97,7 +106,7 @@ const CustomChartTooltip = ({ active, payload, label }) => {
             return (
               <div key={index} className="flex items-center justify-between gap-3 text-[11px]">
                 <span className="flex items-center font-bold" style={{ color: entry.fill }}>
-                  <span className="w-2.5 h-2.5 inline-block mr-1.5 rounded-sm" style={{ backgroundColor: entry.fill }}></span>
+                  <span className="w-2.5 h-2.5 inline-block mr-1.5 rounded-sm shadow-sm" style={{ backgroundColor: entry.fill }}></span>
                   {entry.dataKey}:
                 </span>
                 <span className="font-semibold text-slate-700">
@@ -106,6 +115,12 @@ const CustomChartTooltip = ({ active, payload, label }) => {
               </div>
             );
           })}
+        </div>
+
+        {/* Poin 2: Grand Total ODP & Port di Popup */}
+        <div className="border-t border-slate-200 pt-1 mt-1 flex justify-between items-center text-[10px] font-black text-slate-800 bg-slate-50 p-1 rounded">
+          <span>GRAND TOTAL:</span>
+          <span>{totalOdpKab.toLocaleString()} ODP | {totalPortKab.toLocaleString()} Port</span>
         </div>
       </div>
     );
@@ -143,8 +158,15 @@ export default function Dashboard() {
         const odpData = await res.json();
         const enrichedData = odpData
           .filter((item) => {
-            // Poin 4: Format OTB- diabaikan
-            return item.odp_name && !String(item.odp_name).trim().toUpperCase().startsWith('OTB-');
+            // Poin 4: Ignore OTB-
+            if (!item.odp_name || String(item.odp_name).trim().toUpperCase().startsWith('OTB-')) return false;
+
+            // Poin 3: Filter Whitelist 12 STO
+            let sto = (item.sto || '').trim().toUpperCase();
+            if (!sto || sto === 'UNKNOWN') {
+              sto = (item.odp_name || '').match(/ODP-([A-Z0-9]{3})/i)?.[1].toUpperCase() || 'UNKNOWN';
+            }
+            return ALLOWED_STOS.includes(sto);
           })
           .map((item) => {
             const isTotal = parseInt(item.is_total) || 0;
@@ -185,7 +207,7 @@ export default function Dashboard() {
 
         setData(enrichedData);
 
-        // Poin 1: Default Filter Week Otomatis Ambil Paling Terakhir
+        // Poin 1: Default Filter Week Paling Terakhir
         const weeks = [...new Set(enrichedData.map((d) => d.week).filter((w) => w !== 'Unknown'))].sort((a, b) => {
           const numA = parseInt(a.replace(/\D/g, '')) || 0;
           const numB = parseInt(b.replace(/\D/g, '')) || 0;
@@ -234,16 +256,25 @@ export default function Dashboard() {
     return `*${selectedWeek === 'ALL' ? getWeekNumber(latestDate) : selectedWeek} - Cut Off Data until ${formatDateFormatted(latestDate)}`;
   }, [weekFilteredData, selectedWeek]);
 
+  // Poin 1: Agregasi Lengkap ODP & Ports per Status Warna
   const statsOverview = useMemo(() => {
     let totalPort = 0, usedPort = 0, avaiPort = 0;
     let colorCounts = { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 };
+    let colorPorts = { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 };
     let rxCounts = { GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0, NO_DATA: 0 };
+
     weekFilteredData.forEach(item => {
-      totalPort += item.is_total; usedPort += item.used; avaiPort += item.avai;
-      if (colorCounts[item.status_final] !== undefined) colorCounts[item.status_final]++;
+      totalPort += item.is_total;
+      usedPort += item.used;
+      avaiPort += item.avai;
+      if (colorCounts[item.status_final] !== undefined) {
+        colorCounts[item.status_final]++;
+        colorPorts[item.status_final] += item.is_total;
+      }
       if (rxCounts[item.rx_category] !== undefined) rxCounts[item.rx_category]++;
     });
-    return { totalPort, usedPort, avaiPort, colorCounts, rxCounts };
+
+    return { totalPort, usedPort, avaiPort, colorCounts, colorPorts, rxCounts };
   }, [weekFilteredData]);
 
   const statsFiltered = useMemo(() => {
@@ -273,6 +304,7 @@ export default function Dashboard() {
         RED: parseFloat(((k.rawCounts.RED / tot) * 100).toFixed(1)),
         rawCounts: k.rawCounts,
         rawPorts: k.rawPorts,
+        total: k.total,
       };
     });
 
@@ -477,7 +509,6 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* Uploader Props Mengirim data untuk fitur export */}
         {showUploader && (
           <div className="transition-all duration-300">
             <Uploader onUploadSuccess={fetchData} rawData={data} />
@@ -522,7 +553,6 @@ export default function Dashboard() {
                     </p>
                   </div>
 
-                  {/* Poin 3: AVAI PORT (Non Active) */}
                   <div
                     onClick={() => setSelectedPortFilter('AVAI')}
                     className={`border p-1.5 sm:p-2 rounded cursor-pointer transition-transform hover:scale-105 ${
@@ -537,6 +567,7 @@ export default function Dashboard() {
                   </div>
                 </div>
 
+                {/* Poin 1: BLACK ODP dengan Total Port */}
                 <div
                   onClick={() => setSelectedStatus((p) => (p === 'BLACK' ? 'ALL' : 'BLACK'))}
                   className={`col-span-1 border border-gray-400 p-2 shadow-inner flex flex-col justify-center cursor-pointer transition-transform hover:scale-105 rounded relative ${
@@ -552,8 +583,12 @@ export default function Dashboard() {
                   <p className="text-xs font-bold text-slate-600 mt-0.5">
                     {totalOdp > 0 ? ((statsOverview.colorCounts.BLACK / totalOdp) * 100).toFixed(1) : 0}%
                   </p>
+                  <p className="text-[10px] font-bold text-slate-700 mt-1">
+                    {(statsOverview.colorPorts.BLACK / 1000).toFixed(1)} K Port ({statsOverview.colorPorts.BLACK.toLocaleString()})
+                  </p>
                 </div>
 
+                {/* Poin 1: Colored ODP dengan Total Port masing-masing */}
                 <div className="col-span-1 grid grid-cols-2 gap-1.5 sm:gap-2">
                   <div
                     onClick={() => setSelectedStatus((p) => (p === 'YELLOW' ? 'ALL' : 'YELLOW'))}
@@ -562,9 +597,12 @@ export default function Dashboard() {
                     }`}
                   >
                     <div className="bg-[#facc15] text-slate-900 text-[8px] font-bold px-0.5 py-0.5 rounded-sm">YELLOW</div>
-                    <p className="text-sm sm:text-base font-extrabold mt-1">{statsOverview.colorCounts.YELLOW.toLocaleString()}</p>
+                    <p className="text-sm sm:text-base font-extrabold mt-0.5">{statsOverview.colorCounts.YELLOW.toLocaleString()}</p>
                     <p className="text-[10px] font-bold text-slate-600">
                       {totalOdp > 0 ? ((statsOverview.colorCounts.YELLOW / totalOdp) * 100).toFixed(1) : 0}%
+                    </p>
+                    <p className="text-[9px] font-bold text-yellow-800">
+                      {(statsOverview.colorPorts.YELLOW / 1000).toFixed(1)}K Port
                     </p>
                   </div>
 
@@ -575,9 +613,12 @@ export default function Dashboard() {
                     }`}
                   >
                     <div className="bg-[#16a34a] text-white text-[8px] font-bold px-0.5 py-0.5 rounded-sm">GREEN</div>
-                    <p className="text-sm sm:text-base font-extrabold mt-1">{statsOverview.colorCounts.GREEN.toLocaleString()}</p>
+                    <p className="text-sm sm:text-base font-extrabold mt-0.5">{statsOverview.colorCounts.GREEN.toLocaleString()}</p>
                     <p className="text-[10px] font-bold text-emerald-700">
                       {totalOdp > 0 ? ((statsOverview.colorCounts.GREEN / totalOdp) * 100).toFixed(1) : 0}%
+                    </p>
+                    <p className="text-[9px] font-bold text-emerald-800">
+                      {(statsOverview.colorPorts.GREEN / 1000).toFixed(1)}K Port
                     </p>
                   </div>
 
@@ -588,9 +629,12 @@ export default function Dashboard() {
                     }`}
                   >
                     <div className="bg-[#ea580c] text-white text-[8px] font-bold px-0.5 py-0.5 rounded-sm">ORANGE</div>
-                    <p className="text-sm sm:text-base font-extrabold mt-1">{statsOverview.colorCounts.ORANGE.toLocaleString()}</p>
+                    <p className="text-sm sm:text-base font-extrabold mt-0.5">{statsOverview.colorCounts.ORANGE.toLocaleString()}</p>
                     <p className="text-[10px] font-bold text-slate-600">
                       {totalOdp > 0 ? ((statsOverview.colorCounts.ORANGE / totalOdp) * 100).toFixed(1) : 0}%
+                    </p>
+                    <p className="text-[9px] font-bold text-orange-800">
+                      {(statsOverview.colorPorts.ORANGE / 1000).toFixed(1)}K Port
                     </p>
                   </div>
 
@@ -601,9 +645,12 @@ export default function Dashboard() {
                     }`}
                   >
                     <div className="bg-[#ef4444] text-white text-[8px] font-bold px-0.5 py-0.5 rounded-sm">RED</div>
-                    <p className="text-sm sm:text-base font-extrabold mt-1">{statsOverview.colorCounts.RED.toLocaleString()}</p>
+                    <p className="text-sm sm:text-base font-extrabold mt-0.5">{statsOverview.colorCounts.RED.toLocaleString()}</p>
                     <p className="text-[10px] font-bold text-red-600">
                       {totalOdp > 0 ? ((statsOverview.colorCounts.RED / totalOdp) * 100).toFixed(1) : 0}%
+                    </p>
+                    <p className="text-[9px] font-bold text-red-800">
+                      {(statsOverview.colorPorts.RED / 1000).toFixed(1)}K Port
                     </p>
                   </div>
                 </div>
@@ -713,6 +760,7 @@ export default function Dashboard() {
                       />
                       <YAxis tick={{ fontSize: 9, fontWeight: 'bold' }} domain={[0, 100]} unit="%" />
                       <Tooltip content={<CustomChartTooltip />} />
+                      {/* Poin 2: Label Persentase di Tiap Segmen Batang */}
                       <Bar dataKey="BLACK" stackId="a" fill="#000000" label={renderSegmentLabel('BLACK')} />
                       <Bar dataKey="GREEN" stackId="a" fill="#16a34a" label={renderSegmentLabel('GREEN')} />
                       <Bar dataKey="YELLOW" stackId="a" fill="#facc15" label={renderSegmentLabel('YELLOW')} />
