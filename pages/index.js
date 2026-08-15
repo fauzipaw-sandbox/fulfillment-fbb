@@ -14,6 +14,33 @@ import {
 
 const MapComponent = dynamic(() => import('../components/Map'), { ssr: false });
 
+const VALID_KABUPATEN = [
+  'BARITO SELATAN',
+  'KOTA PALANGKARAYA',
+  'GUNUNG MAS',
+  'BARITO UTARA',
+  'BARITO TIMUR',
+  'KAPUAS',
+  'KATINGAN',
+  'PULANG PISAU',
+  'MURUNG RAYA',
+];
+
+const STO_WOK_MAP = {
+  AMP: 'BARITO - KAPUAS',
+  BNT: 'BARITO - KAPUAS',
+  KKP: 'BARITO - KAPUAS',
+  MTW: 'BARITO - KAPUAS',
+  PPS: 'BARITO - KAPUAS',
+  PRC: 'BARITO - KAPUAS',
+  TML: 'BARITO - KAPUAS',
+  KKN: 'PALANGKARAYA',
+  KRI: 'PALANGKARAYA',
+  KSO: 'PALANGKARAYA',
+  PLK: 'PALANGKARAYA',
+  PYM: 'PALANGKARAYA',
+};
+
 const formatDate = (dateString) => {
   if (!dateString) return '-';
   const d = new Date(dateString);
@@ -27,8 +54,7 @@ const getWeekNumber = (dateString) => {
   if (isNaN(d)) return 'Unknown';
   d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-  return `W${weekNo}`;
+  return `W${Math.ceil((((d - yearStart) / 86400000) + 1) / 7)}`;
 };
 
 function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -103,11 +129,14 @@ export default function Dashboard() {
 
   const [showUploader, setShowUploader] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState('ALL');
+  const [selectedRx, setSelectedRx] = useState('ALL');
+  const [selectedKabupaten, setSelectedKabupaten] = useState('ALL');
+
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [focusedOdp, setFocusedOdp] = useState(null);
 
-  // State Fitur Measurement Jarak Darat
+  // Measure Jarak Input
   const [showMeasureModal, setShowMeasureModal] = useState(false);
   const [pointAInput, setPointAInput] = useState('');
   const [pointBInput, setPointBInput] = useState('');
@@ -126,6 +155,7 @@ export default function Dashboard() {
           const avai = parseInt(item.avai) || Math.max(0, isTotal - used);
           const rsk = isTotal > 0 ? used / isTotal : 0;
 
+          // Status ODP
           let status = 'BLACK';
           if (rsk === 0) status = 'BLACK';
           else if (rsk > 0 && rsk <= 0.6) status = 'GREEN';
@@ -133,12 +163,48 @@ export default function Dashboard() {
           else if (rsk > 0.85 && rsk < 0.99) status = 'ORANGE';
           else if (rsk >= 0.99) status = 'RED';
 
+          // Normalisasi STO
+          let sto = (item.sto || '').trim().toUpperCase();
+          if (!sto || sto === 'UNKNOWN') {
+            const match = (item.odp_name || '').match(/ODP-([A-Z0-9]{3})/i);
+            sto = match && match[1] ? match[1].toUpperCase() : 'UNKNOWN';
+          }
+
+          // Normalisasi WOK
+          let wok = (item.wok || '').trim().toUpperCase();
+          if (!wok || wok === 'UNKNOWN') {
+            wok = STO_WOK_MAP[sto] || 'PALANGKARAYA';
+          }
+
+          // Normalisasi Kabupaten
+          let kab = (item.kabupaten || '').trim().toUpperCase();
+          let finalKab = VALID_KABUPATEN.includes(kab) ? kab : 'LAINNYA';
+
+          // Kategori ONT RX Level
+          // > -18 GREEN, -19 s/d -21 YELLOW, -21 s/d -25 ORANGE, < -25 RED
+          let rxVal = null;
+          let rxCategory = 'NO_DATA';
+          if (item.ont_rx_level !== null && item.ont_rx_level !== undefined && item.ont_rx_level !== '') {
+            rxVal = parseFloat(item.ont_rx_level);
+            if (!isNaN(rxVal)) {
+              if (rxVal > -18) rxCategory = 'GREEN';
+              else if (rxVal >= -21) rxCategory = 'YELLOW';
+              else if (rxVal >= -25) rxCategory = 'ORANGE';
+              else rxCategory = 'RED';
+            }
+          }
+
           return {
             ...item,
+            sto,
+            wok,
+            kabupaten: finalKab,
             is_total: isTotal,
             used,
             avai,
             rsk,
+            ont_rx_level: rxVal,
+            rx_category: rxCategory,
             status_final: status,
             week: getWeekNumber(item.event_date),
           };
@@ -164,11 +230,15 @@ export default function Dashboard() {
     return selectedWeek === 'ALL' ? data : data.filter((d) => d.week === selectedWeek);
   }, [data, selectedWeek]);
 
+  // Data terfilter secara sinkron (Status ODP + RX Level + Kabupaten)
   const fullyFilteredData = useMemo(() => {
-    return selectedStatus === 'ALL'
-      ? weekFilteredData
-      : weekFilteredData.filter((d) => d.status_final === selectedStatus);
-  }, [weekFilteredData, selectedStatus]);
+    return weekFilteredData.filter((d) => {
+      const matchStatus = selectedStatus === 'ALL' || d.status_final === selectedStatus;
+      const matchRx = selectedRx === 'ALL' || d.rx_category === selectedRx;
+      const matchKab = selectedKabupaten === 'ALL' || d.kabupaten === selectedKabupaten;
+      return matchStatus && matchRx && matchKab;
+    });
+  }, [weekFilteredData, selectedStatus, selectedRx, selectedKabupaten]);
 
   const cutoffDate = useMemo(() => {
     if (weekFilteredData.length === 0) return '-';
@@ -179,30 +249,46 @@ export default function Dashboard() {
     return formatDate(new Date(Math.max(...dates)));
   }, [weekFilteredData]);
 
+  // Overview Stats
   const statsOverview = useMemo(() => {
     let totalPort = 0;
     let usedPort = 0;
     let avaiPort = 0;
     let colorCounts = { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 };
+    let rxCounts = { GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0, NO_DATA: 0 };
 
     weekFilteredData.forEach((item) => {
       totalPort += item.is_total;
       usedPort += item.used;
       avaiPort += item.avai;
-      if (colorCounts[item.status_final] !== undefined) {
-        colorCounts[item.status_final] += 1;
-      }
+      if (colorCounts[item.status_final] !== undefined) colorCounts[item.status_final] += 1;
+      if (rxCounts[item.rx_category] !== undefined) rxCounts[item.rx_category] += 1;
     });
 
-    return { totalPort, usedPort, avaiPort, colorCounts };
+    return { totalPort, usedPort, avaiPort, colorCounts, rxCounts };
   }, [weekFilteredData]);
 
+  // Chart & Table Stats
   const statsFiltered = useMemo(() => {
     const kabMap = {};
     const flatStosMap = {};
 
+    VALID_KABUPATEN.concat(['LAINNYA']).forEach((k) => {
+      kabMap[k] = {
+        name: k,
+        BLACK: 0,
+        GREEN: 0,
+        YELLOW: 0,
+        ORANGE: 0,
+        RED: 0,
+        rawCounts: { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 },
+        rawPorts: { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 },
+        total: 0,
+      };
+    });
+
     fullyFilteredData.forEach((item) => {
-      const kab = item.kabupaten || 'LAINNYA';
+      const kab = item.kabupaten;
       if (!kabMap[kab]) {
         kabMap[kab] = {
           name: kab,
@@ -220,8 +306,8 @@ export default function Dashboard() {
       kabMap[kab].rawPorts[item.status_final] += item.is_total;
       kabMap[kab].total += 1;
 
-      const wok = item.wok || 'UNKNOWN';
-      const sto = item.sto || 'UNKNOWN';
+      const wok = item.wok;
+      const sto = item.sto;
       const key = `${wok}_${sto}`;
       if (!flatStosMap[key]) {
         flatStosMap[key] = { wok, sto, odp_count: 0, is_total: 0, used: 0, avai: 0 };
@@ -232,19 +318,21 @@ export default function Dashboard() {
       flatStosMap[key].avai += item.avai;
     });
 
-    const chartData = Object.values(kabMap).map((k) => {
-      const tot = k.total || 1;
-      return {
-        name: k.name,
-        BLACK: parseFloat(((k.rawCounts.BLACK / tot) * 100).toFixed(1)),
-        GREEN: parseFloat(((k.rawCounts.GREEN / tot) * 100).toFixed(1)),
-        YELLOW: parseFloat(((k.rawCounts.YELLOW / tot) * 100).toFixed(1)),
-        ORANGE: parseFloat(((k.rawCounts.ORANGE / tot) * 100).toFixed(1)),
-        RED: parseFloat(((k.rawCounts.RED / tot) * 100).toFixed(1)),
-        rawCounts: k.rawCounts,
-        rawPorts: k.rawPorts,
-      };
-    });
+    const chartData = Object.values(kabMap)
+      .filter((k) => k.total > 0 || VALID_KABUPATEN.includes(k.name))
+      .map((k) => {
+        const tot = k.total || 1;
+        return {
+          name: k.name,
+          BLACK: parseFloat(((k.rawCounts.BLACK / tot) * 100).toFixed(1)),
+          GREEN: parseFloat(((k.rawCounts.GREEN / tot) * 100).toFixed(1)),
+          YELLOW: parseFloat(((k.rawCounts.YELLOW / tot) * 100).toFixed(1)),
+          ORANGE: parseFloat(((k.rawCounts.ORANGE / tot) * 100).toFixed(1)),
+          RED: parseFloat(((k.rawCounts.RED / tot) * 100).toFixed(1)),
+          rawCounts: k.rawCounts,
+          rawPorts: k.rawPorts,
+        };
+      });
 
     const flatStos = Object.values(flatStosMap).map((row) => ({
       ...row,
@@ -275,10 +363,6 @@ export default function Dashboard() {
     setSortConfig({ key, direction });
   };
 
-  const handleStatusClick = (status) => {
-    setSelectedStatus((prev) => (prev === status ? 'ALL' : status));
-  };
-
   const handleSearchChange = (e) => {
     const val = e.target.value;
     setSearchTerm(val);
@@ -298,7 +382,6 @@ export default function Dashboard() {
     }
   };
 
-  // Helper Parse Titik (Lat,Long atau ODP Name)
   const parsePoint = (input) => {
     if (!input) return null;
     const clean = input.trim();
@@ -320,11 +403,11 @@ export default function Dashboard() {
     const pB = parsePoint(pointBInput);
 
     if (!pA) {
-      alert('Titik A tidak valid! Masukkan Lat,Long (contoh: -2.21, 113.92) atau nama ODP yang valid.');
+      alert('Titik A tidak valid! Masukkan Lat,Long (contoh: -2.21, 113.92) atau nama ODP valid.');
       return;
     }
     if (!pB) {
-      alert('Titik B tidak valid! Masukkan Lat,Long (contoh: -2.21, 113.92) atau nama ODP yang valid.');
+      alert('Titik B tidak valid! Masukkan Lat,Long (contoh: -2.21, 113.92) atau nama ODP valid.');
       return;
     }
 
@@ -338,6 +421,12 @@ export default function Dashboard() {
     setManualMeasureLine([[pA.lat, pA.lon], [pB.lat, pB.lon]]);
   };
 
+  const resetAllFilters = () => {
+    setSelectedStatus('ALL');
+    setSelectedRx('ALL');
+    setSelectedKabupaten('ALL');
+  };
+
   const totalOdp = weekFilteredData.length;
   const occTotal =
     statsOverview.totalPort > 0
@@ -348,6 +437,8 @@ export default function Dashboard() {
       ? ((statsOverview.avaiPort / statsOverview.totalPort) * 100).toFixed(1)
       : '0.0';
 
+  const totalRxValid = totalOdp - statsOverview.rxCounts.NO_DATA;
+
   return (
     <div className="min-h-screen p-2 sm:p-4 text-gray-800 font-sans text-xs bg-[#f1f5f9]">
       <Head>
@@ -355,8 +446,8 @@ export default function Dashboard() {
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
       </Head>
 
-      <div className="max-w-[1400px] mx-auto space-y-3">
-        {/* HEADER UTAMA & FILTER WEEK */}
+      <div className="max-w-[1450px] mx-auto space-y-3">
+        {/* HEADER UTAMA */}
         <div className="bg-gradient-to-r from-[#211c47] to-[#3a3575] text-white p-3 sm:p-4 flex flex-col md:flex-row justify-between items-start md:items-center border-b-4 border-purple-500 rounded-t-lg shadow-sm gap-2">
           <div>
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-wide uppercase italic">
@@ -384,22 +475,32 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* NARRATIVE EXECUTIVE SUMMARY */}
-        <div className="bg-white px-3 sm:px-4 py-2 text-xs sm:text-[13px] border border-gray-200 shadow-sm rounded leading-relaxed">
-          The total <strong className="font-extrabold">number of ODP</strong> in Branch Palangkaraya
-          was <strong className="font-extrabold">{(totalOdp / 1000).toFixed(1)}K</strong> (
-          {(statsOverview.totalPort / 1000).toFixed(1)} K Port) which is Occupancy{' '}
-          <strong className="font-extrabold">
-            {(statsOverview.usedPort / 1000).toFixed(1)}K Port ({occTotal}%)
-          </strong>{' '}
-          and{' '}
-          <strong className="font-extrabold">
-            {(statsOverview.avaiPort / 1000).toFixed(1)}K ({avaiTotal}%)
-          </strong>{' '}
-          available ports for <strong className="font-extrabold">new sales.</strong>
+        {/* EXECUTIVE NARRATIVE */}
+        <div className="bg-white px-3 sm:px-4 py-2 text-xs sm:text-[13px] border border-gray-200 shadow-sm rounded flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+          <div>
+            The total <strong className="font-extrabold">number of ODP</strong> in Branch Palangkaraya
+            was <strong className="font-extrabold">{(totalOdp / 1000).toFixed(1)}K</strong> (
+            {(statsOverview.totalPort / 1000).toFixed(1)} K Port) which is Occupancy{' '}
+            <strong className="font-extrabold">
+              {(statsOverview.usedPort / 1000).toFixed(1)}K Port ({occTotal}%)
+            </strong>{' '}
+            and{' '}
+            <strong className="font-extrabold">
+              {(statsOverview.avaiPort / 1000).toFixed(1)}K ({avaiTotal}%)
+            </strong>{' '}
+            available ports for <strong className="font-extrabold">new sales.</strong>
+          </div>
+          {(selectedStatus !== 'ALL' || selectedRx !== 'ALL' || selectedKabupaten !== 'ALL') && (
+            <button
+              onClick={resetAllFilters}
+              className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold whitespace-nowrap self-start sm:self-auto shadow"
+            >
+              ✕ Reset Semua Filter
+            </button>
+          )}
         </div>
 
-        {/* TOGGLE TOMBOL UPLOADER */}
+        {/* TOGGLE UPLOADER */}
         <div className="flex justify-end">
           <button
             type="button"
@@ -424,23 +525,22 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* GRID UTAMA RESPONSIVE */}
+        {/* MAIN DASHBOARD GRID */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
           
           {/* ================= KOLOM KIRI ================= */}
           <div className="space-y-3 sm:space-y-4">
             
-            {/* OVERVIEW ODP PROFILE */}
+            {/* 1. OVERVIEW ODP PROFILE */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 OVERVIEW ODP PROFILE{' '}
                 <span className="text-[10px] font-normal text-purple-200">
-                  {selectedStatus !== 'ALL' ? `[Filter: ${selectedStatus}]` : '(Klik box status)'}
+                  {selectedStatus !== 'ALL' ? `[Filter: ${selectedStatus}]` : '(Klik box untuk filter)'}
                 </span>
               </div>
-              
+
               <div className="p-2 sm:p-3 grid grid-cols-3 gap-2 sm:gap-3 text-center">
-                {/* Summary Port */}
                 <div className="col-span-1 space-y-1.5 sm:space-y-2">
                   <div className="border border-gray-200 bg-gray-50/50 p-1.5 sm:p-2 rounded">
                     <p className="text-[8px] sm:text-[9px] font-bold text-gray-500 uppercase">TOTAL ODP (Port)</p>
@@ -469,7 +569,7 @@ export default function Dashboard() {
 
                 {/* BLACK ODP */}
                 <div
-                  onClick={() => handleStatusClick('BLACK')}
+                  onClick={() => setSelectedStatus((p) => (p === 'BLACK' ? 'ALL' : 'BLACK'))}
                   className={`col-span-1 border border-gray-400 p-2 shadow-inner flex flex-col justify-center cursor-pointer transition-transform hover:scale-105 rounded relative ${
                     selectedStatus === 'BLACK' ? 'ring-3 ring-black bg-gray-100' : 'bg-white'
                   }`}
@@ -492,7 +592,7 @@ export default function Dashboard() {
                 {/* COLORED ODP */}
                 <div className="col-span-1 grid grid-cols-2 gap-1.5 sm:gap-2">
                   <div
-                    onClick={() => handleStatusClick('YELLOW')}
+                    onClick={() => setSelectedStatus((p) => (p === 'YELLOW' ? 'ALL' : 'YELLOW'))}
                     className={`text-center cursor-pointer p-1 rounded transition-transform hover:scale-105 ${
                       selectedStatus === 'YELLOW' ? 'ring-2 ring-yellow-500 bg-yellow-50 shadow' : 'bg-slate-50 border border-slate-200'
                     }`}
@@ -512,7 +612,7 @@ export default function Dashboard() {
                   </div>
 
                   <div
-                    onClick={() => handleStatusClick('GREEN')}
+                    onClick={() => setSelectedStatus((p) => (p === 'GREEN' ? 'ALL' : 'GREEN'))}
                     className={`text-center cursor-pointer p-1 rounded transition-transform hover:scale-105 ${
                       selectedStatus === 'GREEN' ? 'ring-2 ring-green-600 bg-green-50 shadow' : 'bg-slate-50 border border-slate-200'
                     }`}
@@ -532,7 +632,7 @@ export default function Dashboard() {
                   </div>
 
                   <div
-                    onClick={() => handleStatusClick('ORANGE')}
+                    onClick={() => setSelectedStatus((p) => (p === 'ORANGE' ? 'ALL' : 'ORANGE'))}
                     className={`text-center cursor-pointer p-1 rounded transition-transform hover:scale-105 ${
                       selectedStatus === 'ORANGE' ? 'ring-2 ring-orange-500 bg-orange-50 shadow' : 'bg-slate-50 border border-slate-200'
                     }`}
@@ -552,7 +652,7 @@ export default function Dashboard() {
                   </div>
 
                   <div
-                    onClick={() => handleStatusClick('RED')}
+                    onClick={() => setSelectedStatus((p) => (p === 'RED' ? 'ALL' : 'RED'))}
                     className={`text-center cursor-pointer p-1 rounded transition-transform hover:scale-105 ${
                       selectedStatus === 'RED' ? 'ring-2 ring-red-600 bg-red-50 shadow' : 'bg-slate-50 border border-slate-200'
                     }`}
@@ -573,7 +673,6 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* LEGEND STATUS */}
               <div className="grid grid-cols-5 border-t border-slate-200 bg-[#f8fafc] py-1.5 text-center text-[9px] sm:text-[10px] font-bold text-slate-700">
                 <span className="flex items-center justify-center"><div className="w-3.5 sm:w-5 h-2 bg-black mr-1 rounded-sm"></div>0%</span>
                 <span className="flex items-center justify-center"><div className="w-3.5 sm:w-5 h-2 bg-[#16a34a] mr-1 rounded-sm"></div>&lt;60%</span>
@@ -583,10 +682,89 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* ODP SHARE KABUPATEN LEVEL */}
+            {/* 2. CARD TABEL ONT RX LEVEL */}
+            <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
+              <div className="bg-gradient-to-r from-[#059669] via-[#0d9488] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
+                KUALITAS REDAMAN (ONT RX LEVEL){' '}
+                <span className="text-[10px] font-normal text-emerald-200">
+                  {selectedRx !== 'ALL' ? `[Filter: ${selectedRx}]` : '(Klik box untuk filter)'}
+                </span>
+              </div>
+
+              <div className="p-2 sm:p-3 grid grid-cols-4 gap-2 text-center">
+                {/* Green */}
+                <div
+                  onClick={() => setSelectedRx((p) => (p === 'GREEN' ? 'ALL' : 'GREEN'))}
+                  className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
+                    selectedRx === 'GREEN' ? 'ring-2 ring-emerald-600 bg-emerald-100 shadow' : 'bg-emerald-50 border-emerald-200'
+                  }`}
+                >
+                  <div className="bg-emerald-600 text-white text-[9px] font-bold py-0.5 rounded-sm">&gt; -18 dBm</div>
+                  <p className="text-base sm:text-lg font-black text-emerald-900 mt-1">
+                    {statsOverview.rxCounts.GREEN.toLocaleString()}
+                  </p>
+                  <p className="text-[10px] font-bold text-emerald-700">
+                    {totalRxValid > 0 ? ((statsOverview.rxCounts.GREEN / totalRxValid) * 100).toFixed(1) : 0}%
+                  </p>
+                </div>
+
+                {/* Yellow */}
+                <div
+                  onClick={() => setSelectedRx((p) => (p === 'YELLOW' ? 'ALL' : 'YELLOW'))}
+                  className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
+                    selectedRx === 'YELLOW' ? 'ring-2 ring-yellow-500 bg-yellow-100 shadow' : 'bg-yellow-50 border-yellow-200'
+                  }`}
+                >
+                  <div className="bg-yellow-400 text-black text-[9px] font-bold py-0.5 rounded-sm">-19 s/d -21</div>
+                  <p className="text-base sm:text-lg font-black text-yellow-950 mt-1">
+                    {statsOverview.rxCounts.YELLOW.toLocaleString()}
+                  </p>
+                  <p className="text-[10px] font-bold text-yellow-800">
+                    {totalRxValid > 0 ? ((statsOverview.rxCounts.YELLOW / totalRxValid) * 100).toFixed(1) : 0}%
+                  </p>
+                </div>
+
+                {/* Orange */}
+                <div
+                  onClick={() => setSelectedRx((p) => (p === 'ORANGE' ? 'ALL' : 'ORANGE'))}
+                  className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
+                    selectedRx === 'ORANGE' ? 'ring-2 ring-orange-500 bg-orange-100 shadow' : 'bg-orange-50 border-orange-200'
+                  }`}
+                >
+                  <div className="bg-orange-500 text-white text-[9px] font-bold py-0.5 rounded-sm">-21 s/d -25</div>
+                  <p className="text-base sm:text-lg font-black text-orange-950 mt-1">
+                    {statsOverview.rxCounts.ORANGE.toLocaleString()}
+                  </p>
+                  <p className="text-[10px] font-bold text-orange-800">
+                    {totalRxValid > 0 ? ((statsOverview.rxCounts.ORANGE / totalRxValid) * 100).toFixed(1) : 0}%
+                  </p>
+                </div>
+
+                {/* Red */}
+                <div
+                  onClick={() => setSelectedRx((p) => (p === 'RED' ? 'ALL' : 'RED'))}
+                  className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
+                    selectedRx === 'RED' ? 'ring-2 ring-red-600 bg-red-100 shadow' : 'bg-red-50 border-red-200'
+                  }`}
+                >
+                  <div className="bg-red-600 text-white text-[9px] font-bold py-0.5 rounded-sm">&lt; -25 dBm</div>
+                  <p className="text-base sm:text-lg font-black text-red-950 mt-1">
+                    {statsOverview.rxCounts.RED.toLocaleString()}
+                  </p>
+                  <p className="text-[10px] font-bold text-red-700">
+                    {totalRxValid > 0 ? ((statsOverview.rxCounts.RED / totalRxValid) * 100).toFixed(1) : 0}%
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* 3. ODP SHARE KABUPATEN LEVEL (INTERAKTIF KLIK) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#4c1d95] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
-                ODP SHARE KABUPATEN LEVEL
+                ODP SHARE KABUPATEN LEVEL{' '}
+                <span className="text-[10px] font-normal text-purple-200">
+                  {selectedKabupaten !== 'ALL' ? `[Filter: ${selectedKabupaten}]` : '(Klik batang untuk filter)'}
+                </span>
               </div>
               <div className="p-2 sm:p-4 pt-4 sm:pt-6">
                 <h4 className="text-center font-bold text-gray-500 text-xs mb-2">
@@ -597,6 +775,11 @@ export default function Dashboard() {
                     <BarChart
                       data={statsFiltered.chartData}
                       margin={{ top: 5, right: 0, left: -25, bottom: 35 }}
+                      onClick={(e) => {
+                        if (e && e.activeLabel) {
+                          setSelectedKabupaten((prev) => (prev === e.activeLabel ? 'ALL' : e.activeLabel));
+                        }
+                      }}
                     >
                       <CartesianGrid strokeDasharray="3 3" vertical={false} />
                       <XAxis
@@ -624,7 +807,7 @@ export default function Dashboard() {
           {/* ================= KOLOM KANAN ================= */}
           <div className="space-y-3 sm:space-y-4">
             
-            {/* 1. MAPS LOKASI ODP (PINDAH KE PALING ATAS DI KANAN) */}
+            {/* 1. MAPS LOKASI ODP */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm relative">
               <div className="bg-gradient-to-r from-[#1e3a8a] to-[#3a3575] text-white p-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                 <div className="flex items-center gap-2">
@@ -638,7 +821,6 @@ export default function Dashboard() {
                   </button>
                 </div>
 
-                {/* SEARCH BAR WITH AUTO SUGGESTION */}
                 <div className="relative w-full sm:w-64 z-[1001]">
                   <input
                     type="text"
@@ -668,7 +850,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Form Input Pengukur Jarak */}
+              {/* Modal Input Jarak */}
               {showMeasureModal && (
                 <div className="bg-slate-50 p-2.5 border-b border-slate-200 text-xs space-y-2">
                   <p className="font-bold text-slate-800 text-[11px]">Hitung Jarak Berdasarkan ODP Name / Koordinat (Lat,Long):</p>
@@ -701,11 +883,11 @@ export default function Dashboard() {
                       onClick={handleCalculateManualDistance}
                       className="px-3 py-1 bg-blue-600 text-white font-bold rounded text-[11px] hover:bg-blue-700 shadow"
                     >
-                      Hitung Jarak Darat
+                      Hitung & Gambar di Peta
                     </button>
                     {measureResult && (
                       <p className="font-bold text-blue-900 text-xs">
-                        Hasil: {measureResult.km} km ({measureResult.meter} m)
+                        Jarak: {measureResult.km} km ({measureResult.meter} m)
                       </p>
                     )}
                   </div>
@@ -722,12 +904,13 @@ export default function Dashboard() {
                     data={fullyFilteredData}
                     focusLocation={focusedOdp}
                     manualMeasureLine={manualMeasureLine}
+                    manualMeasureInfo={measureResult}
                   />
                 )}
               </div>
             </div>
 
-            {/* 2. OCCUPANCY & AVAILABLE PORT (DI BAWAH MAPS) */}
+            {/* 2. OCCUPANCY & AVAILABLE PORT */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 OCCUPANCY & AVAILABLE PORT
