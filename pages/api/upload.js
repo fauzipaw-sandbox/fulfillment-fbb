@@ -1,6 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Memperbesar limit payload agar CSV ukuran besar bisa diproses
 export const config = {
   api: {
     bodyParser: {
@@ -32,9 +31,14 @@ export default async function handler(req, res) {
       .from('odp_kalimantan')
       .upsert(formattedData, { onConflict: 'odp_name' });
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase Upsert Error:', error);
+      return res.status(500).json({ error: `${error.message} (${error.details || error.hint || ''})` });
+    }
+
     return res.status(200).json({ message: 'Data successfully upserted' });
   } catch (err) {
+    console.error('Server Catch Error:', err);
     return res.status(500).json({ error: err.message });
   }
 }
