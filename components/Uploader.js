@@ -2,6 +2,10 @@ import { useState, useRef } from 'react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 
+const ALLOWED_STOS = [
+  'BNT', 'PLK', 'KKN', 'MTW', 'PPS', 'PYM', 'TML', 'AMP', 'KKP', 'KRI', 'KSO', 'PRC'
+];
+
 const VALID_KABUPATEN = [
   'BARITO SELATAN',
   'KOTA PALANGKARAYA',
@@ -62,7 +66,6 @@ export default function Uploader({ onUploadSuccess, rawData = [] }) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Modal State Delete
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [confirmInput, setConfirmInput] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -74,8 +77,12 @@ export default function Uploader({ onUploadSuccess, rawData = [] }) {
     const formattedData = rawDataInput
       .filter((row) => {
         if (!row.odp_name) return false;
-        // Poin 4: Format OTB- diabaikan
-        return !String(row.odp_name).trim().toUpperCase().startsWith('OTB-');
+        const nameUpper = String(row.odp_name).trim().toUpperCase();
+        if (nameUpper.startsWith('OTB-')) return false;
+
+        // Poin 3: Whitelist 12 STO
+        const sto = extractSto(row.odp_name, row.sto);
+        return ALLOWED_STOS.includes(sto);
       })
       .map((row) => {
         const isTotal = parseInt(row.is_total) || 0;
@@ -138,7 +145,7 @@ export default function Uploader({ onUploadSuccess, rawData = [] }) {
 
     const totalRecords = formattedData.length;
     if (totalRecords === 0) {
-      alert('Tidak ada baris data valid yang diimpor.');
+      alert('Tidak ada baris data valid sesuai 12 STO yang diimpor.');
       setLoading(false);
       return;
     }
@@ -195,7 +202,6 @@ export default function Uploader({ onUploadSuccess, rawData = [] }) {
     }
   };
 
-  // Export Raw Data ke CSV
   const handleExportCSV = () => {
     if (!rawData || rawData.length === 0) {
       alert('Tidak ada data untuk di-export.');
@@ -212,7 +218,6 @@ export default function Uploader({ onUploadSuccess, rawData = [] }) {
     document.body.removeChild(link);
   };
 
-  // Handle Hapus Semua Data Database
   const handleDeleteAll = async () => {
     const inputUpper = confirmInput.trim().toUpperCase();
     if (inputUpper !== 'HAPUS' && inputUpper !== 'DELETE') {
@@ -244,7 +249,6 @@ export default function Uploader({ onUploadSuccess, rawData = [] }) {
         <h3 className="text-xs font-bold uppercase text-slate-800">Panel Manajemen Data ODP</h3>
         
         <div className="flex items-center gap-2">
-          {/* Tombol Export Raw Data */}
           <button
             type="button"
             onClick={handleExportCSV}
@@ -253,7 +257,6 @@ export default function Uploader({ onUploadSuccess, rawData = [] }) {
             <span>📥</span> Export Raw CSV ({rawData.length.toLocaleString()})
           </button>
 
-          {/* Tombol Hapus Database */}
           <button
             type="button"
             onClick={() => setShowDeleteModal(true)}
@@ -264,7 +267,6 @@ export default function Uploader({ onUploadSuccess, rawData = [] }) {
         </div>
       </div>
 
-      {/* Drag & Drop Area */}
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -301,12 +303,11 @@ export default function Uploader({ onUploadSuccess, rawData = [] }) {
         ) : (
           <div>
             <p className="text-xs sm:text-sm font-bold text-slate-700">Drag & Drop file di sini, atau klik untuk memilih file</p>
-            <p className="text-[10px] text-slate-400 mt-1">Mendukung format .CSV dan .XLSX (Data OTB- otomatis diabaikan)</p>
+            <p className="text-[10px] text-slate-400 mt-1">Mendukung format .CSV dan .XLSX (Hanya 12 STO Terdaftar, OTB- diabaikan)</p>
           </div>
         )}
       </div>
 
-      {/* Modal Konfirmasi Hapus Data */}
       {showDeleteModal && (
         <div className="fixed inset-0 z-[10000] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-2xl border border-red-200 max-w-md w-full p-5 space-y-3">
