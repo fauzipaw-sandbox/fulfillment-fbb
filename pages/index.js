@@ -41,21 +41,46 @@ const STO_WOK_MAP = {
   PYM: 'PALANGKARAYA',
 };
 
-const formatDate = (dateString) => {
-  if (!dateString) return '-';
-  const d = new Date(dateString);
-  if (isNaN(d)) return '-';
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-};
+const MONTH_NAMES = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+];
 
-const getWeekNumber = (dateString) => {
-  if (!dateString) return 'Unknown';
-  const d = new Date(dateString);
-  if (isNaN(d)) return 'Unknown';
-  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return `W${Math.ceil((((d - yearStart) / 86400000) + 1) / 7)}`;
-};
+// Parser Tanggal & ISO Week yang Kuat (Mendukung String & Excel Serial Number)
+function parseDateRobust(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'number' || (!isNaN(raw) && !String(raw).includes('-') && !String(raw).includes('/'))) {
+    const num = parseFloat(raw);
+    if (num > 30000 && num < 60000) {
+      // Excel Serial Date Converter
+      return new Date(Math.round((num - 25569) * 86400 * 1000));
+    }
+  }
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function formatDateFormatted(d) {
+  if (!d) return '-';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = MONTH_NAMES[d.getMonth()];
+  const year = d.getFullYear();
+  return `${day}-${month}-${year}`;
+}
+
+function getWeekNumber(d) {
+  if (!d) return 'Unknown';
+  const target = new Date(d.valueOf());
+  const dayNr = (d.getDay() + 6) % 7;
+  target.setDate(target.getDate() - dayNr + 3);
+  const firstThursday = target.valueOf();
+  target.setMonth(0, 1);
+  if (target.getDay() !== 4) {
+    target.setMonth(0, 1 + ((4 - target.getDay() + 7) % 7));
+  }
+  const weekNo = 1 + Math.ceil((firstThursday - target) / 604800000);
+  return `W${weekNo}`;
+}
 
 function parseCleanFloat(val) {
   if (val === undefined || val === null || val === '') return null;
@@ -65,6 +90,7 @@ function parseCleanFloat(val) {
   return isNaN(parsed) ? null : parsed;
 }
 
+// Custom Label di dalam Bar (Persentase Akurat Sesuai Popup)
 const renderCustomBarLabel = ({ x, y, width, height, value }) => {
   if (!value || value < 3 || height < 12) return null;
   return (
@@ -76,16 +102,17 @@ const renderCustomBarLabel = ({ x, y, width, height, value }) => {
       fontSize={8}
       fontWeight="bold"
     >
-      {`${value}%`}
+      {`${Math.round(value)}%`}
     </text>
   );
 };
 
+// Tooltip Grafik Batang dengan Angka Persentase yang 100% Sinkron
 const CustomChartTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-white p-2.5 rounded shadow-lg border border-slate-300 text-xs font-sans space-y-1 z-50">
-        <p className="font-bold text-slate-800 border-b pb-1 text-center">{label}</p>
+      <div className="bg-white p-2.5 rounded shadow-xl border border-slate-300 text-xs font-sans space-y-1.5 z-50 min-w-[210px]">
+        <p className="font-extrabold text-slate-800 border-b pb-1 text-center">{label}</p>
         <div className="space-y-1">
           {payload.slice().reverse().map((entry, index) => {
             if (!entry.value || entry.value === 0) return null;
@@ -95,15 +122,15 @@ const CustomChartTooltip = ({ active, payload, label }) => {
 
             return (
               <div key={`item-${index}`} className="flex items-center justify-between gap-3 text-[11px]">
-                <span className="flex items-center font-semibold" style={{ color: entry.fill }}>
+                <span className="flex items-center font-bold" style={{ color: entry.fill }}>
                   <span
-                    className="w-2.5 h-2.5 inline-block mr-1.5 rounded-sm"
+                    className="w-2.5 h-2.5 inline-block mr-1.5 rounded-sm shadow-sm"
                     style={{ backgroundColor: entry.fill }}
                   ></span>
                   {statusKey}:
                 </span>
-                <span className="font-medium text-slate-700">
-                  <strong>{entry.value}%</strong> ({count.toLocaleString()} ODP | {ports.toLocaleString()} Port)
+                <span className="font-semibold text-slate-700">
+                  <strong className="text-slate-900">{entry.value}%</strong> ({count.toLocaleString()} ODP | {ports.toLocaleString()} Port)
                 </span>
               </div>
             );
@@ -122,15 +149,18 @@ export default function Dashboard() {
   const [sortConfig, setSortConfig] = useState({ key: 'occ', direction: 'desc' });
 
   const [showUploader, setShowUploader] = useState(false);
+  
+  // Filter States
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [selectedRx, setSelectedRx] = useState('ALL');
   const [selectedKabupaten, setSelectedKabupaten] = useState('ALL');
+  const [selectedPortFilter, setSelectedPortFilter] = useState('ALL'); // 'ALL' | 'USED' | 'AVAI'
 
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [focusedOdp, setFocusedOdp] = useState(null);
 
-  // Road Routing Measure State
+  // Routing State
   const [showMeasureModal, setShowMeasureModal] = useState(false);
   const [pointAInput, setPointAInput] = useState('');
   const [pointBInput, setPointBInput] = useState('');
@@ -181,6 +211,9 @@ export default function Dashboard() {
             else rxCategory = 'RED';
           }
 
+          const parsedDate = parseDateRobust(item.event_date);
+          const week = parsedDate ? getWeekNumber(parsedDate) : 'Unknown';
+
           return {
             ...item,
             sto,
@@ -190,10 +223,11 @@ export default function Dashboard() {
             used,
             avai,
             rsk,
+            parsed_date: parsedDate,
             ont_rx_level: rxVal,
             rx_category: rxCategory,
             status_final: status,
-            week: getWeekNumber(item.event_date),
+            week,
           };
         });
         setData(enrichedData);
@@ -217,23 +251,34 @@ export default function Dashboard() {
     return selectedWeek === 'ALL' ? data : data.filter((d) => d.week === selectedWeek);
   }, [data, selectedWeek]);
 
+  // Filter Sinkron Semua Komponen
   const fullyFilteredData = useMemo(() => {
     return weekFilteredData.filter((d) => {
       const matchStatus = selectedStatus === 'ALL' || d.status_final === selectedStatus;
       const matchRx = selectedRx === 'ALL' || d.rx_category === selectedRx;
       const matchKab = selectedKabupaten === 'ALL' || d.kabupaten === selectedKabupaten;
-      return matchStatus && matchRx && matchKab;
-    });
-  }, [weekFilteredData, selectedStatus, selectedRx, selectedKabupaten]);
+      const matchPort =
+        selectedPortFilter === 'ALL' ||
+        (selectedPortFilter === 'USED' && d.used > 0) ||
+        (selectedPortFilter === 'AVAI' && d.avai > 0);
 
-  const cutoffDate = useMemo(() => {
-    if (weekFilteredData.length === 0) return '-';
+      return matchStatus && matchRx && matchKab && matchPort;
+    });
+  }, [weekFilteredData, selectedStatus, selectedRx, selectedKabupaten, selectedPortFilter]);
+
+  // Format Cutoff Data Header Sesuai Aturan Poin 6
+  const headerCutoffText = useMemo(() => {
+    if (weekFilteredData.length === 0) return '*Cut Off Data until -';
     const dates = weekFilteredData
-      .map((d) => new Date(d.event_date).getTime())
-      .filter((t) => !isNaN(t));
-    if (dates.length === 0) return '-';
-    return formatDate(new Date(Math.max(...dates)));
-  }, [weekFilteredData]);
+      .map((d) => d.parsed_date?.getTime())
+      .filter((t) => t && !isNaN(t));
+
+    if (dates.length === 0) return `*${selectedWeek === 'ALL' ? 'ALL WEEKS' : selectedWeek} - Cut Off Data`;
+
+    const latestDate = new Date(Math.max(...dates));
+    const weekName = selectedWeek === 'ALL' ? getWeekNumber(latestDate) : selectedWeek;
+    return `*${weekName} - Cut Off Data until ${formatDateFormatted(latestDate)}`;
+  }, [weekFilteredData, selectedWeek]);
 
   const statsOverview = useMemo(() => {
     let totalPort = 0;
@@ -253,6 +298,7 @@ export default function Dashboard() {
     return { totalPort, usedPort, avaiPort, colorCounts, rxCounts };
   }, [weekFilteredData]);
 
+  // Statistik Chart & Table (Perhitungan Persentase Presisi)
   const statsFiltered = useMemo(() => {
     const kabMap = {};
     const flatStosMap = {};
@@ -302,6 +348,7 @@ export default function Dashboard() {
       flatStosMap[key].avai += item.avai;
     });
 
+    // Kalkulasi Persentase 1:1 Sinkron dengan Popup
     const chartData = Object.values(kabMap)
       .filter((k) => k.total > 0 || VALID_KABUPATEN.includes(k.name))
       .map((k) => {
@@ -339,7 +386,6 @@ export default function Dashboard() {
     return sortableItems;
   }, [statsFiltered.flatStos, sortConfig]);
 
-  // Grand Total Tabel
   const tableTotals = useMemo(() => {
     let odp = 0;
     let is_total = 0;
@@ -399,23 +445,17 @@ export default function Dashboard() {
     return null;
   };
 
-  // OSRM Jarak Darat Jalan Raya (Driving Route)
   const handleCalculateRoadDistance = async () => {
     const pA = parsePoint(pointAInput);
     const pB = parsePoint(pointBInput);
 
-    if (!pA) {
-      alert('Titik A tidak valid! Masukkan Lat,Long (contoh: -2.21, 113.92) atau nama ODP valid.');
-      return;
-    }
-    if (!pB) {
-      alert('Titik B tidak valid! Masukkan Lat,Long (contoh: -2.21, 113.92) atau nama ODP valid.');
+    if (!pA || !pB) {
+      alert('Masukkan Titik A dan B yang valid (Nama ODP atau Lat,Long)!');
       return;
     }
 
     setIsRouting(true);
     try {
-      // Panggil OSRM Public Driving Routing API
       const url = `https://router.project-osrm.org/route/v1/driving/${pA.lon},${pA.lat};${pB.lon},${pB.lat}?overview=full&geometries=geojson`;
       const res = await fetch(url);
       const json = await res.json();
@@ -424,8 +464,6 @@ export default function Dashboard() {
         const route = json.routes[0];
         const distanceMeters = route.distance;
         const distanceKm = distanceMeters / 1000;
-
-        // Invert GeoJSON [lon, lat] -> Leaflet [lat, lon]
         const latlngs = route.geometry.coordinates.map((c) => [c[1], c[0]]);
 
         setRoadRouteCoordinates(latlngs);
@@ -437,31 +475,12 @@ export default function Dashboard() {
           meter: Math.round(distanceMeters).toLocaleString(),
         });
       } else {
-        throw new Error('Rute jalan tidak ditemukan');
+        throw new Error('Rute tidak ditemukan');
       }
     } catch (err) {
-      // Fallback ke jarak lurus jika jalan offline
-      const distKm = ((pA, pB) => {
-        const R = 6371;
-        const dLat = ((pB.lat - pA.lat) * Math.PI) / 180;
-        const dLon = ((pB.lon - pA.lon) * Math.PI) / 180;
-        const a =
-          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos((pA.lat * Math.PI) / 180) *
-            Math.cos((pB.lat * Math.PI) / 180) *
-            Math.sin(dLon / 2) *
-            Math.sin(dLon / 2);
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      })(pA, pB);
-
+      // Fallback
       setManualMeasureLine([[pA.lat, pA.lon], [pB.lat, pB.lon]]);
       setRoadRouteCoordinates([[pA.lat, pA.lon], [pB.lat, pB.lon]]);
-      setMeasureResult({
-        from: pA.name,
-        to: pB.name,
-        km: distKm.toFixed(2),
-        meter: Math.round(distKm * 1000).toLocaleString(),
-      });
     } finally {
       setIsRouting(false);
     }
@@ -471,6 +490,7 @@ export default function Dashboard() {
     setSelectedStatus('ALL');
     setSelectedRx('ALL');
     setSelectedKabupaten('ALL');
+    setSelectedPortFilter('ALL');
   };
 
   const totalOdp = weekFilteredData.length;
@@ -486,21 +506,33 @@ export default function Dashboard() {
   const totalRxValid = totalOdp - statsOverview.rxCounts.NO_DATA;
 
   return (
-    <div className="min-h-screen p-2 sm:p-4 text-gray-800 font-sans text-xs bg-[#f1f5f9]">
+    <div className="min-h-screen p-2 sm:p-4 text-gray-800 font-sans text-xs bg-[#f1f5f9] relative">
       <Head>
         <title>ODP Profile & Utilization</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
       </Head>
 
+      {/* 5. ANIMASI LOADING PERTAMA KALI */}
+      {loading && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex flex-col items-center justify-center text-white">
+          <div className="relative flex items-center justify-center mb-4">
+            <div className="w-16 h-16 border-4 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+            <div className="w-8 h-8 border-4 border-indigo-200 border-b-transparent rounded-full animate-spin absolute"></div>
+          </div>
+          <p className="text-base font-extrabold tracking-wider animate-pulse">MEMUAT DASHBOARD ODP...</p>
+          <p className="text-xs text-blue-200 mt-1">Mengambil belasan ribu data dari Supabase</p>
+        </div>
+      )}
+
       <div className="max-w-[1450px] mx-auto space-y-3">
-        {/* HEADER UTAMA */}
+        {/* HEADER UTAMA & ATURAN CUTOFF POIN 6 */}
         <div className="bg-gradient-to-r from-[#211c47] to-[#3a3575] text-white p-3 sm:p-4 flex flex-col md:flex-row justify-between items-start md:items-center border-b-4 border-purple-500 rounded-t-lg shadow-sm gap-2">
           <div>
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-wide uppercase italic">
               ODP PROFILE & UTILIZATION
             </h1>
-            <p className="text-[10px] sm:text-xs font-semibold mt-0.5 opacity-90">
-              *{selectedWeek === 'ALL' ? 'ALL WEEKS' : selectedWeek} - Cutoff Data {cutoffDate}
+            <p className="text-[10px] sm:text-xs font-semibold mt-0.5 opacity-90 text-yellow-300">
+              {headerCutoffText}
             </p>
           </div>
 
@@ -536,12 +568,12 @@ export default function Dashboard() {
             </strong>{' '}
             available ports for <strong className="font-extrabold">new sales.</strong>
           </div>
-          {(selectedStatus !== 'ALL' || selectedRx !== 'ALL' || selectedKabupaten !== 'ALL') && (
+          {(selectedStatus !== 'ALL' || selectedRx !== 'ALL' || selectedKabupaten !== 'ALL' || selectedPortFilter !== 'ALL') && (
             <button
               onClick={resetAllFilters}
               className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold whitespace-nowrap self-start sm:self-auto shadow"
             >
-              ✕ Reset Filter
+              ✕ Reset Semua Filter
             </button>
           )}
         </div>
@@ -587,9 +619,19 @@ export default function Dashboard() {
               </div>
 
               <div className="p-2 sm:p-3 grid grid-cols-3 gap-2 sm:gap-3 text-center">
+                
+                {/* 4. TOTAL ODP, USED PORT (HIJAU), AVAI PORT (MERAH) BISA DIKLIK */}
                 <div className="col-span-1 space-y-1.5 sm:space-y-2">
-                  <div className="border border-gray-200 bg-gray-50/50 p-1.5 sm:p-2 rounded">
-                    <p className="text-[8px] sm:text-[9px] font-bold text-gray-500 uppercase">TOTAL ODP (Port)</p>
+                  {/* TOTAL ODP BOX */}
+                  <div
+                    onClick={() => setSelectedPortFilter((p) => (p === 'ALL' ? 'ALL' : 'ALL'))}
+                    className={`border p-1.5 sm:p-2 rounded cursor-pointer transition-transform hover:scale-105 ${
+                      selectedPortFilter === 'ALL'
+                        ? 'border-blue-300 bg-blue-50/70 shadow-sm'
+                        : 'border-slate-200 bg-slate-50'
+                    }`}
+                  >
+                    <p className="text-[8px] sm:text-[9px] font-bold text-blue-800 uppercase">TOTAL ODP (Port)</p>
                     <p className="text-sm sm:text-base font-extrabold text-slate-900 mt-0.5">
                       {totalOdp.toLocaleString()}{' '}
                       <span className="text-[10px] sm:text-xs font-bold text-slate-600">
@@ -597,23 +639,41 @@ export default function Dashboard() {
                       </span>
                     </p>
                   </div>
-                  <div className="border border-gray-200 bg-gray-50/50 p-1.5 sm:p-2 rounded">
-                    <p className="text-[8px] sm:text-[9px] font-bold text-gray-500 uppercase">USED PORT</p>
-                    <p className="text-sm sm:text-base font-extrabold text-slate-900 mt-0.5">
+
+                  {/* USED PORT BOX (HIJAU) */}
+                  <div
+                    onClick={() => setSelectedPortFilter((p) => (p === 'USED' ? 'ALL' : 'USED'))}
+                    className={`border p-1.5 sm:p-2 rounded cursor-pointer transition-transform hover:scale-105 ${
+                      selectedPortFilter === 'USED'
+                        ? 'border-emerald-600 bg-emerald-100 ring-2 ring-emerald-500 shadow'
+                        : 'border-emerald-300 bg-emerald-50/80 hover:bg-emerald-100'
+                    }`}
+                  >
+                    <p className="text-[8px] sm:text-[9px] font-black text-emerald-800 uppercase">USED PORT (Active)</p>
+                    <p className="text-sm sm:text-base font-extrabold text-emerald-950 mt-0.5">
                       {(statsOverview.usedPort / 1000).toFixed(1)} K{' '}
-                      <span className="text-[10px] sm:text-xs font-bold text-slate-600">({occTotal}%)</span>
+                      <span className="text-[10px] sm:text-xs font-bold text-emerald-800">({occTotal}%)</span>
                     </p>
                   </div>
-                  <div className="border border-gray-200 bg-gray-50/50 p-1.5 sm:p-2 rounded">
-                    <p className="text-[8px] sm:text-[9px] font-bold text-gray-500 uppercase">AVAI PORT</p>
-                    <p className="text-sm sm:text-base font-extrabold text-slate-900 mt-0.5">
+
+                  {/* AVAI PORT BOX (MERAH UNTUK SALES) */}
+                  <div
+                    onClick={() => setSelectedPortFilter((p) => (p === 'AVAI' ? 'ALL' : 'AVAI'))}
+                    className={`border p-1.5 sm:p-2 rounded cursor-pointer transition-transform hover:scale-105 ${
+                      selectedPortFilter === 'AVAI'
+                        ? 'border-red-600 bg-red-100 ring-2 ring-red-500 shadow'
+                        : 'border-red-300 bg-red-50/80 hover:bg-red-100'
+                    }`}
+                  >
+                    <p className="text-[8px] sm:text-[9px] font-black text-red-800 uppercase">AVAI PORT (Sales Target)</p>
+                    <p className="text-sm sm:text-base font-extrabold text-red-950 mt-0.5">
                       {(statsOverview.avaiPort / 1000).toFixed(1)} K{' '}
-                      <span className="text-[10px] sm:text-xs font-bold text-slate-600">({avaiTotal}%)</span>
+                      <span className="text-[10px] sm:text-xs font-bold text-red-800">({avaiTotal}%)</span>
                     </p>
                   </div>
                 </div>
 
-                {/* BLACK ODP */}
+                {/* BLACK ODP (POIN 3: [Not change] DIHAPUS) */}
                 <div
                   onClick={() => setSelectedStatus((p) => (p === 'BLACK' ? 'ALL' : 'BLACK'))}
                   className={`col-span-1 border border-gray-400 p-2 shadow-inner flex flex-col justify-center cursor-pointer transition-transform hover:scale-105 rounded relative ${
@@ -632,7 +692,6 @@ export default function Dashboard() {
                       : 0}
                     %
                   </p>
-                  <p className="text-[9px] text-gray-400 font-medium mt-1">[Not change]</p>
                 </div>
 
                 {/* COLORED ODP */}
@@ -738,7 +797,6 @@ export default function Dashboard() {
               </div>
 
               <div className="p-2 sm:p-3 grid grid-cols-4 gap-2 text-center">
-                {/* Green */}
                 <div
                   onClick={() => setSelectedRx((p) => (p === 'GREEN' ? 'ALL' : 'GREEN'))}
                   className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
@@ -754,7 +812,6 @@ export default function Dashboard() {
                   </p>
                 </div>
 
-                {/* Yellow */}
                 <div
                   onClick={() => setSelectedRx((p) => (p === 'YELLOW' ? 'ALL' : 'YELLOW'))}
                   className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
@@ -770,7 +827,6 @@ export default function Dashboard() {
                   </p>
                 </div>
 
-                {/* Orange */}
                 <div
                   onClick={() => setSelectedRx((p) => (p === 'ORANGE' ? 'ALL' : 'ORANGE'))}
                   className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
@@ -786,7 +842,6 @@ export default function Dashboard() {
                   </p>
                 </div>
 
-                {/* Red */}
                 <div
                   onClick={() => setSelectedRx((p) => (p === 'RED' ? 'ALL' : 'RED'))}
                   className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
@@ -804,7 +859,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* 3. ODP SHARE KABUPATEN LEVEL */}
+            {/* 3. PROFIL ODP BRANCH PALANGKARAYA (POIN 2: % SINKRON 100%) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#4c1d95] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 ODP SHARE KABUPATEN LEVEL{' '}
@@ -896,7 +951,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Modal Input Jarak Rute Jalan Raya (OSRM) */}
+              {/* Modal Input Jarak Rute Jalan Raya */}
               {showMeasureModal && (
                 <div className="bg-slate-50 p-2.5 border-b border-slate-200 text-xs space-y-2">
                   <p className="font-bold text-slate-800 text-[11px]">Hitung Jarak Darat (Jalan Raya) Berdasarkan ODP Name / Koordinat:</p>
@@ -934,7 +989,7 @@ export default function Dashboard() {
                     </button>
                     {measureResult && (
                       <p className="font-bold text-blue-900 text-xs">
-                        Jarak Rute Darat: <span className="text-emerald-700">{measureResult.km} km</span> ({measureResult.meter} m)
+                        Jarak: <span className="text-emerald-700 font-black">{measureResult.km} km</span> ({measureResult.meter} m)
                       </p>
                     )}
                   </div>
@@ -942,23 +997,17 @@ export default function Dashboard() {
               )}
 
               <div className="h-[280px] sm:h-[350px] p-1 bg-gray-100">
-                {loading ? (
-                  <div className="flex h-full items-center justify-center font-bold text-gray-400">
-                    Memuat Peta ODP...
-                  </div>
-                ) : (
-                  <MapComponent
-                    data={fullyFilteredData}
-                    focusLocation={focusedOdp}
-                    manualMeasureLine={manualMeasureLine}
-                    manualMeasureInfo={measureResult}
-                    roadRouteCoordinates={roadRouteCoordinates}
-                  />
-                )}
+                <MapComponent
+                  data={fullyFilteredData}
+                  focusLocation={focusedOdp}
+                  manualMeasureLine={manualMeasureLine}
+                  manualMeasureInfo={measureResult}
+                  roadRouteCoordinates={roadRouteCoordinates}
+                />
               </div>
             </div>
 
-            {/* 2. OCCUPANCY & AVAILABLE PORT (LENGKAP DENGAN GRAND TOTAL ROW) */}
+            {/* 2. OCCUPANCY & AVAILABLE PORT (GRAND TOTAL ROW AKTIF) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 OCCUPANCY & AVAILABLE PORT
@@ -1019,7 +1068,7 @@ export default function Dashboard() {
                       );
                     })}
 
-                    {/* GRAND TOTAL ROW DI PALING BAWAH */}
+                    {/* GRAND TOTAL ROW */}
                     <tr className="bg-[#0f172a] text-white font-extrabold sticky bottom-0 z-10 shadow-[0_-2px_10px_rgba(0,0,0,0.2)]">
                       <td colSpan={2} className="p-2 border border-slate-700 text-left pl-3 uppercase">
                         Grand Total
