@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Papa from 'papaparse';
 import Sidebar from '../components/Sidebar';
 import Uploader from '../components/Uploader';
+import { useData } from '../context/DataContext';
 import {
   BarChart,
   Bar,
@@ -16,94 +17,19 @@ import {
 
 const MapComponent = dynamic(() => import('../components/Map'), { ssr: false });
 
-const ALLOWED_STOS = [
-  'BNT', 'PLK', 'KKN', 'MTW', 'PPS', 'PYM', 'TML', 'AMP', 'KKP', 'KRI', 'KSO', 'PRC'
-];
-
 const VALID_KABUPATEN = [
   'BARITO SELATAN', 'KOTA PALANGKARAYA', 'GUNUNG MAS', 'BARITO UTARA',
   'BARITO TIMUR', 'KAPUAS', 'KATINGAN', 'PULANG PISAU', 'MURUNG RAYA',
 ];
-
-const STO_WOK_MAP = {
-  AMP: 'BARITO - KAPUAS', BNT: 'BARITO - KAPUAS', KKP: 'BARITO - KAPUAS',
-  MTW: 'BARITO - KAPUAS', PPS: 'BARITO - KAPUAS', PRC: 'BARITO - KAPUAS',
-  TML: 'BARITO - KAPUAS', KKN: 'PALANGKARAYA', KRI: 'PALANGKARAYA',
-  KSO: 'PALANGKARAYA', PLK: 'PALANGKARAYA', PYM: 'PALANGKARAYA',
-};
 
 const MONTH_NAMES = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 
-const FALLOUT_KEYWORDS = [
-  'ODP BELUM GO LIVE', 'ODP FULL', 'ODP JAUH', 'ODP LOSS', 'ODP RETI', 'ODP RUSAK', 'TIDAK ADA ODP',
-  'KENDALA JALUR/RUTE TARIKAN', 'KENDALA IKR/IKG', 'KENDALA IZIN', 'KENDALA MATERIAL/NTE', 'KENDALA PERANGKAT',
-  'ALAMAT TIDAK DITEMUKAN', 'INDIKASI CABUT PASANG', 'PELANGGAN MASIH RAGU', 'PELANGGAN TIDAK MERASA PASANG',
-  'RUMAH KOSONG', 'CROSS JALAN', 'DOUBLE INPUT', 'GANTI PAKET', 'LIMITASI ONU', 'TIANG', 'BATAL',
-  'PENDING', 'SYSTEM', 'ACTIVATION', 'DATA', 'RNA', 'ODP', 'LAINNYA',
-];
-
-function normalizeFalloutReason(rawVal) {
-  if (!rawVal || String(rawVal).trim() === '' || String(rawVal).toLowerCase() === 'nan' || String(rawVal).toLowerCase() === 'null') {
-    return null;
-  }
-  const cleanStr = String(rawVal).toUpperCase().replace(/_/g, ' ');
-  for (const kw of FALLOUT_KEYWORDS) {
-    const kwClean = kw.toUpperCase().replace(/_/g, ' ');
-    const escaped = kwClean.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-    const regex = new RegExp(`(?<![A-Z0-9])${escaped}(?![A-Z0-9])`, 'i');
-    if (regex.test(cleanStr)) {
-      return kwClean;
-    }
-  }
-  return 'LAINNYA';
-}
-
-function extractSto(odpName, existingSto) {
-  if (existingSto && String(existingSto).trim() !== '' && String(existingSto).toUpperCase() !== 'UNKNOWN') {
-    return String(existingSto).trim().toUpperCase();
-  }
-  if (!odpName) return 'UNKNOWN';
-  const match = String(odpName).match(/ODP-([A-Z0-9]{3})/i);
-  return match && match[1] ? match[1].toUpperCase() : 'UNKNOWN';
-}
-
-function isAllowedOdp(odpName, existingSto) {
-  if (!odpName) return false;
-  const nameUpper = String(odpName).trim().toUpperCase();
-  if (nameUpper.startsWith('OTB-')) return false;
-
-  const sto = extractSto(odpName, existingSto);
-  if (!ALLOWED_STOS.includes(sto)) return false;
-
-  const hasAllowedStoInName = ALLOWED_STOS.some((code) => nameUpper.includes(code));
-  if (!hasAllowedStoInName) return false;
-
-  return true;
-}
-
-function parseDateRobust(raw) {
-  if (!raw) return null;
-  if (typeof raw === 'number' || (!isNaN(raw) && !String(raw).includes('-') && !String(raw).includes('/'))) {
-    const num = parseFloat(raw);
-    if (num > 30000 && num < 60000) return new Date(Math.round((num - 25569) * 86400 * 1000));
-  }
-  const d = new Date(raw);
-  return isNaN(d.getTime()) ? null : d;
-}
-
 function formatDateFormatted(d) {
   if (!d) return '-';
   return `${String(d.getDate()).padStart(2, '0')}-${MONTH_NAMES[d.getMonth()]}-${d.getFullYear()}`;
-}
-
-function parseCleanFloat(val) {
-  if (val === undefined || val === null || val === '') return null;
-  const cleaned = String(val).replace(/[^0-9.-]/g, '');
-  const parsed = parseFloat(cleaned);
-  return isNaN(parsed) ? null : parsed;
 }
 
 const renderExactSegmentLabel = (key) => (props) => {
@@ -187,9 +113,7 @@ const CustomChartTooltip = ({ active, payload, label }) => {
 };
 
 export default function Dashboard() {
-  const [data, setData] = useState([]);
-  const [ordersData, setOrdersData] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { odpData: data, ordersData, odpLoaded, reloadOdp, reloadOrders } = useData();
   const [sortConfig, setSortConfig] = useState({ key: 'occ', direction: 'desc' });
   const [showUploader, setShowUploader] = useState(false);
   
@@ -214,7 +138,7 @@ export default function Dashboard() {
   const [manualMeasureLine, setManualMeasureLine] = useState(null);
   const [roadRouteCoordinates, setRoadRouteCoordinates] = useState([]);
 
-  // Tab & Table States Bagian Bawah (dengan Sorting Tersendiri)
+  // Tab & Table States Bagian Bawah
   const [bottomActiveTab, setBottomActiveTab] = useState('ODP');
   const [tableSearch, setTableSearch] = useState('');
   const [orderTableSearch, setOrderTableSearch] = useState('');
@@ -223,84 +147,6 @@ export default function Dashboard() {
   const [odpTableSort, setOdpTableSort] = useState({ key: 'odp_name', direction: 'asc' });
   const [orderTableSort, setOrderTableSort] = useState({ key: 'order_ts', direction: 'desc' });
   const rowsPerPage = 50;
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/odp');
-      if (res.ok) {
-        const odpData = await res.json();
-        const enrichedData = odpData
-          .filter((item) => isAllowedOdp(item.odp_name, item.sto))
-          .map((item) => {
-            const isTotal = parseInt(item.is_total) || 0;
-            const used = parseInt(item.used) || 0;
-            const avai = parseInt(item.avai) || Math.max(0, isTotal - used);
-            const rsk = isTotal > 0 ? used / isTotal : 0;
-            let status = rsk === 0 ? 'BLACK' : rsk <= 0.6 ? 'GREEN' : rsk <= 0.85 ? 'YELLOW' : rsk < 0.99 ? 'ORANGE' : 'RED';
-            
-            let sto = extractSto(item.odp_name, item.sto);
-            let wok = (item.wok || '').trim().toUpperCase();
-            if (!wok || wok === 'UNKNOWN') wok = STO_WOK_MAP[sto] || 'PALANGKARAYA';
-
-            let kab = (item.kabupaten || '').trim().toUpperCase();
-            let finalKab = VALID_KABUPATEN.includes(kab) ? kab : 'LAINNYA';
-
-            const rxVal = parseCleanFloat(item.ont_rx_level);
-            let rxCategory = 'NO_DATA';
-            if (rxVal !== null) {
-              if (rxVal > -18) rxCategory = 'GREEN';
-              else if (rxVal >= -21 && rxVal <= -18) rxCategory = 'YELLOW';
-              else if (rxVal >= -25 && rxVal < -21) rxCategory = 'ORANGE';
-              else if (rxVal < -25) rxCategory = 'RED';
-            }
-
-            const parsedDate = parseDateRobust(item.event_date);
-            return {
-              ...item,
-              sto,
-              wok,
-              kabupaten: finalKab,
-              is_total: isTotal,
-              used,
-              avai,
-              rsk,
-              parsed_date: parsedDate,
-              ont_rx_level: rxVal,
-              rx_category: rxCategory,
-              status_final: status,
-            };
-          });
-
-        setData(enrichedData);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchOrders = async () => {
-    try {
-      const res = await fetch('/api/orders');
-      if (res.ok) {
-        const oData = await res.json();
-        const enriched = (oData || []).map((row) => ({
-          ...row,
-          fallout_reason_clean: normalizeFalloutReason(row.fallout_reason || row.fallout_category),
-        }));
-        setOrdersData(enriched);
-      }
-    } catch (err) {
-      console.error('Fetch Orders Error:', err);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-    fetchOrders();
-  }, []);
 
   const fullyFilteredData = useMemo(() => {
     return data.filter((d) => {
@@ -436,21 +282,18 @@ export default function Dashboard() {
     return { odp, is_total, used, avai, occ, avai_perc };
   }, [statsFiltered.flatStos]);
 
-  // Sorting Handler ODP Bottom Table
   const requestOdpSort = (key) => {
     let direction = 'asc';
     if (odpTableSort.key === key && odpTableSort.direction === 'asc') direction = 'desc';
     setOdpTableSort({ key, direction });
   };
 
-  // Sorting Handler Order Bottom Table
   const requestOrderSort = (key) => {
     let direction = 'asc';
     if (orderTableSort.key === key && orderTableSort.direction === 'asc') direction = 'desc';
     setOrderTableSort({ key, direction });
   };
 
-  // Data Tabel ODP Bawah dengan Sorting
   const sortedBottomOdpData = useMemo(() => {
     let filtered = fullyFilteredData;
     if (tableSearch.trim()) {
@@ -476,7 +319,6 @@ export default function Dashboard() {
     });
   }, [fullyFilteredData, tableSearch, odpTableSort]);
 
-  // Data Tabel Order Bawah dengan Sorting
   const sortedBottomOrderData = useMemo(() => {
     return [...filteredOrders].sort((a, b) => {
       let valA = a[orderTableSort.key] ?? '';
@@ -618,7 +460,7 @@ export default function Dashboard() {
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
       </Head>
 
-      {loading && (
+      {!odpLoaded && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/70 backdrop-blur-xs flex flex-col items-center justify-center text-white">
           <div className="relative flex items-center justify-center mb-4">
             <div className="w-16 h-16 border-4 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
@@ -687,8 +529,8 @@ export default function Dashboard() {
         {showUploader && (
           <div className="transition-all duration-300">
             <Uploader
-              onUploadOdpSuccess={fetchData}
-              onUploadOrderSuccess={fetchOrders}
+              onUploadOdpSuccess={reloadOdp}
+              onUploadOrderSuccess={reloadOrders}
             />
           </div>
         )}
@@ -697,7 +539,7 @@ export default function Dashboard() {
           {/* ================= KOLOM KIRI ================= */}
           <div className="space-y-3 sm:space-y-4">
             
-            {/* 1. OVERVIEW ODP PROFILE */}
+            {/* OVERVIEW ODP PROFILE */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
                 <span className="font-extrabold text-xs sm:text-sm tracking-wide">OVERVIEW ODP PROFILE</span>
@@ -748,7 +590,6 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* BLACK ODP */}
                 <div
                   onClick={() => setSelectedStatus((p) => (p === 'BLACK' ? 'ALL' : 'BLACK'))}
                   className={`col-span-1 border border-gray-400 p-2 shadow-inner flex flex-col justify-center cursor-pointer transition-transform hover:scale-105 rounded relative ${
@@ -769,7 +610,6 @@ export default function Dashboard() {
                   </p>
                 </div>
 
-                {/* Colored ODP */}
                 <div className="col-span-1 grid grid-cols-2 gap-1.5 sm:gap-2">
                   <div
                     onClick={() => setSelectedStatus((p) => (p === 'YELLOW' ? 'ALL' : 'YELLOW'))}
@@ -846,7 +686,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* 2. KUALITAS REDAMAN (ONT RX LEVEL) */}
+            {/* KUALITAS REDAMAN */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#059669] via-[#0d9488] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
                 <span className="font-extrabold text-xs sm:text-sm tracking-wide">KUALITAS REDAMAN (ONT RX LEVEL)</span>
@@ -922,7 +762,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* 3. ODP SHARE KABUPATEN LEVEL */}
+            {/* ODP SHARE KABUPATEN LEVEL */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#4c1d95] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
                 <span className="font-extrabold text-xs sm:text-sm tracking-wide">ODP SHARE KABUPATEN LEVEL</span>
@@ -1071,7 +911,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* OCCUPANCY & AVAILABLE PORT (FULL CLICKABLE & SORTABLE) */}
+            {/* OCCUPANCY & AVAILABLE PORT */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
                 <span className="font-extrabold text-xs sm:text-sm tracking-wide">OCCUPANCY & AVAILABLE PORT</span>
@@ -1177,7 +1017,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ================= SECTION BAWAH: TABEL DETAIL RAW DATA (FULL SORTABLE & CLICKABLE) ================= */}
+        {/* BOTTOM RAW DATA TABLE */}
         <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden mt-4">
           <div className="bg-gradient-to-r from-[#0f172a] via-[#1e293b] to-[#334155] text-white p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <div className="flex items-center gap-2">
@@ -1480,6 +1320,7 @@ export default function Dashboard() {
                               </span>
                             ) : '-'}
                           </td>
+                          <td className="p-1.5 border border-slate-200 text-slate-500 max-w-[200px] truncate" title={row.fallout_reason}>{row.fallout_reason || '-'}</td>
                           <td className="p-1.5 border border-slate-200 text-right">{row.price_package ? Number(row.price_package).toLocaleString() : '-'}</td>
                           <td className="p-1.5 border border-slate-200">{row.order_ts || '-'}</td>
                           <td className="p-1.5 border border-slate-200">{row.ps_ts || '-'}</td>
@@ -1496,7 +1337,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Pagination Controls */}
+          {/* Pagination */}
           <div className="bg-slate-50 p-2.5 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-2 text-xs font-semibold">
             {bottomActiveTab === 'ODP' ? (
               <>
