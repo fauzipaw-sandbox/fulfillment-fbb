@@ -1,36 +1,73 @@
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { useEffect } from 'react';
+import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
 
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
+function SetBounds({ data }) {
+  const map = useMap();
+  useEffect(() => {
+    if (data && data.length > 0) {
+      const validCoords = data
+        .filter((d) => d.latitude && d.longitude)
+        .map((d) => [d.latitude, d.longitude]);
+      if (validCoords.length > 0) {
+        map.fitBounds(validCoords, { padding: [30, 30], maxZoom: 12 });
+      }
+    }
+  }, [data, map]);
+  return null;
+}
 
 export default function Map({ data }) {
-  const center = [-1.7, 114.8]; // Titik tengah Kalimantan
+  const defaultCenter = [-1.7, 114.8]; // Central Kalimantan coordinate
+
+  const getColor = (status) => {
+    const s = (status || '').toUpperCase();
+    if (s.includes('RED')) return '#dc2626';
+    if (s.includes('ORANGE')) return '#ea580c';
+    if (s.includes('YELLOW')) return '#eab308';
+    if (s.includes('GREEN')) return '#16a34a';
+    return '#111827'; // BLACK
+  };
 
   return (
-    <MapContainer center={center} zoom={7} style={{ height: '100%', width: '100%' }}>
-      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-      {data.map((odp) => {
-        if (odp.latitude && odp.longitude) {
-          return (
-            <Marker key={odp.odp_name} position={[odp.latitude, odp.longitude]}>
-              <Popup>
-                <div className="text-xs">
-                  <p className="font-bold text-blue-700">{odp.odp_name}</p>
-                  <p><strong>STO:</strong> {odp.sto || '-'}</p>
-                  <p><strong>Used / Total:</strong> {odp.used} / {odp.is_total}</p>
-                  <p><strong>Status:</strong> {odp.status_final}</p>
-                </div>
-              </Popup>
-            </Marker>
-          );
-        }
-        return null;
+    <MapContainer
+      center={defaultCenter}
+      zoom={7}
+      style={{ height: '100%', width: '100%', borderRadius: '0.375rem' }}
+    >
+      <TileLayer
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      />
+      <SetBounds data={data} />
+      {data.map((odp, idx) => {
+        if (!odp.latitude || !odp.longitude) return null;
+        const color = getColor(odp.status_final);
+
+        return (
+          <CircleMarker
+            key={`${odp.odp_name}-${idx}`}
+            center={[odp.latitude, odp.longitude]}
+            radius={5}
+            pathOptions={{
+              fillColor: color,
+              fillOpacity: 0.85,
+              color: '#ffffff',
+              weight: 1,
+            }}
+          >
+            <Popup>
+              <div className="text-xs font-sans space-y-1">
+                <p className="font-bold text-blue-900 border-b pb-1">{odp.odp_name}</p>
+                <p><strong>STO:</strong> {odp.sto || '-'}</p>
+                <p><strong>WOK:</strong> {odp.wok || '-'}</p>
+                <p><strong>Kabupaten:</strong> {odp.kabupaten || '-'}</p>
+                <p><strong>Used / Total:</strong> {odp.used || 0} / {odp.is_total || 0}</p>
+                <p><strong>Status:</strong> <span className="font-semibold" style={{ color }}>{odp.status_final || 'N/A'}</span></p>
+              </div>
+            </Popup>
+          </CircleMarker>
+        );
       })}
     </MapContainer>
   );
