@@ -1,107 +1,293 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
+import Head from 'next/head';
+import { supabase } from '../lib/supabase';
 import Uploader from '../components/Uploader';
-import { createClient } from '@supabase/supabase-js';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
-
-// Panggil Map secara dinamis agar tidak error saat SSR di Next.js
+// Import Map secara dynamic (no SSR)
 const MapComponent = dynamic(() => import('../components/Map'), { ssr: false });
 
 export default function Dashboard() {
   const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
-    const { data: odpData, error } = await supabase
-      .from('odp_kalimantan')
-      .select('*');
-    if (!error) setData(odpData);
+    setLoading(true);
+    const { data: odpData, error } = await supabase.from('odp_kalimantan').select('*');
+    if (!error && odpData) setData(odpData);
+    setLoading(false);
   };
 
   useEffect(() => {
     fetchData();
   }, []);
 
-  return (
-    <div className="min-h-screen bg-gray-100 p-8">
-      {/* Header Tanpa Logo Spesifik */}
-      <div className="bg-blue-900 text-white p-6 rounded-t-xl flex justify-between items-center shadow-lg">
-        <div>
-          <h1 className="text-3xl font-bold">ODP PROFILE & UTILIZATION</h1>
-          <p className="text-sm opacity-80">Dashboard Area Kalimantan</p>
-        </div>
-      </div>
+  // --- LOGIC PERHITUNGAN DATA ---
+  const stats = useMemo(() => {
+    let totalPort = 0, usedPort = 0, avaiPort = 0;
+    let colorCounts = { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 };
+    
+    // Untuk Bar Chart
+    const kabMap = {};
+    
+    // Untuk Tabel Occupancy
+    const wokMap = {};
 
-      <div className="mt-6">
-        {/* Fitur Upload File */}
+    data.forEach(item => {
+      totalPort += item.is_total || 0;
+      usedPort += item.used || 0;
+      avaiPort += item.avai || 0;
+
+      const status = (item.status_final || '').toUpperCase();
+      if (status.includes('BLACK')) colorCounts.BLACK += 1;
+      else if (status.includes('GREEN')) colorCounts.GREEN += 1;
+      else if (status.includes('YELLOW')) colorCounts.YELLOW += 1;
+      else if (status.includes('ORANGE')) colorCounts.ORANGE += 1;
+      else if (status.includes('RED')) colorCounts.RED += 1;
+
+      // Grouping Kabupaten untuk Chart
+      const kab = item.kabupaten || 'UNKNOWN';
+      if (!kabMap[kab]) kabMap[kab] = { name: kab, BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0, total: 0 };
+      kabMap[kab].total += 1;
+      if (kabMap[kab][status] !== undefined) kabMap[kab][status] += 1;
+
+      // Grouping WOK -> STO untuk Tabel
+      const wok = item.wok || 'UNKNOWN';
+      const sto = item.sto || 'UNKNOWN';
+      if (!wokMap[wok]) wokMap[wok] = { is_total: 0, used: 0, avai: 0, stos: {} };
+      if (!wokMap[wok].stos[sto]) wokMap[wok].stos[sto] = { odp_count: 0, is_total: 0, used: 0, avai: 0 };
+      
+      wokMap[wok].is_total += (item.is_total || 0);
+      wokMap[wok].used += (item.used || 0);
+      wokMap[wok].avai += (item.avai || 0);
+      
+      wokMap[wok].stos[sto].odp_count += 1;
+      wokMap[wok].stos[sto].is_total += (item.is_total || 0);
+      wokMap[wok].stos[sto].used += (item.used || 0);
+      wokMap[wok].stos[sto].avai += (item.avai || 0);
+    });
+
+    const chartData = Object.values(kabMap);
+    
+    return { totalPort, usedPort, avaiPort, colorCounts, chartData, wokMap };
+  }, [data]);
+
+  const occTotal = stats.totalPort > 0 ? ((stats.usedPort / stats.totalPort) * 100).toFixed(1) : 0;
+  const avaiTotal = stats.totalPort > 0 ? ((stats.avaiPort / stats.totalPort) * 100).toFixed(1) : 0;
+  const totalOdp = data.length;
+
+  return (
+    <div className="min-h-screen bg-[#f4f6f9] p-4 text-xs font-sans text-gray-800">
+      <Head>
+        <title>ODP Profile & Utilization</title>
+      </Head>
+
+      <div className="max-w-[1400px] mx-auto space-y-4">
+        {/* HEADER */}
+        <div className="bg-gradient-to-r from-blue-900 to-indigo-900 text-white p-4 rounded flex justify-between items-center shadow">
+          <div>
+            <h1 className="text-2xl font-bold italic tracking-wider">ODP PROFILE & UTILIZATION</h1>
+            <p className="text-[10px] mt-1">*W20 - Cutoff Data 11 May 2026</p>
+          </div>
+        </div>
+
+        {/* NARRATIVE SUMMARY */}
+        <div className="bg-white px-4 py-2 rounded border-l-4 border-blue-900 shadow-sm text-sm">
+          The total <strong>number of ODP</strong> in Branch Palangkaraya was <strong>{(totalOdp/1000).toFixed(1)}K</strong> ({(stats.totalPort/1000).toFixed(1)} K Port) which is Occupancy <strong>{(stats.usedPort/1000).toFixed(1)}K Port ({occTotal}%)</strong> and <strong>{(stats.avaiPort/1000).toFixed(1)}K ({avaiTotal}%)</strong> available ports for <strong>new sales.</strong>
+        </div>
+
         <Uploader onUploadSuccess={fetchData} />
 
-        {/* Grid Layout mirip desain */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* MAIN GRID */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           
-          {/* Kolom Kiri: Overview & Bar Chart */}
-          <div className="space-y-6">
-            <div className="bg-white p-6 rounded-lg shadow-md border-t-4 border-indigo-700">
-              <h2 className="text-xl font-bold text-center text-indigo-900 mb-4">OVERVIEW ODP PROFILE</h2>
-              {/* Tempat naro KPI Cards (Total, Used, Avai, Green/Red/Yellow) */}
-              <div className="grid grid-cols-2 gap-4 text-center">
-                 <div className="p-4 border rounded">
-                   <p className="text-gray-500 text-sm">TOTAL ODP (Port)</p>
-                   <p className="text-2xl font-bold">{data.reduce((acc, curr) => acc + curr.is_total, 0).toLocaleString()}</p>
-                 </div>
-                 <div className="p-4 border rounded border-red-500">
-                   <p className="text-gray-500 text-sm">RED ODP</p>
-                   <p className="text-2xl font-bold text-red-600">
-                     {data.filter(d => d.status_final === 'RED').length}
-                   </p>
-                 </div>
-                 {/* Tambahin card lain di sini */}
+          {/* LEFT COLUMN: OVERVIEW & CHART */}
+          <div className="lg:col-span-6 space-y-4">
+            
+            {/* OVERVIEW SECTION */}
+            <div className="bg-white rounded shadow-sm border border-gray-200 overflow-hidden">
+              <div className="bg-gradient-to-r from-red-700 via-purple-800 to-blue-900 text-white text-center py-1 font-bold">
+                OVERVIEW ODP PROFILE
+              </div>
+              <div className="p-4 grid grid-cols-3 gap-2 text-center items-center">
+                
+                {/* Port Summary */}
+                <div className="col-span-1 space-y-2">
+                  <div className="border rounded bg-gray-50 p-2">
+                    <p className="text-[10px] text-gray-500 font-bold uppercase">TOTAL ODP (Port)</p>
+                    <p className="text-lg font-bold">{totalOdp.toLocaleString()} ({(stats.totalPort/1000).toFixed(1)} K)</p>
+                  </div>
+                  <div className="border rounded bg-gray-50 p-2">
+                    <p className="text-[10px] text-gray-500 font-bold uppercase">USED PORT</p>
+                    <p className="text-lg font-bold">{(stats.usedPort/1000).toFixed(1)} K ({occTotal}%)</p>
+                  </div>
+                  <div className="border rounded bg-gray-50 p-2">
+                    <p className="text-[10px] text-gray-500 font-bold uppercase">AVAI PORT</p>
+                    <p className="text-lg font-bold">{(stats.avaiPort/1000).toFixed(1)} K ({avaiTotal}%)</p>
+                  </div>
+                </div>
+
+                {/* BLACK ODP */}
+                <div className="col-span-1 border-2 border-gray-800 rounded p-4 mx-2">
+                  <div className="bg-black text-white text-[10px] font-bold mx-auto w-max px-2 py-0.5 rounded-sm">BLACK ODP</div>
+                  <p className="text-3xl font-bold mt-2">{stats.colorCounts.BLACK.toLocaleString()}</p>
+                  <p className="text-xs text-gray-600 mt-1">{totalOdp > 0 ? ((stats.colorCounts.BLACK/totalOdp)*100).toFixed(1) : 0}%</p>
+                  <p className="text-[10px] text-gray-500 mt-1">[Not change]</p>
+                </div>
+
+                {/* Color ODPs */}
+                <div className="col-span-1 grid grid-cols-2 gap-2">
+                  <div>
+                    <div className="bg-yellow-400 text-black text-[10px] font-bold mx-auto w-max px-2 py-0.5 rounded-sm">YELLOW ODP</div>
+                    <p className="text-xl font-bold mt-1">{stats.colorCounts.YELLOW.toLocaleString()}</p>
+                    <p className="text-xs text-gray-600">{totalOdp > 0 ? ((stats.colorCounts.YELLOW/totalOdp)*100).toFixed(1) : 0}%</p>
+                  </div>
+                  <div>
+                    <div className="bg-green-600 text-white text-[10px] font-bold mx-auto w-max px-2 py-0.5 rounded-sm">GREEN ODP</div>
+                    <p className="text-xl font-bold mt-1">{stats.colorCounts.GREEN.toLocaleString()}</p>
+                    <p className="text-xs text-green-700">{totalOdp > 0 ? ((stats.colorCounts.GREEN/totalOdp)*100).toFixed(1) : 0}%</p>
+                  </div>
+                  <div className="mt-2">
+                    <div className="bg-orange-500 text-white text-[10px] font-bold mx-auto w-max px-2 py-0.5 rounded-sm">ORANGE ODP</div>
+                    <p className="text-xl font-bold mt-1">{stats.colorCounts.ORANGE.toLocaleString()}</p>
+                    <p className="text-xs text-gray-600">{totalOdp > 0 ? ((stats.colorCounts.ORANGE/totalOdp)*100).toFixed(1) : 0}%</p>
+                  </div>
+                  <div className="mt-2">
+                    <div className="bg-red-600 text-white text-[10px] font-bold mx-auto w-max px-2 py-0.5 rounded-sm">RED ODP</div>
+                    <p className="text-xl font-bold mt-1">{stats.colorCounts.RED.toLocaleString()}</p>
+                    <p className="text-xs text-red-600">{totalOdp > 0 ? ((stats.colorCounts.RED/totalOdp)*100).toFixed(1) : 0}%</p>
+                  </div>
+                </div>
+              </div>
+              {/* Legend Bawah Overview */}
+              <div className="flex justify-around items-center p-2 bg-gray-50 border-t text-[10px] font-bold">
+                <span className="flex items-center"><div className="w-6 h-3 bg-black mr-2"></div>0%</span>
+                <span className="flex items-center"><div className="w-6 h-3 bg-green-500 mr-2"></div>&lt;60%</span>
+                <span className="flex items-center"><div className="w-6 h-3 bg-yellow-400 mr-2"></div>&lt;95%</span>
+                <span className="flex items-center"><div className="w-6 h-3 bg-red-600 mr-2"></div>100%</span>
               </div>
             </div>
 
-            {/* Tempat naro Recharts Bar Chart ODP Share */}
-            <div className="bg-white p-6 rounded-lg shadow-md border-t-4 border-indigo-700">
-               <h2 className="text-xl font-bold text-center text-indigo-900 mb-4">ODP SHARE KABUPATEN LEVEL</h2>
-               <div className="h-64 flex items-center justify-center bg-gray-50 border border-dashed text-gray-400">
-                 [Recharts Bar Chart Component Di Sini]
-               </div>
+            {/* CHART SECTION */}
+            <div className="bg-white rounded shadow-sm border border-gray-200 overflow-hidden">
+              <div className="bg-gradient-to-r from-purple-800 to-blue-900 text-white text-center py-1 font-bold">
+                ODP SHARE KABUPATEN LEVEL
+              </div>
+              <div className="p-4">
+                <h3 className="text-center font-bold text-gray-600 mb-4">PROFIL ODP BRANCH PALANGKARAYA</h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={stats.chartData} margin={{ top: 20, right: 30, left: 0, bottom: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="name" tick={{fontSize: 8}} interval={0} angle={-30} textAnchor="end" />
+                      <YAxis tick={{fontSize: 10}} />
+                      <Tooltip />
+                      <Bar dataKey="BLACK" stackId="a" fill="#1f2937" />
+                      <Bar dataKey="GREEN" stackId="a" fill="#22c55e" />
+                      <Bar dataKey="YELLOW" stackId="a" fill="#facc15" />
+                      <Bar dataKey="ORANGE" stackId="a" fill="#f97316" />
+                      <Bar dataKey="RED" stackId="a" fill="#dc2626" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Kolom Kanan: Tabel & Maps */}
-          <div className="space-y-6">
-            <div className="bg-white p-6 rounded-lg shadow-md border-t-4 border-red-700">
-              <h2 className="text-xl font-bold text-center text-red-900 mb-4">OCCUPANCY & AVAILABLE PORT</h2>
-              {/* Tempat naro Tabel WOK / STO */}
+          {/* RIGHT COLUMN: TABLE & MAPS */}
+          <div className="lg:col-span-6 space-y-4">
+            
+            {/* OCCUPANCY TABLE */}
+            <div className="bg-white rounded shadow-sm border border-gray-200 overflow-hidden">
+              <div className="bg-gradient-to-r from-red-700 to-purple-800 text-white text-center py-1 font-bold">
+                OCCUPANCY & AVAILABLE PORT
+              </div>
               <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-indigo-900 text-white">
+                <table className="w-full text-[10px] text-right border-collapse">
+                  <thead className="bg-[#0b2165] text-white text-center">
                     <tr>
-                      <th className="px-4 py-2">WOK</th>
-                      <th className="px-4 py-2">STO</th>
-                      <th className="px-4 py-2">TOTAL</th>
-                      <th className="px-4 py-2">USED</th>
+                      <th className="p-1 border border-gray-400">WOK</th>
+                      <th className="p-1 border border-gray-400">STO</th>
+                      <th className="p-1 border border-gray-400"># Odp_name</th>
+                      <th className="p-1 border border-gray-400"># ls_total</th>
+                      <th className="p-1 border border-gray-400"># Used</th>
+                      <th className="p-1 border border-gray-400"># Avail</th>
+                      <th className="p-1 border border-gray-400">% OCC</th>
+                      <th className="p-1 border border-gray-400">% Avail</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {/* Looping data tabel grouping di sini */}
+                    {Object.entries(stats.wokMap).map(([wokName, wokData], i) => (
+                      <React.Fragment key={wokName}>
+                        {Object.entries(wokData.stos).map(([stoName, stoData], j) => {
+                          const occPercent = stoData.is_total > 0 ? (stoData.used / stoData.is_total) * 100 : 0;
+                          const avaiPercent = stoData.is_total > 0 ? (stoData.avai / stoData.is_total) * 100 : 0;
+                          
+                          // Penentuan warna background % OCC
+                          let occColor = '';
+                          if(occPercent >= 85) occColor = 'bg-red-400';
+                          else if(occPercent >= 75) occColor = 'bg-orange-300';
+                          else if(occPercent >= 65) occColor = 'bg-yellow-200';
+                          else occColor = 'bg-green-300';
+
+                          return (
+                            <tr key={stoName} className="border-b hover:bg-gray-50 text-center">
+                              {j === 0 && <td rowSpan={Object.keys(wokData.stos).length} className="p-1 border border-gray-300 bg-white align-middle">{wokName}</td>}
+                              <td className="p-1 border border-gray-300">{stoName}</td>
+                              <td className="p-1 border border-gray-300">{stoData.odp_count.toLocaleString()}</td>
+                              <td className="p-1 border border-gray-300">{stoData.is_total.toLocaleString()}</td>
+                              <td className="p-1 border border-gray-300">{stoData.used.toLocaleString()}</td>
+                              <td className="p-1 border border-gray-300">{stoData.avai.toLocaleString()}</td>
+                              <td className={`p-1 border border-gray-300 ${occColor}`}>{occPercent.toFixed(1)}%</td>
+                              <td className="p-1 border border-gray-300">{avaiPercent.toFixed(1)}%</td>
+                            </tr>
+                          );
+                        })}
+                        {/* Subtotal WOK */}
+                        <tr className="bg-[#4b85c5] text-white font-bold text-center">
+                          <td colSpan={2} className="p-1 border border-gray-300">{wokName} Total</td>
+                          <td className="p-1 border border-gray-300">
+                            {Object.values(wokData.stos).reduce((a,b) => a+b.odp_count, 0).toLocaleString()}
+                          </td>
+                          <td className="p-1 border border-gray-300">{wokData.is_total.toLocaleString()}</td>
+                          <td className="p-1 border border-gray-300">{wokData.used.toLocaleString()}</td>
+                          <td className="p-1 border border-gray-300">{wokData.avai.toLocaleString()}</td>
+                          <td className="p-1 border border-gray-300">{wokData.is_total > 0 ? ((wokData.used / wokData.is_total)*100).toFixed(1) : 0}%</td>
+                          <td className="p-1 border border-gray-300">{wokData.is_total > 0 ? ((wokData.avai / wokData.is_total)*100).toFixed(1) : 0}%</td>
+                        </tr>
+                      </React.Fragment>
+                    ))}
+                    {/* Grand Total */}
+                    <tr className="bg-[#0b2165] text-white font-bold text-center">
+                      <td colSpan={2} className="p-1 border border-gray-400">Grand Total</td>
+                      <td className="p-1 border border-gray-400">{totalOdp.toLocaleString()}</td>
+                      <td className="p-1 border border-gray-400">{stats.totalPort.toLocaleString()}</td>
+                      <td className="p-1 border border-gray-400">{stats.usedPort.toLocaleString()}</td>
+                      <td className="p-1 border border-gray-400">{stats.avaiPort.toLocaleString()}</td>
+                      <td className="p-1 border border-gray-400">{occTotal}%</td>
+                      <td className="p-1 border border-gray-400">{avaiTotal}%</td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
             </div>
 
-            {/* Peta Lokasi ODP */}
-            <div className="bg-white p-6 rounded-lg shadow-md border-t-4 border-blue-500">
-              <h2 className="text-xl font-bold text-center text-blue-900 mb-4">MAPS LOKASI ODP</h2>
-              <div className="h-72 rounded overflow-hidden">
-                <MapComponent data={data} />
-              </div>
+            {/* MAPS LOKASI ODP */}
+            <div className="bg-white rounded shadow-sm border border-gray-200 overflow-hidden">
+               <div className="bg-gradient-to-r from-purple-800 to-blue-900 text-white text-center py-1 font-bold">
+                 MAPS LOKASI ODP
+               </div>
+               <div className="h-72 w-full bg-gray-100">
+                 {loading ? (
+                   <div className="h-full flex items-center justify-center">Loading Maps...</div>
+                 ) : (
+                   <MapComponent data={data} />
+                 )}
+               </div>
             </div>
-          </div>
 
+          </div>
         </div>
       </div>
     </div>
