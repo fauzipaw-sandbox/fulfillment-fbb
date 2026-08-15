@@ -80,7 +80,6 @@ function parseCleanFloat(val) {
   return isNaN(parsed) ? null : parsed;
 }
 
-// Poin 2: Custom Label di dalam segmen grafik batang (Pasti muncul dan sinkron 100%)
 const renderExactSegmentLabel = (key) => (props) => {
   const { x, y, width, height, payload } = props;
   const val = payload ? payload[key] : null;
@@ -101,7 +100,7 @@ const renderExactSegmentLabel = (key) => (props) => {
   );
 };
 
-// Poin 1: Custom XAxis Tick dengan Highlight khusus untuk kategori LAINNYA
+// Custom X-Axis Tick Highlight Bersih untuk LAINNYA
 const CustomXAxisTick = ({ x, y, payload }) => {
   const isLainnya = payload.value === 'LAINNYA';
   return (
@@ -111,18 +110,18 @@ const CustomXAxisTick = ({ x, y, payload }) => {
         y={0}
         dy={10}
         textAnchor="end"
-        fill={isLainnya ? '#dc2626' : '#334155'}
+        fill={isLainnya ? '#ea580c' : '#334155'}
         fontWeight={isLainnya ? '900' : '700'}
-        fontSize={isLainnya ? 9 : 8}
+        fontSize={8}
+        fontStyle={isLainnya ? 'italic' : 'normal'}
         transform="rotate(-25)"
       >
-        {isLainnya ? '⚠️ LAINNYA' : payload.value}
+        {isLainnya ? 'LAINNYA*' : payload.value}
       </text>
     </g>
   );
 };
 
-// Tooltip Pop-up Grafik Batang dengan Grand Total
 const CustomChartTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     const totalOdpKab = payload[0]?.payload?.total || 0;
@@ -168,7 +167,6 @@ export default function Dashboard() {
   const [sortConfig, setSortConfig] = useState({ key: 'occ', direction: 'desc' });
   const [showUploader, setShowUploader] = useState(false);
   
-  // Filter States
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [selectedRx, setSelectedRx] = useState('ALL');
   const [selectedKabupaten, setSelectedKabupaten] = useState('ALL');
@@ -241,7 +239,6 @@ export default function Dashboard() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // Filter Sinkron Seluruh Komponen
   const fullyFilteredData = useMemo(() => {
     return data.filter((d) => {
       const matchStatus = selectedStatus === 'ALL' || d.status_final === selectedStatus;
@@ -263,7 +260,6 @@ export default function Dashboard() {
     return `*Cut Off Data until ${formatDateFormatted(latestDate)}`;
   }, [data]);
 
-  // Overview Stats
   const statsOverview = useMemo(() => {
     let totalPort = 0, usedPort = 0, avaiPort = 0;
     let colorCounts = { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 };
@@ -288,7 +284,6 @@ export default function Dashboard() {
     return { totalPort, usedPort, avaiPort, colorCounts, colorPorts, rxCounts, rxPorts };
   }, [fullyFilteredData]);
 
-  // Chart & Tabel Stats
   const statsFiltered = useMemo(() => {
     const kabMap = {}, flatStosMap = {};
     VALID_KABUPATEN.concat(['LAINNYA']).forEach(k => {
@@ -335,43 +330,6 @@ export default function Dashboard() {
 
     return { chartData, flatStos };
   }, [fullyFilteredData]);
-
-  // Poin 7: Executive Summary Analysis
-  const summaryAnalysis = useMemo(() => {
-    if (data.length === 0) return null;
-
-    // Top & Lowest Kab
-    const kabCounts = {};
-    const stoOcc = {};
-
-    data.forEach((d) => {
-      kabCounts[d.kabupaten] = (kabCounts[d.kabupaten] || 0) + 1;
-      if (!stoOcc[d.sto]) stoOcc[d.sto] = { used: 0, total: 0 };
-      stoOcc[d.sto].used += d.used;
-      stoOcc[d.sto].total += d.is_total;
-    });
-
-    const sortedKab = Object.entries(kabCounts).sort((a, b) => b[1] - a[1]);
-    const maxKab = sortedKab[0];
-    const minKab = sortedKab[sortedKab.length - 1];
-
-    const stoRanks = Object.entries(stoOcc)
-      .map(([sto, val]) => ({
-        sto,
-        occ: val.total > 0 ? (val.used / val.total) * 100 : 0,
-      }))
-      .sort((a, b) => b.occ - a.occ);
-
-    const highestOccSto = stoRanks[0];
-    const lowestOccSto = stoRanks[stoRanks.length - 1];
-
-    return {
-      maxKab: maxKab ? `${maxKab[0]} (${maxKab[1].toLocaleString()} ODP)` : '-',
-      minKab: minKab ? `${minKab[0]} (${minKab[1].toLocaleString()} ODP)` : '-',
-      highestOccSto: highestOccSto ? `${highestOccSto.sto} (${highestOccSto.occ.toFixed(1)}%)` : '-',
-      lowestOccSto: lowestOccSto ? `${lowestOccSto.sto} (${lowestOccSto.occ.toFixed(1)}%)` : '-',
-    };
-  }, [data]);
 
   const sortedTableData = useMemo(() => {
     let sortableItems = [...statsFiltered.flatStos];
@@ -498,14 +456,14 @@ export default function Dashboard() {
       )}
 
       <div className="max-w-[1450px] mx-auto space-y-3">
-        {/* Poin 6: Filter Week Dihapus (Show All Data) */}
+        {/* HEADER UTAMA */}
         <div className="bg-gradient-to-r from-[#211c47] to-[#3a3575] text-white p-3 sm:p-4 flex flex-col md:flex-row justify-between items-start md:items-center border-b-4 border-purple-500 rounded-t-lg shadow-sm gap-2">
           <div>
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-wide uppercase italic">
               ODP PROFILE & UTILIZATION
             </h1>
             <p className="text-[10px] sm:text-xs font-semibold mt-0.5 opacity-90 text-yellow-300">
-              {headerCutoffText} &bull; SHOW ALL DATA
+              {headerCutoffText}
             </p>
           </div>
 
@@ -548,40 +506,10 @@ export default function Dashboard() {
               onClick={resetAllFilters}
               className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold whitespace-nowrap self-start sm:self-auto shadow"
             >
-              ✕ Reset Semua Filter
+              ✕ Reset Semua Filter ({selectedStoFilter !== 'ALL' ? `STO: ${selectedStoFilter}` : selectedWokFilter !== 'ALL' ? `WOK: ${selectedWokFilter}` : 'Aktif'})
             </button>
           )}
         </div>
-
-        {/* Poin 7: BOX SUMMARY ANALYSIS BARU */}
-        {summaryAnalysis && (
-          <div className="bg-white border border-slate-300 rounded shadow-sm p-3">
-            <div className="flex items-center gap-1.5 border-b pb-1.5 mb-2">
-              <span className="text-sm">📊</span>
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
-                Summary Executive Analysis
-              </h3>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-center text-xs">
-              <div className="bg-slate-50 p-2 rounded border border-slate-200">
-                <span className="text-[9px] text-slate-400 font-bold uppercase block">ODP Terbanyak</span>
-                <span className="font-extrabold text-blue-900 text-[11px] block mt-0.5">{summaryAnalysis.maxKab}</span>
-              </div>
-              <div className="bg-slate-50 p-2 rounded border border-slate-200">
-                <span className="text-[9px] text-slate-400 font-bold uppercase block">ODP Tersedikit</span>
-                <span className="font-extrabold text-slate-800 text-[11px] block mt-0.5">{summaryAnalysis.minKab}</span>
-              </div>
-              <div className="bg-red-50 p-2 rounded border border-red-200">
-                <span className="text-[9px] text-red-700 font-bold uppercase block">Highest OCC STO (Kritis)</span>
-                <span className="font-extrabold text-red-950 text-[11px] block mt-0.5">{summaryAnalysis.highestOccSto}</span>
-              </div>
-              <div className="bg-emerald-50 p-2 rounded border border-emerald-200">
-                <span className="text-[9px] text-emerald-700 font-bold uppercase block">Lowest OCC STO (Idle Port)</span>
-                <span className="font-extrabold text-emerald-950 text-[11px] block mt-0.5">{summaryAnalysis.lowestOccSto}</span>
-              </div>
-            </div>
-          </div>
-        )}
 
         {showUploader && (
           <div className="transition-all duration-300">
@@ -741,7 +669,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Poin 5: KUALITAS REDAMAN (ONT RX LEVEL) DENGAN TOTAL PORT */}
+            {/* KUALITAS REDAMAN (ONT RX LEVEL) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#059669] via-[#0d9488] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 KUALITAS REDAMAN (ONT RX LEVEL){' '}
@@ -817,7 +745,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Poin 1 & 2: ODP SHARE KABUPATEN LEVEL DENGAN HIGHLIGHT "LAINNYA" & LABEL BATANG SINKRON */}
+            {/* ODP SHARE KABUPATEN LEVEL */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#4c1d95] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 ODP SHARE KABUPATEN LEVEL{' '}
@@ -854,7 +782,6 @@ export default function Dashboard() {
                       />
                       <Tooltip content={<CustomChartTooltip />} />
                       
-                      {/* Poin 2: Label Persentase Tampil & Sinkron dengan Popup */}
                       <Bar dataKey="BLACK" stackId="a" fill="#000000" label={renderExactSegmentLabel('BLACK')} />
                       <Bar dataKey="GREEN" stackId="a" fill="#16a34a" label={renderExactSegmentLabel('GREEN')} />
                       <Bar dataKey="YELLOW" stackId="a" fill="#facc15" label={renderExactSegmentLabel('YELLOW')} />
@@ -967,7 +894,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* OCCUPANCY & AVAILABLE PORT (Poin 4: Grand Total Polos Tanpa Conditional Formatting) */}
+            {/* OCCUPANCY & AVAILABLE PORT */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 OCCUPANCY & AVAILABLE PORT{' '}
@@ -1045,17 +972,12 @@ export default function Dashboard() {
                           <td className="p-1 border border-gray-300 text-gray-600">{row.is_total.toLocaleString()}</td>
                           <td className="p-1 border border-gray-300 text-gray-600">{row.used.toLocaleString()}</td>
                           <td className="p-1 border border-gray-300 text-gray-600">{row.avai.toLocaleString()}</td>
-                          
-                          {/* % OCC Baris Normal */}
                           <td className={`p-1 border border-gray-300 font-bold ${occBg}`}>{row.occ.toFixed(1)}%</td>
-                          
-                          {/* % Avail Baris Normal */}
                           <td className={`p-1 border border-gray-300 ${availBg}`}>{row.avai_perc.toFixed(1)}%</td>
                         </tr>
                       );
                     })}
 
-                    {/* Poin 4: Grand Total Polos / Standar Tanpa Conditional Formatting */}
                     <tr className="bg-[#0f172a] text-white font-extrabold sticky bottom-0 z-10 shadow-[0_-2px_10px_rgba(0,0,0,0.2)]">
                       <td colSpan={2} className="p-2 border border-slate-700 text-left pl-3 uppercase">
                         Grand Total
@@ -1064,8 +986,6 @@ export default function Dashboard() {
                       <td className="p-2 border border-slate-700">{tableTotals.is_total.toLocaleString()}</td>
                       <td className="p-2 border border-slate-700">{tableTotals.used.toLocaleString()}</td>
                       <td className="p-2 border border-slate-700">{tableTotals.avai.toLocaleString()}</td>
-                      
-                      {/* Netral / Polos */}
                       <td className="p-2 border border-slate-700 text-white font-bold">
                         {tableTotals.occ.toFixed(1)}%
                       </td>
