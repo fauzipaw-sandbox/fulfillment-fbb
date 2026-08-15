@@ -72,9 +72,10 @@ export default function OrdersPage() {
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [selectedFallout, setSelectedFallout] = useState('ALL');
 
-  // Pivot Sorting States
+  // Pivot Sorting States (Default Sort by Grand Total / Count Descending)
   const [pivot1Sort, setPivot1Sort] = useState({ key: 'total', direction: 'desc' });
   const [pivot2Sort, setPivot2Sort] = useState({ key: 'total', direction: 'desc' });
+  const [pivotFalloutSort, setPivotFalloutSort] = useState({ key: 'count', direction: 'desc' });
 
   // Bottom Table States
   const [searchTerm, setSearchTerm] = useState('');
@@ -154,7 +155,7 @@ export default function OrdersPage() {
     return { sortedWoks, columns, grandColTotals, totalAll };
   }, [filteredOrders, pivot1Sort]);
 
-  // Pivot 2: WOK & STO vs Status (FIXED)
+  // Pivot 2: WOK & STO vs Status
   const pivotStatus = useMemo(() => {
     const statusSet = new Set();
     const map = {};
@@ -218,7 +219,7 @@ export default function OrdersPage() {
     return { tree, totalAll };
   }, [filteredOrders]);
 
-  // Chart Data: Ascending within duration group
+  // Chart Data (Duration Fallout: Ascending within Group)
   const { chartData, dividerIndices } = useMemo(() => {
     const list = [];
     const dividers = [];
@@ -249,6 +250,7 @@ export default function OrdersPage() {
     return { chartData: list, dividerIndices: dividers };
   }, [pivotFallout]);
 
+  // Sorting Handlers
   const handlePivot1Sort = (key) => {
     let direction = 'desc';
     if (pivot1Sort.key === key && pivot1Sort.direction === 'desc') direction = 'asc';
@@ -259,6 +261,12 @@ export default function OrdersPage() {
     let direction = 'desc';
     if (pivot2Sort.key === key && pivot2Sort.direction === 'desc') direction = 'asc';
     setPivot2Sort({ key, direction });
+  };
+
+  const handlePivotFalloutSort = (key) => {
+    let direction = 'desc';
+    if (pivotFalloutSort.key === key && pivotFalloutSort.direction === 'desc') direction = 'asc';
+    setPivotFalloutSort({ key, direction });
   };
 
   const requestSort = (key) => {
@@ -586,7 +594,7 @@ export default function OrdersPage() {
             </div>
           </div>
 
-          {/* PIVOT 2: STATUS */}
+          {/* PIVOT 2: STATUS (DENGAN WRAP KOLOM HEADER RAPI) */}
           <div className="bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase">
               <span>Count of order_id &bull; Order Status</span>
@@ -597,7 +605,7 @@ export default function OrdersPage() {
                 <thead className="bg-[#1e293b] text-white sticky top-0 z-10 shadow-xs select-none">
                   <tr>
                     <th
-                      className="p-1.5 border border-slate-600 text-left pl-3 cursor-pointer hover:bg-slate-700"
+                      className="p-1.5 border border-slate-600 text-left pl-3 cursor-pointer hover:bg-slate-700 min-w-[120px]"
                       onClick={() => handlePivot2Sort('name')}
                     >
                       Row Labels {pivot2Sort.key === 'name' ? (pivot2Sort.direction === 'asc' ? '↑' : '↓') : '↕'}
@@ -605,7 +613,7 @@ export default function OrdersPage() {
                     {pivotStatus.columns.map((st) => (
                       <th
                         key={st}
-                        className="p-1.5 border border-slate-600 font-bold bg-[#e0f2fe] text-blue-950 cursor-pointer max-w-[110px] truncate hover:opacity-80"
+                        className="p-1.5 border border-slate-600 font-bold bg-[#e0f2fe] text-blue-950 cursor-pointer hover:opacity-80 min-w-[100px] max-w-[140px] whitespace-normal break-words leading-tight"
                         title={st}
                         onClick={() => handlePivot2Sort(st)}
                       >
@@ -613,7 +621,7 @@ export default function OrdersPage() {
                       </th>
                     ))}
                     <th
-                      className="p-1.5 border border-slate-600 bg-[#0f172a] text-yellow-300 font-black cursor-pointer hover:bg-slate-800"
+                      className="p-1.5 border border-slate-600 bg-[#0f172a] text-yellow-300 font-black cursor-pointer hover:bg-slate-800 min-w-[90px]"
                       onClick={() => handlePivot2Sort('total')}
                       title="Klik untuk sort Grand Total"
                     >
@@ -741,23 +749,46 @@ export default function OrdersPage() {
 
         {/* SECTION FALLOUT & CHART */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4">
+          
+          {/* PIVOT 3: FALLOUT (SORTABLE & DEFAULT DESCENDING BY COUNT) */}
           <div className="xl:col-span-1 bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase">
               <span>Row Labels &bull; Fallout Reason</span>
-              <span className="text-[10px] text-yellow-300">(Klik sel untuk filter)</span>
+              <span className="text-[10px] text-yellow-300">(Klik header untuk sort)</span>
             </div>
             <div className="overflow-x-auto max-h-[340px] overflow-y-auto">
               <table className="w-full text-left border-collapse text-[10.5px]">
-                <thead className="bg-[#1e293b] text-white sticky top-0 z-10 shadow-xs">
+                <thead className="bg-[#1e293b] text-white sticky top-0 z-10 shadow-xs select-none">
                   <tr>
-                    <th className="p-2 border border-slate-600">Row Labels</th>
-                    <th className="p-2 border border-slate-600 text-right pr-4">Count of order_id</th>
+                    <th
+                      className="p-2 border border-slate-600 cursor-pointer hover:bg-slate-700"
+                      onClick={() => handlePivotFalloutSort('reason')}
+                    >
+                      Row Labels {pivotFalloutSort.key === 'reason' ? (pivotFalloutSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th
+                      className="p-2 border border-slate-600 text-right pr-4 cursor-pointer hover:bg-slate-700"
+                      onClick={() => handlePivotFalloutSort('count')}
+                    >
+                      Count of order_id {pivotFalloutSort.key === 'count' ? (pivotFalloutSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {sortDurationColumns(Object.keys(pivotFallout.tree)).map((durKey, durIdx) => {
                     const dur = pivotFallout.tree[durKey];
-                    const sortedReasons = Object.entries(dur.reasons).sort((a, b) => a[1] - b[1]);
+                    
+                    // Sort items inside duration category by key (default count desc)
+                    const sortedReasons = Object.entries(dur.reasons).sort((a, b) => {
+                      if (pivotFalloutSort.key === 'reason') {
+                        return pivotFalloutSort.direction === 'asc'
+                          ? a[0].localeCompare(b[0])
+                          : b[0].localeCompare(a[0]);
+                      }
+                      return pivotFalloutSort.direction === 'asc'
+                        ? a[1] - b[1]
+                        : b[1] - a[1];
+                    });
 
                     return (
                       <React.Fragment key={dur.name}>
@@ -824,15 +855,12 @@ export default function OrdersPage() {
             </div>
           </div>
 
-          {/* DIAGRAM BATANG DURATION FALLOUT */}
+          {/* DIAGRAM BATANG DURATION FALLOUT (CLEAN HEADER) */}
           <div className="xl:col-span-2 bg-white border border-slate-300 shadow-xs rounded p-3">
             <div className="flex items-center justify-between border-b pb-1.5 mb-2">
               <h4 className="font-extrabold text-slate-800 text-xs sm:text-sm tracking-wide uppercase">
                 DURATION FALLOUT
               </h4>
-              <span className="text-[10px] text-slate-400 font-semibold italic">
-                *Makin ke kanan makin banyak
-              </span>
             </div>
 
             <div className="h-72 w-full">
