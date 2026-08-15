@@ -9,19 +9,18 @@ export default async function handler(req, res) {
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !supabaseKey) {
-    return res.status(200).json([]);
+    return res.status(500).json({ error: 'Database credentials missing' });
   }
 
   try {
     const supabase = createClient(supabaseUrl, supabaseKey);
     
-    let allData = [];
+    let allOdp = [];
     let from = 0;
     const step = 1000;
-    let fetchMore = true;
+    let hasMore = true;
 
-    // LOOPING: Tarik data per 1.000 baris sampai habis (bypass limit default Supabase)
-    while (fetchMore) {
+    while (hasMore) {
       const { data, error } = await supabase
         .from('odp_kalimantan')
         .select('*')
@@ -30,18 +29,18 @@ export default async function handler(req, res) {
       if (error) throw error;
 
       if (data && data.length > 0) {
-        allData = allData.concat(data);
-      }
-
-      // Jika data yang ditarik kurang dari 1.000, berarti itu halaman terakhir
-      if (data.length < step) {
-        fetchMore = false;
+        allOdp = allOdp.concat(data);
+        if (data.length < step) {
+          hasMore = false;
+        } else {
+          from += step;
+        }
       } else {
-        from += step;
+        hasMore = false;
       }
     }
 
-    return res.status(200).json(allData);
+    return res.status(200).json(allOdp);
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
