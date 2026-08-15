@@ -82,7 +82,7 @@ export default function Map({
   const markerRefs = useRef({});
   const [clickPoints, setClickPoints] = useState([]);
   const [measureActive, setMeasureActive] = useState(false);
-  const [mapType, setMapType] = useState('street'); // 'street' | 'satellite'
+  const [mapType, setMapType] = useState('street');
 
   const getColor = (status) => {
     const s = (status || '').toUpperCase();
@@ -244,6 +244,12 @@ export default function Map({
               ref={(el) => {
                 if (el) markerRefs.current[odp.odp_name] = el;
               }}
+              eventHandlers={{
+                // Poin 2: Auto popup saat mouse mengarah (mouseover)
+                mouseover: (e) => {
+                  e.target.openPopup();
+                },
+              }}
               pathOptions={{
                 fillColor: color,
                 fillOpacity: 0.9,
@@ -251,8 +257,7 @@ export default function Map({
                 weight: 1,
               }}
             >
-              {/* POPUP MUNCUL OTOMATIS SAAT HOVER (Tanpa Klik) */}
-              <Popup autoClose={false} closeOnClick={false} className="compact-custom-popup" maxWidth={230} minWidth={180}>
+              <Popup className="compact-custom-popup" maxWidth={230} minWidth={180}>
                 <div className="text-[10px] font-sans bg-white p-2 text-slate-800 pointer-events-auto">
                   <div className="border-b border-slate-200 pb-1 mb-1 flex items-center justify-between gap-1">
                     <p className="font-extrabold text-blue-900 truncate max-w-[130px]" title={odp.odp_name}>
