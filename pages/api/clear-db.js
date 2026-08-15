@@ -12,17 +12,21 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Database credentials missing' });
   }
 
+  const { type } = req.query; // 'order' atau 'odp'
+
   try {
     const supabase = createClient(supabaseUrl, supabaseKey);
-    // Hapus semua baris data
+    const tableName = type === 'order' ? 'orders_kalimantan' : 'odp_kalimantan';
+    const targetCol = type === 'order' ? 'order_id' : 'odp_name';
+
     const { error } = await supabase
-      .from('odp_kalimantan')
+      .from(tableName)
       .delete()
-      .neq('odp_name', '___DUMMY_NEQ___');
+      .neq(targetCol, '___DUMMY_NEQ___');
 
     if (error) throw error;
 
-    return res.status(200).json({ message: 'Semua data tabel berhasil dikosongkan' });
+    return res.status(200).json({ message: `Semua data tabel ${tableName} berhasil dikosongkan` });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
