@@ -163,6 +163,7 @@ const CustomChartTooltip = ({ active, payload, label }) => {
 
 export default function Dashboard() {
   const [data, setData] = useState([]);
+  const [ordersData, setOrdersData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sortConfig, setSortConfig] = useState({ key: 'occ', direction: 'desc' });
   const [showUploader, setShowUploader] = useState(false);
@@ -188,11 +189,15 @@ export default function Dashboard() {
   const [manualMeasureLine, setManualMeasureLine] = useState(null);
   const [roadRouteCoordinates, setRoadRouteCoordinates] = useState([]);
 
-  // State Tabel Bawah (Pagination & Filter Pencarian Cepat)
+  // Tab & Table States Bagian Bawah
+  const [bottomActiveTab, setBottomActiveTab] = useState('ODP'); // 'ODP' | 'ORDER'
   const [tableSearch, setTableSearch] = useState('');
+  const [orderTableSearch, setOrderTableSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [currentOrderPage, setCurrentOrderPage] = useState(1);
   const rowsPerPage = 50;
 
+  // 1. Fetch Data ODP
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -250,9 +255,25 @@ export default function Dashboard() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  // 2. Fetch Data Order
+  const fetchOrders = async () => {
+    try {
+      const res = await fetch('/api/orders');
+      if (res.ok) {
+        const oData = await res.json();
+        setOrdersData(oData || []);
+      }
+    } catch (err) {
+      console.error('Fetch Orders Error:', err);
+    }
+  };
 
-  // Filter Sinkron Seluruh Komponen
+  useEffect(() => {
+    fetchData();
+    fetchOrders();
+  }, []);
+
+  // Filter Sinkron Seluruh Komponen ODP
   const fullyFilteredData = useMemo(() => {
     return data.filter((d) => {
       const matchStatus = selectedStatus === 'ALL' || d.status_final === selectedStatus;
@@ -266,10 +287,22 @@ export default function Dashboard() {
     });
   }, [data, selectedStatus, selectedRx, selectedKabupaten, selectedStoFilter, selectedWokFilter, selectedPortFilter]);
 
-  // Reset Halaman Tabel Bawah Saat Filter Berubah
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [selectedStatus, selectedRx, selectedKabupaten, selectedStoFilter, selectedWokFilter, selectedPortFilter, tableSearch]);
+  // Filter Sinkron untuk Data Order (Mengikuti Filter STO & WOK & ODP)
+  const filteredOrders = useMemo(() => {
+    return ordersData.filter((o) => {
+      const matchSto = selectedStoFilter === 'ALL' || o.sto_co === selectedStoFilter;
+      const matchWok = selectedWokFilter === 'ALL' || o.wok === selectedWokFilter;
+      const s = orderTableSearch.toLowerCase();
+      const matchSearch =
+        !s ||
+        (o.order_id && o.order_id.toLowerCase().includes(s)) ||
+        (o.name && o.name.toLowerCase().includes(s)) ||
+        (o.odp_name && o.odp_name.toLowerCase().includes(s)) ||
+        (o.sto_co && o.sto_co.toLowerCase().includes(s));
+
+      return matchSto && matchWok && matchSearch;
+    });
+  }, [ordersData, selectedStoFilter, selectedWokFilter, orderTableSearch]);
 
   const headerCutoffText = useMemo(() => {
     if (data.length === 0) return '*Cut Off Data until -';
@@ -375,8 +408,8 @@ export default function Dashboard() {
     return { odp, is_total, used, avai, occ, avai_perc };
   }, [statsFiltered.flatStos]);
 
-  // Data Tabel Bawah (Dengan Search Tambahan di Tabel)
-  const bottomTableData = useMemo(() => {
+  // Data Tabel ODP Bawah
+  const bottomOdpData = useMemo(() => {
     if (!tableSearch.trim()) return fullyFilteredData;
     const s = tableSearch.toLowerCase();
     return fullyFilteredData.filter((d) =>
@@ -388,28 +421,42 @@ export default function Dashboard() {
     );
   }, [fullyFilteredData, tableSearch]);
 
-  const totalPages = Math.ceil(bottomTableData.length / rowsPerPage) || 1;
-  const paginatedBottomData = useMemo(() => {
+  const totalOdpPages = Math.ceil(bottomOdpData.length / rowsPerPage) || 1;
+  const paginatedOdpData = useMemo(() => {
     const start = (currentPage - 1) * rowsPerPage;
-    return bottomTableData.slice(start, start + rowsPerPage);
-  }, [bottomTableData, currentPage]);
+    return bottomOdpData.slice(start, start + rowsPerPage);
+  }, [bottomOdpData, currentPage]);
 
-  // Export CSV Data Terfilter
-  const handleExportFilteredCSV = () => {
-    if (fullyFilteredData.length === 0) {
-      alert('Tidak ada data terfilter untuk di-download.');
-      return;
-    }
-    const cleanExportData = fullyFilteredData.map((d) => {
-      const { parsed_date, ...rest } = d;
-      return rest;
-    });
-    const csv = Papa.unparse(cleanExportData);
+  const totalOrderPages = Math.ceil(filteredOrders.length / rowsPerPage) || 1;
+  const paginatedOrderData = useMemo(() => {
+    const start = (currentOrderPage - 1) * rowsPerPage;
+    return filteredOrders.slice(start, start + rowsPerPage);
+  }, [filteredOrders, currentOrderPage]);
+
+  // Export CSV ODP
+  const handleExportFilteredOdpCSV = () => {
+    if (fullyFilteredData.length === 0) return alert('Tidak ada data ODP terfilter.');
+    const clean = fullyFilteredData.map(({ parsed_date, ...rest }) => rest);
+    const csv = Papa.unparse(clean);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `odp_filtered_export_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `odp_filtered_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Export CSV Orders
+  const handleExportFilteredOrderCSV = () => {
+    if (filteredOrders.length === 0) return alert('Tidak ada data Order.');
+    const csv = Papa.unparse(filteredOrders);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `orders_export_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -500,7 +547,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen p-2 sm:p-4 text-gray-800 font-sans text-xs bg-[#f1f5f9] relative">
       <Head>
-        <title>ODP Profile & Utilization</title>
+        <title>ODP & Order Dashboard</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
       </Head>
 
@@ -515,11 +562,11 @@ export default function Dashboard() {
       )}
 
       <div className="max-w-[1450px] mx-auto space-y-3">
-        {/* HEADER UTAMA */}
+        {/* HEADER UTAMA: Tombol Upload Data */}
         <div className="bg-gradient-to-r from-[#211c47] to-[#3a3575] text-white p-3 sm:p-4 flex flex-col md:flex-row justify-between items-start md:items-center border-b-4 border-purple-500 rounded-t-lg shadow-sm gap-2">
           <div>
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-wide uppercase italic">
-              ODP PROFILE & UTILIZATION
+              ODP PROFILE & ORDER FULFILLMENT
             </h1>
             <p className="text-[10px] sm:text-xs font-semibold mt-0.5 opacity-90 text-yellow-300">
               {headerCutoffText}
@@ -530,17 +577,17 @@ export default function Dashboard() {
             <button
               type="button"
               onClick={() => setShowUploader(!showUploader)}
-              className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded shadow transition"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded shadow transition"
             >
               <svg
-                className={`w-3.5 h-3.5 transition-transform ${showUploader ? 'rotate-180' : ''}`}
+                className={`w-4 h-4 transition-transform ${showUploader ? 'rotate-180' : ''}`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
-              {showUploader ? 'Tutup Upload' : 'Upload Data ODP'}
+              {showUploader ? 'Tutup Upload' : 'Upload Data (ODP & Order)'}
             </button>
           </div>
         </div>
@@ -572,11 +619,13 @@ export default function Dashboard() {
 
         {showUploader && (
           <div className="transition-all duration-300">
-            <Uploader onUploadSuccess={fetchData} rawData={data} />
+            <Uploader
+              onUploadOdpSuccess={fetchData}
+              onUploadOrderSuccess={fetchOrders}
+            />
           </div>
         )}
 
-        {/* SECTION ATAS: GRID 2 KOLOM */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
           {/* ================= KOLOM KIRI ================= */}
           <div className="space-y-3 sm:space-y-4">
@@ -1060,164 +1109,319 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ================= TABEL BARU PALING BAWAH (DETAIL RAW DATA TERFILTER + DOWNLOAD) ================= */}
+        {/* ================= SECTION BAWAH: TABEL DETAIL RAW DATA (ODP & ORDER) ================= */}
         <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden mt-4">
           <div className="bg-gradient-to-r from-[#0f172a] via-[#1e293b] to-[#334155] text-white p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-            <div>
-              <h2 className="text-sm font-extrabold uppercase tracking-wide flex items-center gap-1.5">
-                <span>📋</span> DATA DETAIL ODP TERFILTER
-              </h2>
-              <p className="text-[10px] text-slate-300 mt-0.5">
-                Menampilkan <strong>{bottomTableData.length.toLocaleString()}</strong> ODP sesuai filter yang aktif
-              </p>
+            {/* Tab Selector Data ODP / Data Order */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setBottomActiveTab('ODP')}
+                className={`px-3 py-1 rounded text-xs font-black transition ${
+                  bottomActiveTab === 'ODP'
+                    ? 'bg-blue-600 text-white shadow'
+                    : 'bg-slate-700/60 text-slate-300 hover:bg-slate-700'
+                }`}
+              >
+                📋 Tabel Data ODP ({bottomOdpData.length.toLocaleString()})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBottomActiveTab('ORDER')}
+                className={`px-3 py-1 rounded text-xs font-black transition ${
+                  bottomActiveTab === 'ORDER'
+                    ? 'bg-purple-600 text-white shadow'
+                    : 'bg-slate-700/60 text-slate-300 hover:bg-slate-700'
+                }`}
+              >
+                📦 Tabel Data Order Fulfillment ({filteredOrders.length.toLocaleString()})
+              </button>
             </div>
 
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full sm:w-auto">
-              <input
-                type="text"
-                placeholder="Cari ODP, STO, Desa..."
-                value={tableSearch}
-                onChange={(e) => setTableSearch(e.target.value)}
-                className="px-2.5 py-1 text-black rounded text-xs outline-none w-full sm:w-52"
-              />
-
-              <button
-                type="button"
-                onClick={handleExportFilteredCSV}
-                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold shadow flex items-center gap-1 whitespace-nowrap transition"
-              >
-                <span>📥</span> Download Data Terfilter (CSV)
-              </button>
+              {bottomActiveTab === 'ODP' ? (
+                <>
+                  <input
+                    type="text"
+                    placeholder="Cari ODP, STO, Desa..."
+                    value={tableSearch}
+                    onChange={(e) => setTableSearch(e.target.value)}
+                    className="px-2.5 py-1 text-black rounded text-xs outline-none w-full sm:w-48"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleExportFilteredOdpCSV}
+                    className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold shadow flex items-center gap-1 whitespace-nowrap transition"
+                  >
+                    <span>📥</span> Download CSV ODP
+                  </button>
+                </>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    placeholder="Cari Order ID, Pelanggan, ODP..."
+                    value={orderTableSearch}
+                    onChange={(e) => setOrderTableSearch(e.target.value)}
+                    className="px-2.5 py-1 text-black rounded text-xs outline-none w-full sm:w-48"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleExportFilteredOrderCSV}
+                    className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold shadow flex items-center gap-1 whitespace-nowrap transition"
+                  >
+                    <span>📥</span> Download CSV Order
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
-          <div className="overflow-x-auto max-h-[460px] overflow-y-auto">
-            <table className="w-full text-left border-collapse text-[10px]">
-              <thead className="bg-[#1e293b] text-white uppercase font-bold sticky top-0 z-10 shadow">
-                <tr>
-                  <th className="p-2 border border-slate-600">No</th>
-                  <th className="p-2 border border-slate-600">ODP Name</th>
-                  <th className="p-2 border border-slate-600">STO</th>
-                  <th className="p-2 border border-slate-600">WOK</th>
-                  <th className="p-2 border border-slate-600">Kabupaten</th>
-                  <th className="p-2 border border-slate-600">Kecamatan</th>
-                  <th className="p-2 border border-slate-600">Desa</th>
-                  <th className="p-2 border border-slate-600 text-center">Status</th>
-                  <th className="p-2 border border-slate-600 text-center">Total Port</th>
-                  <th className="p-2 border border-slate-600 text-center">Used</th>
-                  <th className="p-2 border border-slate-600 text-center">Avail</th>
-                  <th className="p-2 border border-slate-600 text-center">% OCC</th>
-                  <th className="p-2 border border-slate-600 text-center">ONT RX Level</th>
-                  <th className="p-2 border border-slate-600">Latitude</th>
-                  <th className="p-2 border border-slate-600">Longitude</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedBottomData.length === 0 ? (
+          {/* TAB 1: TABEL DETAIL ODP */}
+          {bottomActiveTab === 'ODP' && (
+            <div className="overflow-x-auto max-h-[460px] overflow-y-auto">
+              <table className="w-full text-left border-collapse text-[10px]">
+                <thead className="bg-[#1e293b] text-white uppercase font-bold sticky top-0 z-10 shadow">
                   <tr>
-                    <td colSpan={15} className="p-4 text-center text-slate-400 font-bold">
-                      Tidak ada data yang sesuai dengan filter atau kata kunci pencarian.
-                    </td>
+                    <th className="p-2 border border-slate-600">No</th>
+                    <th className="p-2 border border-slate-600">ODP Name</th>
+                    <th className="p-2 border border-slate-600">STO</th>
+                    <th className="p-2 border border-slate-600">WOK</th>
+                    <th className="p-2 border border-slate-600">Kabupaten</th>
+                    <th className="p-2 border border-slate-600">Kecamatan</th>
+                    <th className="p-2 border border-slate-600">Desa</th>
+                    <th className="p-2 border border-slate-600 text-center">Status</th>
+                    <th className="p-2 border border-slate-600 text-center">Total Port</th>
+                    <th className="p-2 border border-slate-600 text-center">Used</th>
+                    <th className="p-2 border border-slate-600 text-center">Avail</th>
+                    <th className="p-2 border border-slate-600 text-center">% OCC</th>
+                    <th className="p-2 border border-slate-600 text-center">ONT RX Level</th>
+                    <th className="p-2 border border-slate-600">Latitude</th>
+                    <th className="p-2 border border-slate-600">Longitude</th>
                   </tr>
-                ) : (
-                  paginatedBottomData.map((row, idx) => {
-                    const rowNumber = (currentPage - 1) * rowsPerPage + idx + 1;
-                    const occ = row.is_total > 0 ? (row.used / row.is_total) * 100 : 0;
-                    
-                    let statusColor = '#111827';
-                    if (row.status_final === 'RED') statusColor = '#dc2626';
-                    else if (row.status_final === 'ORANGE') statusColor = '#ea580c';
-                    else if (row.status_final === 'YELLOW') statusColor = '#ca8a04';
-                    else if (row.status_final === 'GREEN') statusColor = '#16a34a';
+                </thead>
+                <tbody>
+                  {paginatedOdpData.length === 0 ? (
+                    <tr>
+                      <td colSpan={15} className="p-4 text-center text-slate-400 font-bold">
+                        Tidak ada data ODP yang sesuai filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedOdpData.map((row, idx) => {
+                      const rowNumber = (currentPage - 1) * rowsPerPage + idx + 1;
+                      const occ = row.is_total > 0 ? (row.used / row.is_total) * 100 : 0;
+                      
+                      let statusColor = '#111827';
+                      if (row.status_final === 'RED') statusColor = '#dc2626';
+                      else if (row.status_final === 'ORANGE') statusColor = '#ea580c';
+                      else if (row.status_final === 'YELLOW') statusColor = '#ca8a04';
+                      else if (row.status_final === 'GREEN') statusColor = '#16a34a';
 
-                    let rxColor = '#64748b';
-                    if (row.ont_rx_level !== null) {
-                      if (row.ont_rx_level > -18) rxColor = '#16a34a';
-                      else if (row.ont_rx_level >= -21) rxColor = '#ca8a04';
-                      else if (row.ont_rx_level >= -25) rxColor = '#ea580c';
-                      else rxColor = '#dc2626';
-                    }
+                      let rxColor = '#64748b';
+                      if (row.ont_rx_level !== null) {
+                        if (row.ont_rx_level > -18) rxColor = '#16a34a';
+                        else if (row.ont_rx_level >= -21) rxColor = '#ca8a04';
+                        else if (row.ont_rx_level >= -25) rxColor = '#ea580c';
+                        else rxColor = '#dc2626';
+                      }
 
-                    return (
-                      <tr key={`${row.odp_name}-${idx}`} className="border-b border-slate-200 hover:bg-blue-50/60 transition">
-                        <td className="p-1.5 border border-slate-200 text-center font-bold text-slate-500">{rowNumber}</td>
-                        <td className="p-1.5 border border-slate-200 font-black text-blue-900">{row.odp_name}</td>
-                        <td className="p-1.5 border border-slate-200 font-bold">{row.sto || '-'}</td>
-                        <td className="p-1.5 border border-slate-200">{row.wok || '-'}</td>
-                        <td className="p-1.5 border border-slate-200">{row.kabupaten || '-'}</td>
-                        <td className="p-1.5 border border-slate-200">{row.kecamatan || '-'}</td>
-                        <td className="p-1.5 border border-slate-200">{row.desa || '-'}</td>
-                        <td className="p-1.5 border border-slate-200 text-center">
-                          <span
-                            className="px-1.5 py-0.5 rounded text-[8.5px] font-bold text-white uppercase"
-                            style={{ backgroundColor: statusColor }}
-                          >
-                            {row.status_final}
-                          </span>
-                        </td>
-                        <td className="p-1.5 border border-slate-200 text-center font-bold">{row.is_total || 0}</td>
-                        <td className="p-1.5 border border-slate-200 text-center text-emerald-800 font-bold">{row.used || 0}</td>
-                        <td className="p-1.5 border border-slate-200 text-center text-red-800 font-bold">{row.avai || 0}</td>
-                        <td className="p-1.5 border border-slate-200 text-center font-extrabold">{occ.toFixed(1)}%</td>
-                        <td className="p-1.5 border border-slate-200 text-center font-bold" style={{ color: rxColor }}>
-                          {row.ont_rx_level !== null ? `${Number(row.ont_rx_level).toFixed(2)} dBm` : '-'}
-                        </td>
-                        <td className="p-1.5 border border-slate-200 font-mono text-[9px] text-slate-500">{row.latitude || '-'}</td>
-                        <td className="p-1.5 border border-slate-200 font-mono text-[9px] text-slate-500">{row.longitude || '-'}</td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination Controls */}
-          {totalPages > 1 && (
-            <div className="bg-slate-50 p-2.5 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-2 text-xs font-semibold">
-              <span className="text-slate-600">
-                Halaman <strong>{currentPage}</strong> dari <strong>{totalPages}</strong> (Total <strong>{bottomTableData.length.toLocaleString()}</strong> data)
-              </span>
-
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage(1)}
-                  disabled={currentPage === 1}
-                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
-                >
-                  &laquo; Pertama
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
-                >
-                  &lsaquo; Prev
-                </button>
-                <span className="px-2 font-bold text-slate-700">
-                  {currentPage} / {totalPages}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
-                >
-                  Next &rsaquo;
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage(totalPages)}
-                  disabled={currentPage === totalPages}
-                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
-                >
-                  Terakhir &raquo;
-                </button>
-              </div>
+                      return (
+                        <tr key={`${row.odp_name}-${idx}`} className="border-b border-slate-200 hover:bg-blue-50/60 transition">
+                          <td className="p-1.5 border border-slate-200 text-center font-bold text-slate-500">{rowNumber}</td>
+                          <td className="p-1.5 border border-slate-200 font-black text-blue-900">{row.odp_name}</td>
+                          <td className="p-1.5 border border-slate-200 font-bold">{row.sto || '-'}</td>
+                          <td className="p-1.5 border border-slate-200">{row.wok || '-'}</td>
+                          <td className="p-1.5 border border-slate-200">{row.kabupaten || '-'}</td>
+                          <td className="p-1.5 border border-slate-200">{row.kecamatan || '-'}</td>
+                          <td className="p-1.5 border border-slate-200">{row.desa || '-'}</td>
+                          <td className="p-1.5 border border-slate-200 text-center">
+                            <span
+                              className="px-1.5 py-0.5 rounded text-[8.5px] font-bold text-white uppercase"
+                              style={{ backgroundColor: statusColor }}
+                            >
+                              {row.status_final}
+                            </span>
+                          </td>
+                          <td className="p-1.5 border border-slate-200 text-center font-bold">{row.is_total || 0}</td>
+                          <td className="p-1.5 border border-slate-200 text-center text-emerald-800 font-bold">{row.used || 0}</td>
+                          <td className="p-1.5 border border-slate-200 text-center text-red-800 font-bold">{row.avai || 0}</td>
+                          <td className="p-1.5 border border-slate-200 text-center font-extrabold">{occ.toFixed(1)}%</td>
+                          <td className="p-1.5 border border-slate-200 text-center font-bold" style={{ color: rxColor }}>
+                            {row.ont_rx_level !== null ? `${Number(row.ont_rx_level).toFixed(2)} dBm` : '-'}
+                          </td>
+                          <td className="p-1.5 border border-slate-200 font-mono text-[9px] text-slate-500">{row.latitude || '-'}</td>
+                          <td className="p-1.5 border border-slate-200 font-mono text-[9px] text-slate-500">{row.longitude || '-'}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
           )}
+
+          {/* TAB 2: TABEL DATA ORDER FULFILLMENT (78 KOLOM) */}
+          {bottomActiveTab === 'ORDER' && (
+            <div className="overflow-x-auto max-h-[460px] overflow-y-auto">
+              <table className="w-full text-left border-collapse text-[10px] whitespace-nowrap">
+                <thead className="bg-[#3b0764] text-white uppercase font-bold sticky top-0 z-10 shadow">
+                  <tr>
+                    <th className="p-2 border border-purple-800">No</th>
+                    <th className="p-2 border border-purple-800">Order ID</th>
+                    <th className="p-2 border border-purple-800">Order Status</th>
+                    <th className="p-2 border border-purple-800">Nama Pelanggan</th>
+                    <th className="p-2 border border-purple-800">No HP</th>
+                    <th className="p-2 border border-purple-800">STO</th>
+                    <th className="p-2 border border-purple-800">WOK</th>
+                    <th className="p-2 border border-purple-800">ODP Name</th>
+                    <th className="p-2 border border-purple-800">Product Name</th>
+                    <th className="p-2 border border-purple-800">Speed</th>
+                    <th className="p-2 border border-purple-800">Package Cat</th>
+                    <th className="p-2 border border-purple-800">Price</th>
+                    <th className="p-2 border border-purple-800">Order Date</th>
+                    <th className="p-2 border border-purple-800">PS Date</th>
+                    <th className="p-2 border border-purple-800">Channel Group</th>
+                    <th className="p-2 border border-purple-800">SF Name</th>
+                    <th className="p-2 border border-purple-800">Alamat</th>
+                    <th className="p-2 border border-purple-800">Latitude</th>
+                    <th className="p-2 border border-purple-800">Longitude</th>
+                    <th className="p-2 border border-purple-800">Chief Name</th>
+                    <th className="p-2 border border-purple-800">WONUM</th>
+                    <th className="p-2 border border-purple-800">Fallout Category</th>
+                    <th className="p-2 border border-purple-800">Fallout Reason</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedOrderData.length === 0 ? (
+                    <tr>
+                      <td colSpan={23} className="p-4 text-center text-slate-400 font-bold">
+                        Belum ada data Order yang diunggah atau tidak sesuai filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedOrderData.map((row, idx) => {
+                      const rowNumber = (currentOrderPage - 1) * rowsPerPage + idx + 1;
+                      return (
+                        <tr key={`${row.order_id}-${idx}`} className="border-b border-slate-200 hover:bg-purple-50/60 transition">
+                          <td className="p-1.5 border border-slate-200 text-center font-bold text-slate-500">{rowNumber}</td>
+                          <td className="p-1.5 border border-slate-200 font-black text-purple-900">{row.order_id}</td>
+                          <td className="p-1.5 border border-slate-200 font-bold text-slate-800">{row.order_status_desc || row.process_state || '-'}</td>
+                          <td className="p-1.5 border border-slate-200 font-semibold">{row.name || '-'}</td>
+                          <td className="p-1.5 border border-slate-200 font-mono text-[9px]">{row.no_handphone || row.no_handphone_mask || '-'}</td>
+                          <td className="p-1.5 border border-slate-200 font-bold">{row.sto_co || '-'}</td>
+                          <td className="p-1.5 border border-slate-200">{row.wok || '-'}</td>
+                          <td className="p-1.5 border border-slate-200 font-bold text-blue-800">{row.odp_name || '-'}</td>
+                          <td className="p-1.5 border border-slate-200">{row.product_commercial_name || '-'}</td>
+                          <td className="p-1.5 border border-slate-200">{row.speed_product || '-'}</td>
+                          <td className="p-1.5 border border-slate-200">{row.package_cat || '-'}</td>
+                          <td className="p-1.5 border border-slate-200 text-right">{row.price_package ? Number(row.price_package).toLocaleString() : '-'}</td>
+                          <td className="p-1.5 border border-slate-200">{row.order_ts || '-'}</td>
+                          <td className="p-1.5 border border-slate-200">{row.ps_ts || '-'}</td>
+                          <td className="p-1.5 border border-slate-200">{row.channel_group || row.channel_name || '-'}</td>
+                          <td className="p-1.5 border border-slate-200">{row.sf_name || '-'}</td>
+                          <td className="p-1.5 border border-slate-200 max-w-[200px] truncate" title={row.address}>{row.address || '-'}</td>
+                          <td className="p-1.5 border border-slate-200 font-mono text-[9px]">{row.latitude || '-'}</td>
+                          <td className="p-1.5 border border-slate-200 font-mono text-[9px]">{row.longitude || '-'}</td>
+                          <td className="p-1.5 border border-slate-200">{row.c_chief_name || '-'}</td>
+                          <td className="p-1.5 border border-slate-200 font-mono text-[9px]">{row.c_wonum || '-'}</td>
+                          <td className="p-1.5 border border-slate-200 text-red-700">{row.fallout_category || '-'}</td>
+                          <td className="p-1.5 border border-slate-200 text-red-600 max-w-[200px] truncate" title={row.fallout_reason}>{row.fallout_reason || '-'}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          <div className="bg-slate-50 p-2.5 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-2 text-xs font-semibold">
+            {bottomActiveTab === 'ODP' ? (
+              <>
+                <span className="text-slate-600">
+                  Halaman <strong>{currentPage}</strong> dari <strong>{totalOdpPages}</strong> (Total <strong>{bottomOdpData.length.toLocaleString()}</strong> ODP)
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(1)}
+                    disabled={currentPage === 1}
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                  >
+                    &laquo; Pertama
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                  >
+                    &lsaquo; Prev
+                  </button>
+                  <span className="px-2 font-bold text-slate-700">{currentPage} / {totalOdpPages}</span>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.min(totalOdpPages, p + 1))}
+                    disabled={currentPage === totalOdpPages}
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                  >
+                    Next &rsaquo;
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(totalOdpPages)}
+                    disabled={currentPage === totalOdpPages}
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                  >
+                    Terakhir &raquo;
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <span className="text-slate-600">
+                  Halaman <strong>{currentOrderPage}</strong> dari <strong>{totalOrderPages}</strong> (Total <strong>{filteredOrders.length.toLocaleString()}</strong> Order)
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentOrderPage(1)}
+                    disabled={currentOrderPage === 1}
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                  >
+                    &laquo; Pertama
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentOrderPage((p) => Math.max(1, p - 1))}
+                    disabled={currentOrderPage === 1}
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                  >
+                    &lsaquo; Prev
+                  </button>
+                  <span className="px-2 font-bold text-slate-700">{currentOrderPage} / {totalOrderPages}</span>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentOrderPage((p) => Math.min(totalOrderPages, p + 1))}
+                    disabled={currentOrderPage === totalOrderPages}
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                  >
+                    Next &rsaquo;
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentOrderPage(totalOrderPages)}
+                    disabled={currentOrderPage === totalOrderPages}
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                  >
+                    Terakhir &raquo;
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>
