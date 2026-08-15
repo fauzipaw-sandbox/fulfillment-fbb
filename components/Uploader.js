@@ -2,6 +2,57 @@ import { useState, useRef } from 'react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
 
+// 9 Kabupaten Resmi
+const VALID_KABUPATEN = [
+  'BARITO SELATAN',
+  'KOTA PALANGKARAYA',
+  'GUNUNG MAS',
+  'BARITO UTARA',
+  'BARITO TIMUR',
+  'KAPUAS',
+  'KATINGAN',
+  'PULANG PISAU',
+  'MURUNG RAYA',
+];
+
+// Lookup Table STO -> WOK
+const STO_WOK_MAP = {
+  AMP: 'BARITO - KAPUAS',
+  BNT: 'BARITO - KAPUAS',
+  KKP: 'BARITO - KAPUAS',
+  MTW: 'BARITO - KAPUAS',
+  PPS: 'BARITO - KAPUAS',
+  PRC: 'BARITO - KAPUAS',
+  TML: 'BARITO - KAPUAS',
+  KKN: 'PALANGKARAYA',
+  KRI: 'PALANGKARAYA',
+  KSO: 'PALANGKARAYA',
+  PLK: 'PALANGKARAYA',
+  PYM: 'PALANGKARAYA',
+};
+
+// Helper Ekstrak STO dari ODP Name
+function extractSto(odpName, existingSto) {
+  if (existingSto && existingSto.trim() !== '' && existingSto.toUpperCase() !== 'UNKNOWN') {
+    return existingSto.trim().toUpperCase();
+  }
+  if (!odpName) return 'UNKNOWN';
+  const match = odpName.match(/ODP-([A-Z0-9]{3})/i);
+  if (match && match[1]) return match[1].toUpperCase();
+  return 'UNKNOWN';
+}
+
+// Helper Ekstrak WOK
+function extractWok(existingWok, sto) {
+  if (existingWok && existingWok.trim() !== '' && existingWok.toUpperCase() !== 'UNKNOWN') {
+    return existingWok.trim().toUpperCase();
+  }
+  if (sto && STO_WOK_MAP[sto.toUpperCase()]) {
+    return STO_WOK_MAP[sto.toUpperCase()];
+  }
+  return 'PALANGKARAYA';
+}
+
 export default function Uploader({ onUploadSuccess }) {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -26,21 +77,39 @@ export default function Uploader({ onUploadSuccess }) {
         else if (rsk > 0.85 && rsk < 0.99) statusFinal = 'ORANGE';
         else if (rsk >= 0.99) statusFinal = 'RED';
 
+        // Normalisasi STO & WOK
+        const finalSto = extractSto(row.odp_name, row.sto);
+        const finalWok = extractWok(row.wok, finalSto);
+
+        // Normalisasi Kabupaten
+        let rawKab = (row.kabupaten || '').trim().toUpperCase();
+        let finalKab = VALID_KABUPATEN.includes(rawKab) ? rawKab : 'LAINNYA';
+
+        // ONT RX Level
+        let rxVal = null;
+        if (row.ont_rx_level !== undefined && row.ont_rx_level !== null && row.ont_rx_level !== '') {
+          rxVal = parseFloat(row.ont_rx_level);
+          if (isNaN(rxVal)) rxVal = null;
+        }
+
         return {
           odp_name: row.odp_name,
           event_date: row.event_date || null,
           noss_id: parseInt(row.noss_id) || null,
-          witel: row.witel || null,
-          sto: row.sto || null,
+          witel: row.witel || 'KALTIMTARA',
+          sto: finalSto,
+          sto_desc: row.sto_desc || null,
+          datel: row.datel || null,
+          ont_rx_level: rxVal,
           longitude: parseFloat(row.longitude) || null,
           latitude: parseFloat(row.latitude) || null,
           avai,
           used,
           is_total: isTotal,
           status_final: statusFinal,
-          kabupaten: row.kabupaten || null,
-          branch: row.branch || null,
-          wok: row.wok || null,
+          kabupaten: finalKab,
+          branch: row.branch || 'PALANGKARAYA',
+          wok: finalWok,
         };
       })
       .filter((item) => item.odp_name);
@@ -105,11 +174,13 @@ export default function Uploader({ onUploadSuccess }) {
   };
 
   return (
-    <div className="bg-white p-4 rounded shadow-sm border border-slate-200">
-      <h3 className="text-xs font-bold uppercase mb-2 text-slate-800">Update Data ODP</h3>
-      
-      <div 
-        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+    <div className="bg-white p-3 sm:p-4 rounded shadow-sm border border-slate-200">
+      <h3 className="text-xs font-bold uppercase mb-2 text-slate-800">Upload / Update Data ODP</h3>
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDragging(true);
+        }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={(e) => {
           e.preventDefault();
@@ -117,25 +188,30 @@ export default function Uploader({ onUploadSuccess }) {
           handleFile(e.dataTransfer.files[0]);
         }}
         onClick={() => fileInputRef.current.click()}
-        className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
+        className={`border-2 border-dashed rounded-lg p-5 sm:p-6 text-center cursor-pointer transition-colors ${
           isDragging ? 'border-blue-500 bg-blue-50' : 'border-slate-300 bg-slate-50 hover:bg-slate-100'
         }`}
       >
-        <input 
-          type="file" 
-          accept=".csv, .xlsx, .xls" 
-          onChange={(e) => handleFile(e.target.files[0])} 
-          ref={fileInputRef} 
-          className="hidden" 
+        <input
+          type="file"
+          accept=".csv, .xlsx, .xls"
+          onChange={(e) => handleFile(e.target.files[0])}
+          ref={fileInputRef}
+          className="hidden"
         />
         {loading ? (
           <div className="space-y-2">
-            <div className="font-bold text-blue-600">Mengunggah ({progress}%)...</div>
-            <div className="w-full bg-slate-200 rounded-full h-2"><div className="bg-blue-600 h-2 rounded-full transition-all" style={{width: `${progress}%`}}></div></div>
+            <div className="font-bold text-blue-600 text-xs sm:text-sm">Mengunggah Data ({progress}%)...</div>
+            <div className="w-full bg-slate-200 rounded-full h-2">
+              <div
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              ></div>
+            </div>
           </div>
         ) : (
           <div>
-            <p className="text-sm font-bold text-slate-600">Drag & Drop file di sini, atau klik untuk memilih file</p>
+            <p className="text-xs sm:text-sm font-bold text-slate-700">Drag & Drop file di sini, atau klik untuk memilih file</p>
             <p className="text-[10px] text-slate-400 mt-1">Mendukung format .CSV dan .XLSX</p>
           </div>
         )}
