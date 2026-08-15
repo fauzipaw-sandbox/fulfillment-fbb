@@ -3,9 +3,10 @@ import {
   MapContainer,
   TileLayer,
   CircleMarker,
-  Popup,
+  Tooltip as LeafletTooltip,
   Polyline,
   Marker,
+  Popup,
   useMap,
   useMapEvents,
 } from 'react-leaflet';
@@ -45,7 +46,7 @@ function MapController({ data, focusLocation, markerRefs, roadRouteCoordinates, 
       map.flyTo([focusLocation.latitude, focusLocation.longitude], 17, { animate: true });
       const ref = markerRefs.current[focusLocation.odp_name];
       if (ref) {
-        setTimeout(() => ref.openPopup(), 300);
+        setTimeout(() => ref.openTooltip(), 300);
       }
     } else if (data && data.length > 0) {
       const validCoords = data
@@ -93,7 +94,6 @@ export default function Map({
     return '#111827';
   };
 
-  // Poin 4: Pewarnaan Nilai ONT RX Level
   const getRxColor = (rxVal) => {
     if (rxVal === null || rxVal === undefined) return '#64748b';
     if (rxVal > -18) return '#16a34a';
@@ -253,11 +253,6 @@ export default function Map({
               ref={(el) => {
                 if (el) markerRefs.current[odp.odp_name] = el;
               }}
-              eventHandlers={{
-                mouseover: (e) => {
-                  e.target.openPopup();
-                },
-              }}
               pathOptions={{
                 fillColor: color,
                 fillOpacity: 0.9,
@@ -265,14 +260,20 @@ export default function Map({
                 weight: 1,
               }}
             >
-              <Popup className="compact-custom-popup" maxWidth={230} minWidth={180}>
-                <div className="text-[10px] font-sans bg-white p-2 text-slate-800 pointer-events-auto">
+              {/* Poin 3: Hover Only Popup (Muncul saat cursor diarahkan & Langsung Hilang saat cursor menjauh) */}
+              <LeafletTooltip
+                direction="top"
+                offset={[0, -5]}
+                opacity={1}
+                className="compact-custom-tooltip"
+              >
+                <div className="text-[10px] font-sans bg-white p-2 rounded shadow-lg text-slate-800 min-w-[190px]">
                   <div className="border-b border-slate-200 pb-1 mb-1 flex items-center justify-between gap-1">
                     <p className="font-extrabold text-blue-900 truncate max-w-[130px]" title={odp.odp_name}>
                       {odp.odp_name}
                     </p>
                     <span
-                      className="text-[8px] font-bold px-1.5 py-0.2 rounded text-white tracking-wider uppercase"
+                      className="text-[8px] font-bold px-1.5 py-0.2 rounded text-white uppercase"
                       style={{ backgroundColor: color }}
                     >
                       {odp.status_final}
@@ -320,7 +321,7 @@ export default function Map({
                     <span className="font-sans font-semibold text-slate-500">Avai: {odp.avai || 0}</span>
                   </div>
                 </div>
-              </Popup>
+              </LeafletTooltip>
             </CircleMarker>
           );
         })}
