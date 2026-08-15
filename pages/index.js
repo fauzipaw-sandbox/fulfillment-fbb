@@ -38,36 +38,11 @@ const MONTH_NAMES = [
 ];
 
 const FALLOUT_KEYWORDS = [
-  'ODP BELUM GO LIVE',
-  'ODP FULL',
-  'ODP JAUH',
-  'ODP LOSS',
-  'ODP RETI',
-  'ODP RUSAK',
-  'TIDAK ADA ODP',
-  'KENDALA JALUR/RUTE TARIKAN',
-  'KENDALA IKR/IKG',
-  'KENDALA IZIN',
-  'KENDALA MATERIAL/NTE',
-  'KENDALA PERANGKAT',
-  'ALAMAT TIDAK DITEMUKAN',
-  'INDIKASI CABUT PASANG',
-  'PELANGGAN MASIH RAGU',
-  'PELANGGAN TIDAK MERASA PASANG',
-  'RUMAH KOSONG',
-  'CROSS JALAN',
-  'DOUBLE INPUT',
-  'GANTI PAKET',
-  'LIMITASI ONU',
-  'TIANG',
-  'BATAL',
-  'PENDING',
-  'SYSTEM',
-  'ACTIVATION',
-  'DATA',
-  'RNA',
-  'ODP',
-  'LAINNYA',
+  'ODP BELUM GO LIVE', 'ODP FULL', 'ODP JAUH', 'ODP LOSS', 'ODP RETI', 'ODP RUSAK', 'TIDAK ADA ODP',
+  'KENDALA JALUR/RUTE TARIKAN', 'KENDALA IKR/IKG', 'KENDALA IZIN', 'KENDALA MATERIAL/NTE', 'KENDALA PERANGKAT',
+  'ALAMAT TIDAK DITEMUKAN', 'INDIKASI CABUT PASANG', 'PELANGGAN MASIH RAGU', 'PELANGGAN TIDAK MERASA PASANG',
+  'RUMAH KOSONG', 'CROSS JALAN', 'DOUBLE INPUT', 'GANTI PAKET', 'LIMITASI ONU', 'TIANG', 'BATAL',
+  'PENDING', 'SYSTEM', 'ACTIVATION', 'DATA', 'RNA', 'ODP', 'LAINNYA',
 ];
 
 function normalizeFalloutReason(rawVal) {
@@ -218,6 +193,7 @@ export default function Dashboard() {
   const [sortConfig, setSortConfig] = useState({ key: 'occ', direction: 'desc' });
   const [showUploader, setShowUploader] = useState(false);
   
+  // Filter States
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [selectedRx, setSelectedRx] = useState('ALL');
   const [selectedKabupaten, setSelectedKabupaten] = useState('ALL');
@@ -229,6 +205,7 @@ export default function Dashboard() {
   const [suggestions, setSuggestions] = useState([]);
   const [focusedOdp, setFocusedOdp] = useState(null);
 
+  // Measure Jarak
   const [showMeasureModal, setShowMeasureModal] = useState(false);
   const [pointAInput, setPointAInput] = useState('');
   const [pointBInput, setPointBInput] = useState('');
@@ -237,11 +214,14 @@ export default function Dashboard() {
   const [manualMeasureLine, setManualMeasureLine] = useState(null);
   const [roadRouteCoordinates, setRoadRouteCoordinates] = useState([]);
 
+  // Tab & Table States Bagian Bawah (dengan Sorting Tersendiri)
   const [bottomActiveTab, setBottomActiveTab] = useState('ODP');
   const [tableSearch, setTableSearch] = useState('');
   const [orderTableSearch, setOrderTableSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [currentOrderPage, setCurrentOrderPage] = useState(1);
+  const [odpTableSort, setOdpTableSort] = useState({ key: 'odp_name', direction: 'asc' });
+  const [orderTableSort, setOrderTableSort] = useState({ key: 'order_ts', direction: 'desc' });
   const rowsPerPage = 50;
 
   const fetchData = async () => {
@@ -456,29 +436,71 @@ export default function Dashboard() {
     return { odp, is_total, used, avai, occ, avai_perc };
   }, [statsFiltered.flatStos]);
 
-  const bottomOdpData = useMemo(() => {
-    if (!tableSearch.trim()) return fullyFilteredData;
-    const s = tableSearch.toLowerCase();
-    return fullyFilteredData.filter((d) =>
-      (d.odp_name && d.odp_name.toLowerCase().includes(s)) ||
-      (d.sto && d.sto.toLowerCase().includes(s)) ||
-      (d.wok && d.wok.toLowerCase().includes(s)) ||
-      (d.kabupaten && d.kabupaten.toLowerCase().includes(s)) ||
-      (d.desa && d.desa.toLowerCase().includes(s))
-    );
-  }, [fullyFilteredData, tableSearch]);
+  // Sorting Handler ODP Bottom Table
+  const requestOdpSort = (key) => {
+    let direction = 'asc';
+    if (odpTableSort.key === key && odpTableSort.direction === 'asc') direction = 'desc';
+    setOdpTableSort({ key, direction });
+  };
 
-  const totalOdpPages = Math.ceil(bottomOdpData.length / rowsPerPage) || 1;
+  // Sorting Handler Order Bottom Table
+  const requestOrderSort = (key) => {
+    let direction = 'asc';
+    if (orderTableSort.key === key && orderTableSort.direction === 'asc') direction = 'desc';
+    setOrderTableSort({ key, direction });
+  };
+
+  // Data Tabel ODP Bawah dengan Sorting
+  const sortedBottomOdpData = useMemo(() => {
+    let filtered = fullyFilteredData;
+    if (tableSearch.trim()) {
+      const s = tableSearch.toLowerCase();
+      filtered = filtered.filter((d) =>
+        (d.odp_name && d.odp_name.toLowerCase().includes(s)) ||
+        (d.sto && d.sto.toLowerCase().includes(s)) ||
+        (d.wok && d.wok.toLowerCase().includes(s)) ||
+        (d.kabupaten && d.kabupaten.toLowerCase().includes(s)) ||
+        (d.desa && d.desa.toLowerCase().includes(s))
+      );
+    }
+
+    return [...filtered].sort((a, b) => {
+      let valA = a[odpTableSort.key] ?? '';
+      let valB = b[odpTableSort.key] ?? '';
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return odpTableSort.direction === 'asc' ? valA - valB : valB - valA;
+      }
+      return odpTableSort.direction === 'asc'
+        ? String(valA).localeCompare(String(valB))
+        : String(valB).localeCompare(String(valA));
+    });
+  }, [fullyFilteredData, tableSearch, odpTableSort]);
+
+  // Data Tabel Order Bawah dengan Sorting
+  const sortedBottomOrderData = useMemo(() => {
+    return [...filteredOrders].sort((a, b) => {
+      let valA = a[orderTableSort.key] ?? '';
+      let valB = b[orderTableSort.key] ?? '';
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return orderTableSort.direction === 'asc' ? valA - valB : valB - valA;
+      }
+      return orderTableSort.direction === 'asc'
+        ? String(valA).localeCompare(String(valB))
+        : String(valB).localeCompare(String(valA));
+    });
+  }, [filteredOrders, orderTableSort]);
+
+  const totalOdpPages = Math.ceil(sortedBottomOdpData.length / rowsPerPage) || 1;
   const paginatedOdpData = useMemo(() => {
     const start = (currentPage - 1) * rowsPerPage;
-    return bottomOdpData.slice(start, start + rowsPerPage);
-  }, [bottomOdpData, currentPage]);
+    return sortedBottomOdpData.slice(start, start + rowsPerPage);
+  }, [sortedBottomOdpData, currentPage]);
 
-  const totalOrderPages = Math.ceil(filteredOrders.length / rowsPerPage) || 1;
+  const totalOrderPages = Math.ceil(sortedBottomOrderData.length / rowsPerPage) || 1;
   const paginatedOrderData = useMemo(() => {
     const start = (currentOrderPage - 1) * rowsPerPage;
-    return filteredOrders.slice(start, start + rowsPerPage);
-  }, [filteredOrders, currentOrderPage]);
+    return sortedBottomOrderData.slice(start, start + rowsPerPage);
+  }, [sortedBottomOrderData, currentOrderPage]);
 
   const handleExportFilteredOdpCSV = () => {
     if (fullyFilteredData.length === 0) return alert('Tidak ada data ODP terfilter.');
@@ -1049,7 +1071,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* OCCUPANCY & AVAILABLE PORT */}
+            {/* OCCUPANCY & AVAILABLE PORT (FULL CLICKABLE & SORTABLE) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
                 <span className="font-extrabold text-xs sm:text-sm tracking-wide">OCCUPANCY & AVAILABLE PORT</span>
@@ -1060,7 +1082,7 @@ export default function Dashboard() {
 
               <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
                 <table className="w-full text-center border-collapse min-w-[500px]">
-                  <thead className="bg-[#0f172a] text-white text-[9px] sm:text-[10px] sticky top-0 z-10 shadow-md cursor-pointer">
+                  <thead className="bg-[#0f172a] text-white text-[9px] sm:text-[10px] sticky top-0 z-10 shadow-md cursor-pointer select-none">
                     <tr>
                       <th className="p-1.5 border border-gray-400 hover:bg-gray-800" onClick={() => requestSort('wok')}>
                         WOK {sortConfig.key === 'wok' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
@@ -1155,7 +1177,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ================= SECTION BAWAH: TABEL DETAIL RAW DATA ================= */}
+        {/* ================= SECTION BAWAH: TABEL DETAIL RAW DATA (FULL SORTABLE & CLICKABLE) ================= */}
         <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden mt-4">
           <div className="bg-gradient-to-r from-[#0f172a] via-[#1e293b] to-[#334155] text-white p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <div className="flex items-center gap-2">
@@ -1168,7 +1190,7 @@ export default function Dashboard() {
                     : 'bg-slate-700/60 text-slate-300 hover:bg-slate-700'
                 }`}
               >
-                📋 Tabel Data ODP ({bottomOdpData.length.toLocaleString()})
+                📋 Tabel Data ODP ({sortedBottomOdpData.length.toLocaleString()})
               </button>
               <button
                 type="button"
@@ -1179,7 +1201,7 @@ export default function Dashboard() {
                     : 'bg-slate-700/60 text-slate-300 hover:bg-slate-700'
                 }`}
               >
-                📦 Tabel Data Order ({filteredOrders.length.toLocaleString()})
+                📦 Tabel Data Order ({sortedBottomOrderData.length.toLocaleString()})
               </button>
             </div>
 
@@ -1190,7 +1212,10 @@ export default function Dashboard() {
                     type="text"
                     placeholder="Cari ODP, STO, Desa..."
                     value={tableSearch}
-                    onChange={(e) => setTableSearch(e.target.value)}
+                    onChange={(e) => {
+                      setTableSearch(e.target.value);
+                      setCurrentPage(1);
+                    }}
                     className="px-2.5 py-1 text-black rounded text-xs outline-none w-full sm:w-48"
                   />
                   <button
@@ -1207,7 +1232,10 @@ export default function Dashboard() {
                     type="text"
                     placeholder="Cari Order ID, Pelanggan, Fallout..."
                     value={orderTableSearch}
-                    onChange={(e) => setOrderTableSearch(e.target.value)}
+                    onChange={(e) => {
+                      setOrderTableSearch(e.target.value);
+                      setCurrentOrderPage(1);
+                    }}
                     className="px-2.5 py-1 text-black rounded text-xs outline-none w-full sm:w-48"
                   />
                   <button
@@ -1225,22 +1253,46 @@ export default function Dashboard() {
           {/* TAB 1: TABEL DETAIL ODP */}
           {bottomActiveTab === 'ODP' && (
             <div className="overflow-x-auto max-h-[460px] overflow-y-auto">
-              <table className="w-full text-left border-collapse text-[10px]">
-                <thead className="bg-[#1e293b] text-white uppercase font-bold sticky top-0 z-10 shadow">
+              <table className="w-full text-left border-collapse text-[10px] whitespace-nowrap">
+                <thead className="bg-[#1e293b] text-white uppercase font-bold sticky top-0 z-10 shadow select-none cursor-pointer">
                   <tr>
-                    <th className="p-2 border border-slate-600">No</th>
-                    <th className="p-2 border border-slate-600">ODP Name</th>
-                    <th className="p-2 border border-slate-600">STO</th>
-                    <th className="p-2 border border-slate-600">WOK</th>
-                    <th className="p-2 border border-slate-600">Kabupaten</th>
-                    <th className="p-2 border border-slate-600">Kecamatan</th>
-                    <th className="p-2 border border-slate-600">Desa</th>
-                    <th className="p-2 border border-slate-600 text-center">Status</th>
-                    <th className="p-2 border border-slate-600 text-center">Total Port</th>
-                    <th className="p-2 border border-slate-600 text-center">Used</th>
-                    <th className="p-2 border border-slate-600 text-center">Avail</th>
-                    <th className="p-2 border border-slate-600 text-center">% OCC</th>
-                    <th className="p-2 border border-slate-600 text-center">ONT RX Level</th>
+                    <th className="p-2 border border-slate-600 text-center">No</th>
+                    <th className="p-2 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('odp_name')}>
+                      ODP Name {odpTableSort.key === 'odp_name' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('sto')}>
+                      STO {odpTableSort.key === 'sto' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('wok')}>
+                      WOK {odpTableSort.key === 'wok' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('kabupaten')}>
+                      Kabupaten {odpTableSort.key === 'kabupaten' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('kecamatan')}>
+                      Kecamatan {odpTableSort.key === 'kecamatan' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('desa')}>
+                      Desa {odpTableSort.key === 'desa' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-slate-600 text-center hover:bg-slate-700" onClick={() => requestOdpSort('status_final')}>
+                      Status {odpTableSort.key === 'status_final' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-slate-600 text-center hover:bg-slate-700" onClick={() => requestOdpSort('is_total')}>
+                      Total Port {odpTableSort.key === 'is_total' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-slate-600 text-center hover:bg-slate-700" onClick={() => requestOdpSort('used')}>
+                      Used {odpTableSort.key === 'used' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-slate-600 text-center hover:bg-slate-700" onClick={() => requestOdpSort('avai')}>
+                      Avail {odpTableSort.key === 'avai' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-slate-600 text-center hover:bg-slate-700" onClick={() => requestOdpSort('rsk')}>
+                      % OCC {odpTableSort.key === 'rsk' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-slate-600 text-center hover:bg-slate-700" onClick={() => requestOdpSort('ont_rx_level')}>
+                      ONT RX Level {odpTableSort.key === 'ont_rx_level' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
                     <th className="p-2 border border-slate-600">Latitude</th>
                     <th className="p-2 border border-slate-600">Longitude</th>
                   </tr>
@@ -1275,12 +1327,34 @@ export default function Dashboard() {
                         <tr key={`${row.odp_name}-${idx}`} className="border-b border-slate-200 hover:bg-blue-50/60 transition">
                           <td className="p-1.5 border border-slate-200 text-center font-bold text-slate-500">{rowNumber}</td>
                           <td className="p-1.5 border border-slate-200 font-black text-blue-900">{row.odp_name}</td>
-                          <td className="p-1.5 border border-slate-200 font-bold">{row.sto || '-'}</td>
-                          <td className="p-1.5 border border-slate-200">{row.wok || '-'}</td>
-                          <td className="p-1.5 border border-slate-200">{row.kabupaten || '-'}</td>
+                          <td
+                            className="p-1.5 border border-slate-200 font-bold cursor-pointer hover:text-blue-700 hover:underline"
+                            onClick={() => setSelectedStoFilter((p) => (p === row.sto ? 'ALL' : row.sto))}
+                            title="Klik untuk filter STO ini"
+                          >
+                            {row.sto || '-'}
+                          </td>
+                          <td
+                            className="p-1.5 border border-slate-200 cursor-pointer hover:text-blue-700 hover:underline"
+                            onClick={() => setSelectedWokFilter((p) => (p === row.wok ? 'ALL' : row.wok))}
+                            title="Klik untuk filter WOK ini"
+                          >
+                            {row.wok || '-'}
+                          </td>
+                          <td
+                            className="p-1.5 border border-slate-200 cursor-pointer hover:text-blue-700 hover:underline"
+                            onClick={() => setSelectedKabupaten((p) => (p === row.kabupaten ? 'ALL' : row.kabupaten))}
+                            title="Klik untuk filter Kabupaten ini"
+                          >
+                            {row.kabupaten || '-'}
+                          </td>
                           <td className="p-1.5 border border-slate-200">{row.kecamatan || '-'}</td>
                           <td className="p-1.5 border border-slate-200">{row.desa || '-'}</td>
-                          <td className="p-1.5 border border-slate-200 text-center">
+                          <td
+                            className="p-1.5 border border-slate-200 text-center cursor-pointer"
+                            onClick={() => setSelectedStatus((p) => (p === row.status_final ? 'ALL' : row.status_final))}
+                            title="Klik untuk filter Status ini"
+                          >
                             <span
                               className="px-1.5 py-0.5 rounded text-[8.5px] font-bold text-white uppercase"
                               style={{ backgroundColor: statusColor }}
@@ -1292,7 +1366,12 @@ export default function Dashboard() {
                           <td className="p-1.5 border border-slate-200 text-center text-emerald-800 font-bold">{row.used || 0}</td>
                           <td className="p-1.5 border border-slate-200 text-center text-red-800 font-bold">{row.avai || 0}</td>
                           <td className="p-1.5 border border-slate-200 text-center font-extrabold">{occ.toFixed(1)}%</td>
-                          <td className="p-1.5 border border-slate-200 text-center font-bold" style={{ color: rxColor }}>
+                          <td
+                            className="p-1.5 border border-slate-200 text-center font-bold cursor-pointer hover:underline"
+                            style={{ color: rxColor }}
+                            onClick={() => setSelectedRx((p) => (p === row.rx_category ? 'ALL' : row.rx_category))}
+                            title="Klik untuk filter Kategori RX ini"
+                          >
                             {row.ont_rx_level !== null ? `${Number(row.ont_rx_level).toFixed(2)} dBm` : '-'}
                           </td>
                           <td className="p-1.5 border border-slate-200 font-mono text-[9px] text-slate-500">{row.latitude || '-'}</td>
@@ -1310,24 +1389,51 @@ export default function Dashboard() {
           {bottomActiveTab === 'ORDER' && (
             <div className="overflow-x-auto max-h-[460px] overflow-y-auto">
               <table className="w-full text-left border-collapse text-[10px] whitespace-nowrap">
-                <thead className="bg-[#3b0764] text-white uppercase font-bold sticky top-0 z-10 shadow">
+                <thead className="bg-[#3b0764] text-white uppercase font-bold sticky top-0 z-10 shadow select-none cursor-pointer">
                   <tr>
-                    <th className="p-2 border border-purple-800">No</th>
-                    <th className="p-2 border border-purple-800">Order ID</th>
-                    <th className="p-2 border border-purple-800">Order Status</th>
-                    <th className="p-2 border border-purple-800">Nama Pelanggan</th>
-                    <th className="p-2 border border-purple-800">No HP</th>
-                    <th className="p-2 border border-purple-800">STO</th>
-                    <th className="p-2 border border-purple-800">WOK</th>
-                    <th className="p-2 border border-purple-800">ODP Name</th>
-                    <th className="p-2 border border-purple-800">Product Name</th>
-                    <th className="p-2 border border-purple-800">Duration Cat</th>
-                    <th className="p-2 border border-purple-800">Fallout Reason (Clean)</th>
-                    <th className="p-2 border border-purple-800">Raw Fallout Reason</th>
-                    <th className="p-2 border border-purple-800">Price</th>
-                    <th className="p-2 border border-purple-800">Order Date</th>
-                    <th className="p-2 border border-purple-800">PS Date</th>
-                    <th className="p-2 border border-purple-800">SF Name</th>
+                    <th className="p-2 border border-purple-800 text-center">No</th>
+                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('order_id')}>
+                      Order ID {orderTableSort.key === 'order_id' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('order_status_clean')}>
+                      Order Status {orderTableSort.key === 'order_status_clean' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('name')}>
+                      Nama Pelanggan {orderTableSort.key === 'name' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('no_handphone')}>
+                      No HP {orderTableSort.key === 'no_handphone' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('sto_co')}>
+                      STO {orderTableSort.key === 'sto_co' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('wok')}>
+                      WOK {orderTableSort.key === 'wok' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('odp_name')}>
+                      ODP Name {orderTableSort.key === 'odp_name' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('product_commercial_name')}>
+                      Product Name {orderTableSort.key === 'product_commercial_name' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('order_duration_cat')}>
+                      Duration Cat {orderTableSort.key === 'order_duration_cat' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('fallout_reason_clean')}>
+                      Fallout Reason {orderTableSort.key === 'fallout_reason_clean' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('price_package')}>
+                      Price {orderTableSort.key === 'price_package' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('order_ts')}>
+                      Order Date {orderTableSort.key === 'order_ts' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('ps_ts')}>
+                      PS Date {orderTableSort.key === 'ps_ts' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('sf_name')}>
+                      SF Name {orderTableSort.key === 'sf_name' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
                     <th className="p-2 border border-purple-800">Alamat</th>
                     <th className="p-2 border border-purple-800">Latitude</th>
                     <th className="p-2 border border-purple-800">Longitude</th>
@@ -1336,7 +1442,7 @@ export default function Dashboard() {
                 <tbody>
                   {paginatedOrderData.length === 0 ? (
                     <tr>
-                      <td colSpan={19} className="p-4 text-center text-slate-400 font-bold">
+                      <td colSpan={18} className="p-4 text-center text-slate-400 font-bold">
                         Belum ada data Order yang diunggah atau tidak sesuai filter.
                       </td>
                     </tr>
@@ -1350,8 +1456,20 @@ export default function Dashboard() {
                           <td className="p-1.5 border border-slate-200 font-bold text-slate-800">{row.order_status_desc || row.process_state || '-'}</td>
                           <td className="p-1.5 border border-slate-200 font-semibold">{row.name || '-'}</td>
                           <td className="p-1.5 border border-slate-200 font-mono text-[9px]">{row.no_handphone || row.no_handphone_mask || '-'}</td>
-                          <td className="p-1.5 border border-slate-200 font-bold">{row.sto_co || '-'}</td>
-                          <td className="p-1.5 border border-slate-200">{row.wok || '-'}</td>
+                          <td
+                            className="p-1.5 border border-slate-200 font-bold cursor-pointer hover:text-blue-700 hover:underline"
+                            onClick={() => setSelectedStoFilter((p) => (p === row.sto_co ? 'ALL' : row.sto_co))}
+                            title="Klik untuk filter STO ini"
+                          >
+                            {row.sto_co || '-'}
+                          </td>
+                          <td
+                            className="p-1.5 border border-slate-200 cursor-pointer hover:text-blue-700 hover:underline"
+                            onClick={() => setSelectedWokFilter((p) => (p === row.wok ? 'ALL' : row.wok))}
+                            title="Klik untuk filter WOK ini"
+                          >
+                            {row.wok || '-'}
+                          </td>
                           <td className="p-1.5 border border-slate-200 font-bold text-blue-800">{row.odp_name || '-'}</td>
                           <td className="p-1.5 border border-slate-200">{row.product_commercial_name || '-'}</td>
                           <td className="p-1.5 border border-slate-200 font-bold text-emerald-800">{row.order_duration_cat || '-'}</td>
@@ -1362,7 +1480,6 @@ export default function Dashboard() {
                               </span>
                             ) : '-'}
                           </td>
-                          <td className="p-1.5 border border-slate-200 text-slate-500 max-w-[200px] truncate" title={row.fallout_reason}>{row.fallout_reason || '-'}</td>
                           <td className="p-1.5 border border-slate-200 text-right">{row.price_package ? Number(row.price_package).toLocaleString() : '-'}</td>
                           <td className="p-1.5 border border-slate-200">{row.order_ts || '-'}</td>
                           <td className="p-1.5 border border-slate-200">{row.ps_ts || '-'}</td>
@@ -1384,7 +1501,7 @@ export default function Dashboard() {
             {bottomActiveTab === 'ODP' ? (
               <>
                 <span className="text-slate-600">
-                  Halaman <strong>{currentPage}</strong> dari <strong>{totalOdpPages}</strong> (Total <strong>{bottomOdpData.length.toLocaleString()}</strong> ODP)
+                  Halaman <strong>{currentPage}</strong> dari <strong>{totalOdpPages}</strong> (Total <strong>{sortedBottomOdpData.length.toLocaleString()}</strong> ODP)
                 </span>
                 <div className="flex items-center gap-1">
                   <button
@@ -1425,7 +1542,7 @@ export default function Dashboard() {
             ) : (
               <>
                 <span className="text-slate-600">
-                  Halaman <strong>{currentOrderPage}</strong> dari <strong>{totalOrderPages}</strong> (Total <strong>{filteredOrders.length.toLocaleString()}</strong> Order)
+                  Halaman <strong>{currentOrderPage}</strong> dari <strong>{totalOrderPages}</strong> (Total <strong>{sortedBottomOrderData.length.toLocaleString()}</strong> Order)
                 </span>
                 <div className="flex items-center gap-1">
                   <button
