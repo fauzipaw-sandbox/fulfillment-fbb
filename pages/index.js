@@ -2,8 +2,8 @@ import React, { useEffect, useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Papa from 'papaparse';
-import Uploader from '../components/Uploader';
 import Sidebar from '../components/Sidebar';
+import Uploader from '../components/Uploader';
 import {
   BarChart,
   Bar,
@@ -288,7 +288,7 @@ export default function Dashboard() {
     });
   }, [data, selectedStatus, selectedRx, selectedKabupaten, selectedStoFilter, selectedWokFilter, selectedPortFilter]);
 
-  // Filter Sinkron untuk Data Order (Mengikuti Filter STO & WOK & ODP)
+  // Filter Sinkron untuk Data Order
   const filteredOrders = useMemo(() => {
     return ordersData.filter((o) => {
       const matchSto = selectedStoFilter === 'ALL' || o.sto_co === selectedStoFilter;
@@ -546,14 +546,14 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen p-2 sm:p-4 text-gray-800 font-sans text-xs bg-[#f1f5f9] relative">
+    <Sidebar>
       <Head>
-        <title>ODP & Order Dashboard</title>
+        <title>ODP Profile & Utilization</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
       </Head>
 
       {loading && (
-        <div className="fixed inset-0 z-[9999] bg-slate-900/70 backdrop-blur-sm flex flex-col items-center justify-center text-white">
+        <div className="fixed inset-0 z-[9999] bg-slate-900/70 backdrop-blur-xs flex flex-col items-center justify-center text-white">
           <div className="relative flex items-center justify-center mb-4">
             <div className="w-16 h-16 border-4 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
             <div className="w-8 h-8 border-4 border-indigo-200 border-b-transparent rounded-full animate-spin absolute"></div>
@@ -563,11 +563,11 @@ export default function Dashboard() {
       )}
 
       <div className="max-w-[1450px] mx-auto space-y-3">
-        {/* HEADER UTAMA: Tombol Upload Data */}
+        {/* HEADER UTAMA */}
         <div className="bg-gradient-to-r from-[#211c47] to-[#3a3575] text-white p-3 sm:p-4 flex flex-col md:flex-row justify-between items-start md:items-center border-b-4 border-purple-500 rounded-t-lg shadow-sm gap-2">
           <div>
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-wide uppercase italic">
-              ODP PROFILE & ORDER FULFILLMENT
+              ODP PROFILE & UTILIZATION
             </h1>
             <p className="text-[10px] sm:text-xs font-semibold mt-0.5 opacity-90 text-yellow-300">
               {headerCutoffText}
@@ -630,7 +630,8 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
           {/* ================= KOLOM KIRI ================= */}
           <div className="space-y-3 sm:space-y-4">
-            {/* OVERVIEW ODP PROFILE */}
+            
+            {/* 1. OVERVIEW ODP PROFILE */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
                 <span className="font-extrabold text-xs sm:text-sm tracking-wide">OVERVIEW ODP PROFILE</span>
@@ -779,7 +780,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* KUALITAS REDAMAN (ONT RX LEVEL) */}
+            {/* 2. KUALITAS REDAMAN (ONT RX LEVEL) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#059669] via-[#0d9488] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
                 <span className="font-extrabold text-xs sm:text-sm tracking-wide">KUALITAS REDAMAN (ONT RX LEVEL)</span>
@@ -855,7 +856,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* ODP SHARE KABUPATEN LEVEL */}
+            {/* 3. ODP SHARE KABUPATEN LEVEL */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#4c1d95] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
                 <span className="font-extrabold text-xs sm:text-sm tracking-wide">ODP SHARE KABUPATEN LEVEL</span>
@@ -1110,10 +1111,9 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ================= SECTION BAWAH: TABEL DETAIL RAW DATA (ODP & ORDER) ================= */}
+        {/* ================= SECTION BAWAH: TABEL DETAIL RAW DATA ================= */}
         <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden mt-4">
           <div className="bg-gradient-to-r from-[#0f172a] via-[#1e293b] to-[#334155] text-white p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-            {/* Tab Selector Data ODP / Data Order */}
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -1135,7 +1135,7 @@ export default function Dashboard() {
                     : 'bg-slate-700/60 text-slate-300 hover:bg-slate-700'
                 }`}
               >
-                📦 Tabel Data Order Fulfillment ({filteredOrders.length.toLocaleString()})
+                📦 Tabel Data Order ({filteredOrders.length.toLocaleString()})
               </button>
             </div>
 
@@ -1262,7 +1262,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* TAB 2: TABEL DATA ORDER FULFILLMENT (78 KOLOM) */}
+          {/* TAB 2: TABEL DATA ORDER FULFILLMENT */}
           {bottomActiveTab === 'ORDER' && (
             <div className="overflow-x-auto max-h-[460px] overflow-y-auto">
               <table className="w-full text-left border-collapse text-[10px] whitespace-nowrap">
@@ -1277,26 +1277,21 @@ export default function Dashboard() {
                     <th className="p-2 border border-purple-800">WOK</th>
                     <th className="p-2 border border-purple-800">ODP Name</th>
                     <th className="p-2 border border-purple-800">Product Name</th>
-                    <th className="p-2 border border-purple-800">Speed</th>
-                    <th className="p-2 border border-purple-800">Package Cat</th>
+                    <th className="p-2 border border-purple-800">Duration Cat</th>
+                    <th className="p-2 border border-purple-800">Fallout Reason</th>
                     <th className="p-2 border border-purple-800">Price</th>
                     <th className="p-2 border border-purple-800">Order Date</th>
                     <th className="p-2 border border-purple-800">PS Date</th>
-                    <th className="p-2 border border-purple-800">Channel Group</th>
                     <th className="p-2 border border-purple-800">SF Name</th>
                     <th className="p-2 border border-purple-800">Alamat</th>
                     <th className="p-2 border border-purple-800">Latitude</th>
                     <th className="p-2 border border-purple-800">Longitude</th>
-                    <th className="p-2 border border-purple-800">Chief Name</th>
-                    <th className="p-2 border border-purple-800">WONUM</th>
-                    <th className="p-2 border border-purple-800">Fallout Category</th>
-                    <th className="p-2 border border-purple-800">Fallout Reason</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedOrderData.length === 0 ? (
                     <tr>
-                      <td colSpan={23} className="p-4 text-center text-slate-400 font-bold">
+                      <td colSpan={18} className="p-4 text-center text-slate-400 font-bold">
                         Belum ada data Order yang diunggah atau tidak sesuai filter.
                       </td>
                     </tr>
@@ -1314,20 +1309,15 @@ export default function Dashboard() {
                           <td className="p-1.5 border border-slate-200">{row.wok || '-'}</td>
                           <td className="p-1.5 border border-slate-200 font-bold text-blue-800">{row.odp_name || '-'}</td>
                           <td className="p-1.5 border border-slate-200">{row.product_commercial_name || '-'}</td>
-                          <td className="p-1.5 border border-slate-200">{row.speed_product || '-'}</td>
-                          <td className="p-1.5 border border-slate-200">{row.package_cat || '-'}</td>
+                          <td className="p-1.5 border border-slate-200 font-bold text-emerald-800">{row.order_duration_cat || '-'}</td>
+                          <td className="p-1.5 border border-slate-200 text-red-600 font-semibold max-w-[200px] truncate" title={row.fallout_reason}>{row.fallout_reason || '-'}</td>
                           <td className="p-1.5 border border-slate-200 text-right">{row.price_package ? Number(row.price_package).toLocaleString() : '-'}</td>
                           <td className="p-1.5 border border-slate-200">{row.order_ts || '-'}</td>
                           <td className="p-1.5 border border-slate-200">{row.ps_ts || '-'}</td>
-                          <td className="p-1.5 border border-slate-200">{row.channel_group || row.channel_name || '-'}</td>
                           <td className="p-1.5 border border-slate-200">{row.sf_name || '-'}</td>
                           <td className="p-1.5 border border-slate-200 max-w-[200px] truncate" title={row.address}>{row.address || '-'}</td>
                           <td className="p-1.5 border border-slate-200 font-mono text-[9px]">{row.latitude || '-'}</td>
                           <td className="p-1.5 border border-slate-200 font-mono text-[9px]">{row.longitude || '-'}</td>
-                          <td className="p-1.5 border border-slate-200">{row.c_chief_name || '-'}</td>
-                          <td className="p-1.5 border border-slate-200 font-mono text-[9px]">{row.c_wonum || '-'}</td>
-                          <td className="p-1.5 border border-slate-200 text-red-700">{row.fallout_category || '-'}</td>
-                          <td className="p-1.5 border border-slate-200 text-red-600 max-w-[200px] truncate" title={row.fallout_reason}>{row.fallout_reason || '-'}</td>
                         </tr>
                       );
                     })
@@ -1425,6 +1415,6 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
-    </div>
+    </Sidebar>
   );
 }
