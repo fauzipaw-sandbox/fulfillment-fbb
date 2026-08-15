@@ -169,7 +169,7 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
     }
   };
 
-  // 2. Process Upload Data Order (Mengarah ke /api/upload?type=order)
+  // 2. Process Upload Data Order
   const processOrderData = async (rawDataInput) => {
     setLoading(true);
     setProgress(0);
@@ -329,18 +329,22 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
     }
 
     setDeleting(true);
+    const deleteType = activeTab === 'ODP' ? 'odp' : 'order';
+
     try {
-      const res = await fetch('/api/clear-db', { method: 'POST' });
+      const res = await fetch(`/api/clear-db?type=${deleteType}`, { method: 'POST' });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || `HTTP ${res.status}`);
       }
-      alert('Semua isi tabel Database ODP berhasil dikosongkan.');
+      alert(`Semua isi tabel Database ${activeTab} berhasil dikosongkan.`);
       setShowDeleteModal(false);
       setConfirmInput('');
-      if (onUploadOdpSuccess) onUploadOdpSuccess();
+      
+      if (activeTab === 'ODP' && onUploadOdpSuccess) onUploadOdpSuccess();
+      if (activeTab === 'ORDER' && onUploadOrderSuccess) onUploadOrderSuccess();
     } catch (err) {
-      alert('Gagal mengosongkan database: ' + err.message);
+      alert(`Gagal mengosongkan database ${activeTab}: ` + err.message);
     } finally {
       setDeleting(false);
     }
@@ -348,7 +352,7 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
 
   return (
     <div className="bg-white p-3 sm:p-4 rounded shadow-sm border border-slate-200 space-y-3">
-      {/* Tab Selector */}
+      {/* Tab Selector & Delete Button */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2">
         <div className="flex items-center gap-2">
           <button
@@ -371,19 +375,22 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            📦 2. Upload Data Order (79 Kolom)
+            📦 2. Upload Data Order
           </button>
         </div>
         
-        {activeTab === 'ODP' && (
-          <button
-            type="button"
-            onClick={() => setShowDeleteModal(true)}
-            className="px-2.5 py-1 bg-red-700 hover:bg-red-600 text-white rounded text-[11px] font-bold shadow flex items-center gap-1 transition self-end sm:self-auto"
-          >
-            <span>🗑️</span> Hapus Semua Data ODP
-          </button>
-        )}
+        {/* Tombol Delete Dinamis Sesuai Tab yang Aktif */}
+        <button
+          type="button"
+          onClick={() => setShowDeleteModal(true)}
+          className={`px-2.5 py-1 text-white rounded text-[11px] font-bold shadow flex items-center gap-1 transition self-end sm:self-auto ${
+            activeTab === 'ODP'
+              ? 'bg-red-700 hover:bg-red-600'
+              : 'bg-rose-800 hover:bg-rose-700'
+          }`}
+        >
+          <span>🗑️</span> Hapus Semua Data {activeTab}
+        </button>
       </div>
 
       {/* Drag & Drop Area */}
@@ -440,15 +447,18 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
         )}
       </div>
 
+      {/* Modal Konfirmasi Delete Dinamis */}
       {showDeleteModal && (
         <div className="fixed inset-0 z-[10000] bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-2xl border border-red-200 max-w-md w-full p-5 space-y-3">
             <div className="flex items-center gap-2 text-red-600">
               <span className="text-2xl">⚠️</span>
-              <h4 className="text-sm font-black uppercase tracking-wider">Konfirmasi Hapus Semua Data ODP</h4>
+              <h4 className="text-sm font-black uppercase tracking-wider">
+                Konfirmasi Hapus Semua Data {activeTab}
+              </h4>
             </div>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Tindakan ini akan <strong>menghapus permanen seluruh baris data ODP</strong> di database.
+              Tindakan ini akan <strong>menghapus permanen seluruh baris data {activeTab}</strong> di database.
             </p>
             <div className="bg-red-50 p-2.5 rounded border border-red-200 text-[11px] text-red-800">
               Ketik kata <strong className="font-mono bg-red-100 px-1 py-0.5 rounded text-red-900">HAPUS</strong> atau <strong className="font-mono bg-red-100 px-1 py-0.5 rounded text-red-900">DELETE</strong> di bawah ini:
