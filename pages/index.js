@@ -46,13 +46,11 @@ const MONTH_NAMES = [
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 
-// Parser Tanggal & ISO Week yang Kuat (Mendukung String & Excel Serial Number)
 function parseDateRobust(raw) {
   if (!raw) return null;
   if (typeof raw === 'number' || (!isNaN(raw) && !String(raw).includes('-') && !String(raw).includes('/'))) {
     const num = parseFloat(raw);
     if (num > 30000 && num < 60000) {
-      // Excel Serial Date Converter
       return new Date(Math.round((num - 25569) * 86400 * 1000));
     }
   }
@@ -90,7 +88,7 @@ function parseCleanFloat(val) {
   return isNaN(parsed) ? null : parsed;
 }
 
-// Custom Label di dalam Bar (Persentase Akurat Sesuai Popup)
+// Label di Batang Grafik (Sinkron 100% Persentase)
 const renderCustomBarLabel = ({ x, y, width, height, value }) => {
   if (!value || value < 3 || height < 12) return null;
   return (
@@ -107,7 +105,6 @@ const renderCustomBarLabel = ({ x, y, width, height, value }) => {
   );
 };
 
-// Tooltip Grafik Batang dengan Angka Persentase yang 100% Sinkron
 const CustomChartTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
@@ -150,17 +147,15 @@ export default function Dashboard() {
 
   const [showUploader, setShowUploader] = useState(false);
   
-  // Filter States
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [selectedRx, setSelectedRx] = useState('ALL');
   const [selectedKabupaten, setSelectedKabupaten] = useState('ALL');
-  const [selectedPortFilter, setSelectedPortFilter] = useState('ALL'); // 'ALL' | 'USED' | 'AVAI'
+  const [selectedPortFilter, setSelectedPortFilter] = useState('ALL');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [focusedOdp, setFocusedOdp] = useState(null);
 
-  // Routing State
   const [showMeasureModal, setShowMeasureModal] = useState(false);
   const [pointAInput, setPointAInput] = useState('');
   const [pointBInput, setPointBInput] = useState('');
@@ -251,7 +246,6 @@ export default function Dashboard() {
     return selectedWeek === 'ALL' ? data : data.filter((d) => d.week === selectedWeek);
   }, [data, selectedWeek]);
 
-  // Filter Sinkron Semua Komponen
   const fullyFilteredData = useMemo(() => {
     return weekFilteredData.filter((d) => {
       const matchStatus = selectedStatus === 'ALL' || d.status_final === selectedStatus;
@@ -266,7 +260,6 @@ export default function Dashboard() {
     });
   }, [weekFilteredData, selectedStatus, selectedRx, selectedKabupaten, selectedPortFilter]);
 
-  // Format Cutoff Data Header Sesuai Aturan Poin 6
   const headerCutoffText = useMemo(() => {
     if (weekFilteredData.length === 0) return '*Cut Off Data until -';
     const dates = weekFilteredData
@@ -298,7 +291,7 @@ export default function Dashboard() {
     return { totalPort, usedPort, avaiPort, colorCounts, rxCounts };
   }, [weekFilteredData]);
 
-  // Statistik Chart & Table (Perhitungan Persentase Presisi)
+  // Statistik Chart & Tabel (Sinkron 100% Persentase)
   const statsFiltered = useMemo(() => {
     const kabMap = {};
     const flatStosMap = {};
@@ -317,7 +310,8 @@ export default function Dashboard() {
       };
     });
 
-    fullyFilteredData.forEach((item) => {
+    // Perhitungan di grafik batang menggunakan basis data `weekFilteredData` (total per kabupaten secara utuh) agar persentasenya tidak berubah-ubah saat diklik filternya
+    weekFilteredData.forEach((item) => {
       const kab = item.kabupaten;
       if (!kabMap[kab]) {
         kabMap[kab] = {
@@ -335,20 +329,8 @@ export default function Dashboard() {
       kabMap[kab].rawCounts[item.status_final] += 1;
       kabMap[kab].rawPorts[item.status_final] += item.is_total;
       kabMap[kab].total += 1;
-
-      const wok = item.wok;
-      const sto = item.sto;
-      const key = `${wok}_${sto}`;
-      if (!flatStosMap[key]) {
-        flatStosMap[key] = { wok, sto, odp_count: 0, is_total: 0, used: 0, avai: 0 };
-      }
-      flatStosMap[key].odp_count += 1;
-      flatStosMap[key].is_total += item.is_total;
-      flatStosMap[key].used += item.used;
-      flatStosMap[key].avai += item.avai;
     });
 
-    // Kalkulasi Persentase 1:1 Sinkron dengan Popup
     const chartData = Object.values(kabMap)
       .filter((k) => k.total > 0 || VALID_KABUPATEN.includes(k.name))
       .map((k) => {
@@ -365,6 +347,19 @@ export default function Dashboard() {
         };
       });
 
+    fullyFilteredData.forEach((item) => {
+      const wok = item.wok;
+      const sto = item.sto;
+      const key = `${wok}_${sto}`;
+      if (!flatStosMap[key]) {
+        flatStosMap[key] = { wok, sto, odp_count: 0, is_total: 0, used: 0, avai: 0 };
+      }
+      flatStosMap[key].odp_count += 1;
+      flatStosMap[key].is_total += item.is_total;
+      flatStosMap[key].used += item.used;
+      flatStosMap[key].avai += item.avai;
+    });
+
     const flatStos = Object.values(flatStosMap).map((row) => ({
       ...row,
       occ: row.is_total > 0 ? (row.used / row.is_total) * 100 : 0,
@@ -372,7 +367,7 @@ export default function Dashboard() {
     }));
 
     return { chartData, flatStos };
-  }, [fullyFilteredData]);
+  }, [weekFilteredData, fullyFilteredData]);
 
   const sortedTableData = useMemo(() => {
     let sortableItems = [...statsFiltered.flatStos];
@@ -478,7 +473,6 @@ export default function Dashboard() {
         throw new Error('Rute tidak ditemukan');
       }
     } catch (err) {
-      // Fallback
       setManualMeasureLine([[pA.lat, pA.lon], [pB.lat, pB.lon]]);
       setRoadRouteCoordinates([[pA.lat, pA.lon], [pB.lat, pB.lon]]);
     } finally {
@@ -514,18 +508,17 @@ export default function Dashboard() {
 
       {/* 5. ANIMASI LOADING PERTAMA KALI */}
       {loading && (
-        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex flex-col items-center justify-center text-white">
+        <div className="fixed inset-0 z-[9999] bg-slate-900/70 backdrop-blur-sm flex flex-col items-center justify-center text-white">
           <div className="relative flex items-center justify-center mb-4">
             <div className="w-16 h-16 border-4 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
             <div className="w-8 h-8 border-4 border-indigo-200 border-b-transparent rounded-full animate-spin absolute"></div>
           </div>
-          <p className="text-base font-extrabold tracking-wider animate-pulse">MEMUAT DASHBOARD ODP...</p>
-          <p className="text-xs text-blue-200 mt-1">Mengambil belasan ribu data dari Supabase</p>
+          <p className="text-base font-extrabold tracking-wider animate-pulse">MEMUAT DATA...</p>
         </div>
       )}
 
       <div className="max-w-[1450px] mx-auto space-y-3">
-        {/* HEADER UTAMA & ATURAN CUTOFF POIN 6 */}
+        {/* HEADER UTAMA */}
         <div className="bg-gradient-to-r from-[#211c47] to-[#3a3575] text-white p-3 sm:p-4 flex flex-col md:flex-row justify-between items-start md:items-center border-b-4 border-purple-500 rounded-t-lg shadow-sm gap-2">
           <div>
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-wide uppercase italic">
@@ -553,20 +546,20 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* NARRATIVE SUMMARY */}
+        {/* 5. NARASI DALAM BAHASA INDONESIA */}
         <div className="bg-white px-3 sm:px-4 py-2 text-xs sm:text-[13px] border border-gray-200 shadow-sm rounded flex flex-col sm:flex-row justify-between sm:items-center gap-2">
           <div>
-            The total <strong className="font-extrabold">number of ODP</strong> in Branch Palangkaraya
-            was <strong className="font-extrabold">{(totalOdp / 1000).toFixed(1)}K</strong> (
-            {(statsOverview.totalPort / 1000).toFixed(1)} K Port) which is Occupancy{' '}
+            Total <strong className="font-extrabold">jumlah ODP</strong> di Branch Palangkaraya adalah{' '}
+            <strong className="font-extrabold">{(totalOdp / 1000).toFixed(1)}K</strong> (
+            {(statsOverview.totalPort / 1000).toFixed(1)} K Port) dengan Occupancy{' '}
             <strong className="font-extrabold">
               {(statsOverview.usedPort / 1000).toFixed(1)}K Port ({occTotal}%)
             </strong>{' '}
-            and{' '}
+            dan{' '}
             <strong className="font-extrabold">
               {(statsOverview.avaiPort / 1000).toFixed(1)}K ({avaiTotal}%)
             </strong>{' '}
-            available ports for <strong className="font-extrabold">new sales.</strong>
+            port tersedia untuk <strong className="font-extrabold">penjualan baru.</strong>
           </div>
           {(selectedStatus !== 'ALL' || selectedRx !== 'ALL' || selectedKabupaten !== 'ALL' || selectedPortFilter !== 'ALL') && (
             <button
@@ -620,11 +613,10 @@ export default function Dashboard() {
 
               <div className="p-2 sm:p-3 grid grid-cols-3 gap-2 sm:gap-3 text-center">
                 
-                {/* 4. TOTAL ODP, USED PORT (HIJAU), AVAI PORT (MERAH) BISA DIKLIK */}
+                {/* 4. CARD PORT (TOTAL ODP, USED PORT HIJAU, AVAI PORT MERAH & BISA DIKLIK) */}
                 <div className="col-span-1 space-y-1.5 sm:space-y-2">
-                  {/* TOTAL ODP BOX */}
                   <div
-                    onClick={() => setSelectedPortFilter((p) => (p === 'ALL' ? 'ALL' : 'ALL'))}
+                    onClick={() => setSelectedPortFilter('ALL')}
                     className={`border p-1.5 sm:p-2 rounded cursor-pointer transition-transform hover:scale-105 ${
                       selectedPortFilter === 'ALL'
                         ? 'border-blue-300 bg-blue-50/70 shadow-sm'
@@ -640,9 +632,9 @@ export default function Dashboard() {
                     </p>
                   </div>
 
-                  {/* USED PORT BOX (HIJAU) */}
+                  {/* USED PORT (HIJAU) */}
                   <div
-                    onClick={() => setSelectedPortFilter((p) => (p === 'USED' ? 'ALL' : 'USED'))}
+                    onClick={() => setSelectedPortFilter('USED')}
                     className={`border p-1.5 sm:p-2 rounded cursor-pointer transition-transform hover:scale-105 ${
                       selectedPortFilter === 'USED'
                         ? 'border-emerald-600 bg-emerald-100 ring-2 ring-emerald-500 shadow'
@@ -656,9 +648,9 @@ export default function Dashboard() {
                     </p>
                   </div>
 
-                  {/* AVAI PORT BOX (MERAH UNTUK SALES) */}
+                  {/* AVAI PORT (MERAH - TARGET SALES) */}
                   <div
-                    onClick={() => setSelectedPortFilter((p) => (p === 'AVAI' ? 'ALL' : 'AVAI'))}
+                    onClick={() => setSelectedPortFilter('AVAI')}
                     className={`border p-1.5 sm:p-2 rounded cursor-pointer transition-transform hover:scale-105 ${
                       selectedPortFilter === 'AVAI'
                         ? 'border-red-600 bg-red-100 ring-2 ring-red-500 shadow'
@@ -673,7 +665,7 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* BLACK ODP (POIN 3: [Not change] DIHAPUS) */}
+                {/* BLACK ODP (Tanpa [Not change]) */}
                 <div
                   onClick={() => setSelectedStatus((p) => (p === 'BLACK' ? 'ALL' : 'BLACK'))}
                   className={`col-span-1 border border-gray-400 p-2 shadow-inner flex flex-col justify-center cursor-pointer transition-transform hover:scale-105 rounded relative ${
@@ -859,7 +851,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* 3. PROFIL ODP BRANCH PALANGKARAYA (POIN 2: % SINKRON 100%) */}
+            {/* 3. PROFIL ODP BRANCH PALANGKARAYA (PERSENTASE SINKRON 100%) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#4c1d95] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 ODP SHARE KABUPATEN LEVEL{' '}
@@ -951,26 +943,25 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Modal Input Jarak Rute Jalan Raya */}
               {showMeasureModal && (
                 <div className="bg-slate-50 p-2.5 border-b border-slate-200 text-xs space-y-2">
                   <p className="font-bold text-slate-800 text-[11px]">Hitung Jarak Darat (Jalan Raya) Berdasarkan ODP Name / Koordinat:</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
-                      <label className="text-[10px] text-slate-500 font-semibold">Titik A (Nama ODP / Lat,Long):</label>
+                      <label className="text-[10px] text-slate-500 font-semibold">Titik A:</label>
                       <input
                         type="text"
-                        placeholder="Contoh: ODP-PLK-FAA/01 atau -2.21, 113.92"
+                        placeholder="Contoh: ODP-PLK-FAA/01"
                         value={pointAInput}
                         onChange={(e) => setPointAInput(e.target.value)}
                         className="w-full p-1 border rounded text-xs mt-0.5 bg-white"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] text-slate-500 font-semibold">Titik B (Nama ODP / Lat,Long):</label>
+                      <label className="text-[10px] text-slate-500 font-semibold">Titik B:</label>
                       <input
                         type="text"
-                        placeholder="Contoh: ODP-PLK-FAA/05 atau -2.22, 113.93"
+                        placeholder="Contoh: ODP-PLK-FAA/05"
                         value={pointBInput}
                         onChange={(e) => setPointBInput(e.target.value)}
                         className="w-full p-1 border rounded text-xs mt-0.5 bg-white"
@@ -985,7 +976,7 @@ export default function Dashboard() {
                       onClick={handleCalculateRoadDistance}
                       className="px-3 py-1 bg-blue-600 text-white font-bold rounded text-[11px] hover:bg-blue-700 shadow disabled:opacity-50"
                     >
-                      {isRouting ? 'Menghitung Rute Darat...' : '🚗 Hitung Jarak Jalan & Gambar di Peta'}
+                      {isRouting ? 'Menghitung Rute...' : '🚗 Hitung Jarak Jalan & Gambar di Peta'}
                     </button>
                     {measureResult && (
                       <p className="font-bold text-blue-900 text-xs">
