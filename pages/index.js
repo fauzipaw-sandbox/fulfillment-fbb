@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
+import Papa from 'papaparse';
 import Uploader from '../components/Uploader';
 import {
   BarChart,
@@ -166,6 +167,7 @@ export default function Dashboard() {
   const [sortConfig, setSortConfig] = useState({ key: 'occ', direction: 'desc' });
   const [showUploader, setShowUploader] = useState(false);
   
+  // Filter States
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [selectedRx, setSelectedRx] = useState('ALL');
   const [selectedKabupaten, setSelectedKabupaten] = useState('ALL');
@@ -177,6 +179,7 @@ export default function Dashboard() {
   const [suggestions, setSuggestions] = useState([]);
   const [focusedOdp, setFocusedOdp] = useState(null);
 
+  // Measure Jarak
   const [showMeasureModal, setShowMeasureModal] = useState(false);
   const [pointAInput, setPointAInput] = useState('');
   const [pointBInput, setPointBInput] = useState('');
@@ -184,6 +187,11 @@ export default function Dashboard() {
   const [measureResult, setMeasureResult] = useState(null);
   const [manualMeasureLine, setManualMeasureLine] = useState(null);
   const [roadRouteCoordinates, setRoadRouteCoordinates] = useState([]);
+
+  // State Tabel Bawah (Pagination & Filter Pencarian Cepat)
+  const [tableSearch, setTableSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 50;
 
   const fetchData = async () => {
     setLoading(true);
@@ -244,6 +252,7 @@ export default function Dashboard() {
 
   useEffect(() => { fetchData(); }, []);
 
+  // Filter Sinkron Seluruh Komponen
   const fullyFilteredData = useMemo(() => {
     return data.filter((d) => {
       const matchStatus = selectedStatus === 'ALL' || d.status_final === selectedStatus;
@@ -256,6 +265,11 @@ export default function Dashboard() {
       return matchStatus && matchRx && matchKab && matchSto && matchWok && matchPort;
     });
   }, [data, selectedStatus, selectedRx, selectedKabupaten, selectedStoFilter, selectedWokFilter, selectedPortFilter]);
+
+  // Reset Halaman Tabel Bawah Saat Filter Berubah
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedStatus, selectedRx, selectedKabupaten, selectedStoFilter, selectedWokFilter, selectedPortFilter, tableSearch]);
 
   const headerCutoffText = useMemo(() => {
     if (data.length === 0) return '*Cut Off Data until -';
@@ -360,6 +374,46 @@ export default function Dashboard() {
     const avai_perc = is_total > 0 ? (avai / is_total) * 100 : 0;
     return { odp, is_total, used, avai, occ, avai_perc };
   }, [statsFiltered.flatStos]);
+
+  // Data Tabel Bawah (Dengan Search Tambahan di Tabel)
+  const bottomTableData = useMemo(() => {
+    if (!tableSearch.trim()) return fullyFilteredData;
+    const s = tableSearch.toLowerCase();
+    return fullyFilteredData.filter((d) =>
+      (d.odp_name && d.odp_name.toLowerCase().includes(s)) ||
+      (d.sto && d.sto.toLowerCase().includes(s)) ||
+      (d.wok && d.wok.toLowerCase().includes(s)) ||
+      (d.kabupaten && d.kabupaten.toLowerCase().includes(s)) ||
+      (d.desa && d.desa.toLowerCase().includes(s))
+    );
+  }, [fullyFilteredData, tableSearch]);
+
+  const totalPages = Math.ceil(bottomTableData.length / rowsPerPage) || 1;
+  const paginatedBottomData = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage;
+    return bottomTableData.slice(start, start + rowsPerPage);
+  }, [bottomTableData, currentPage]);
+
+  // Export CSV Data Terfilter
+  const handleExportFilteredCSV = () => {
+    if (fullyFilteredData.length === 0) {
+      alert('Tidak ada data terfilter untuk di-download.');
+      return;
+    }
+    const cleanExportData = fullyFilteredData.map((d) => {
+      const { parsed_date, ...rest } = d;
+      return rest;
+    });
+    const csv = Papa.unparse(cleanExportData);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `odp_filtered_export_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const requestSort = (key) => {
     let direction = 'desc';
@@ -522,11 +576,11 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* SECTION ATAS: GRID 2 KOLOM */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
           {/* ================= KOLOM KIRI ================= */}
           <div className="space-y-3 sm:space-y-4">
-            
-            {/* 1. OVERVIEW ODP PROFILE */}
+            {/* OVERVIEW ODP PROFILE */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
                 <span className="font-extrabold text-xs sm:text-sm tracking-wide">OVERVIEW ODP PROFILE</span>
@@ -675,7 +729,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* 2. KUALITAS REDAMAN (ONT RX LEVEL) */}
+            {/* KUALITAS REDAMAN (ONT RX LEVEL) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#059669] via-[#0d9488] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
                 <span className="font-extrabold text-xs sm:text-sm tracking-wide">KUALITAS REDAMAN (ONT RX LEVEL)</span>
@@ -685,7 +739,6 @@ export default function Dashboard() {
               </div>
 
               <div className="p-2 sm:p-3 grid grid-cols-4 gap-2 text-center">
-                {/* 1. RED */}
                 <div
                   onClick={() => setSelectedRx((p) => (p === 'RED' ? 'ALL' : 'RED'))}
                   className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
@@ -702,7 +755,6 @@ export default function Dashboard() {
                   </p>
                 </div>
 
-                {/* 2. ORANGE */}
                 <div
                   onClick={() => setSelectedRx((p) => (p === 'ORANGE' ? 'ALL' : 'ORANGE'))}
                   className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
@@ -719,7 +771,6 @@ export default function Dashboard() {
                   </p>
                 </div>
 
-                {/* 3. YELLOW */}
                 <div
                   onClick={() => setSelectedRx((p) => (p === 'YELLOW' ? 'ALL' : 'YELLOW'))}
                   className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
@@ -736,7 +787,6 @@ export default function Dashboard() {
                   </p>
                 </div>
 
-                {/* 4. GREEN */}
                 <div
                   onClick={() => setSelectedRx((p) => (p === 'GREEN' ? 'ALL' : 'GREEN'))}
                   className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
@@ -755,7 +805,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* 3. ODP SHARE KABUPATEN LEVEL */}
+            {/* ODP SHARE KABUPATEN LEVEL */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#4c1d95] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
                 <span className="font-extrabold text-xs sm:text-sm tracking-wide">ODP SHARE KABUPATEN LEVEL</span>
@@ -806,7 +856,7 @@ export default function Dashboard() {
 
           {/* ================= KOLOM KANAN ================= */}
           <div className="space-y-3 sm:space-y-4">
-            {/* 1. MAPS LOKASI ODP */}
+            {/* MAPS LOKASI ODP */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm relative">
               <div className="bg-gradient-to-r from-[#1e3a8a] to-[#3a3575] text-white p-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                 <div className="flex items-center gap-2">
@@ -904,7 +954,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* 2. OCCUPANCY & AVAILABLE PORT */}
+            {/* OCCUPANCY & AVAILABLE PORT */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
                 <span className="font-extrabold text-xs sm:text-sm tracking-wide">OCCUPANCY & AVAILABLE PORT</span>
@@ -1008,6 +1058,166 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* ================= TABEL BARU PALING BAWAH (DETAIL RAW DATA TERFILTER + DOWNLOAD) ================= */}
+        <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden mt-4">
+          <div className="bg-gradient-to-r from-[#0f172a] via-[#1e293b] to-[#334155] text-white p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+            <div>
+              <h2 className="text-sm font-extrabold uppercase tracking-wide flex items-center gap-1.5">
+                <span>📋</span> DATA DETAIL ODP TERFILTER
+              </h2>
+              <p className="text-[10px] text-slate-300 mt-0.5">
+                Menampilkan <strong>{bottomTableData.length.toLocaleString()}</strong> ODP sesuai filter yang aktif
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full sm:w-auto">
+              <input
+                type="text"
+                placeholder="Cari ODP, STO, Desa..."
+                value={tableSearch}
+                onChange={(e) => setTableSearch(e.target.value)}
+                className="px-2.5 py-1 text-black rounded text-xs outline-none w-full sm:w-52"
+              />
+
+              <button
+                type="button"
+                onClick={handleExportFilteredCSV}
+                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold shadow flex items-center gap-1 whitespace-nowrap transition"
+              >
+                <span>📥</span> Download Data Terfilter (CSV)
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto max-h-[460px] overflow-y-auto">
+            <table className="w-full text-left border-collapse text-[10px]">
+              <thead className="bg-[#1e293b] text-white uppercase font-bold sticky top-0 z-10 shadow">
+                <tr>
+                  <th className="p-2 border border-slate-600">No</th>
+                  <th className="p-2 border border-slate-600">ODP Name</th>
+                  <th className="p-2 border border-slate-600">STO</th>
+                  <th className="p-2 border border-slate-600">WOK</th>
+                  <th className="p-2 border border-slate-600">Kabupaten</th>
+                  <th className="p-2 border border-slate-600">Kecamatan</th>
+                  <th className="p-2 border border-slate-600">Desa</th>
+                  <th className="p-2 border border-slate-600 text-center">Status</th>
+                  <th className="p-2 border border-slate-600 text-center">Total Port</th>
+                  <th className="p-2 border border-slate-600 text-center">Used</th>
+                  <th className="p-2 border border-slate-600 text-center">Avail</th>
+                  <th className="p-2 border border-slate-600 text-center">% OCC</th>
+                  <th className="p-2 border border-slate-600 text-center">ONT RX Level</th>
+                  <th className="p-2 border border-slate-600">Latitude</th>
+                  <th className="p-2 border border-slate-600">Longitude</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedBottomData.length === 0 ? (
+                  <tr>
+                    <td colSpan={15} className="p-4 text-center text-slate-400 font-bold">
+                      Tidak ada data yang sesuai dengan filter atau kata kunci pencarian.
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedBottomData.map((row, idx) => {
+                    const rowNumber = (currentPage - 1) * rowsPerPage + idx + 1;
+                    const occ = row.is_total > 0 ? (row.used / row.is_total) * 100 : 0;
+                    
+                    let statusColor = '#111827';
+                    if (row.status_final === 'RED') statusColor = '#dc2626';
+                    else if (row.status_final === 'ORANGE') statusColor = '#ea580c';
+                    else if (row.status_final === 'YELLOW') statusColor = '#ca8a04';
+                    else if (row.status_final === 'GREEN') statusColor = '#16a34a';
+
+                    let rxColor = '#64748b';
+                    if (row.ont_rx_level !== null) {
+                      if (row.ont_rx_level > -18) rxColor = '#16a34a';
+                      else if (row.ont_rx_level >= -21) rxColor = '#ca8a04';
+                      else if (row.ont_rx_level >= -25) rxColor = '#ea580c';
+                      else rxColor = '#dc2626';
+                    }
+
+                    return (
+                      <tr key={`${row.odp_name}-${idx}`} className="border-b border-slate-200 hover:bg-blue-50/60 transition">
+                        <td className="p-1.5 border border-slate-200 text-center font-bold text-slate-500">{rowNumber}</td>
+                        <td className="p-1.5 border border-slate-200 font-black text-blue-900">{row.odp_name}</td>
+                        <td className="p-1.5 border border-slate-200 font-bold">{row.sto || '-'}</td>
+                        <td className="p-1.5 border border-slate-200">{row.wok || '-'}</td>
+                        <td className="p-1.5 border border-slate-200">{row.kabupaten || '-'}</td>
+                        <td className="p-1.5 border border-slate-200">{row.kecamatan || '-'}</td>
+                        <td className="p-1.5 border border-slate-200">{row.desa || '-'}</td>
+                        <td className="p-1.5 border border-slate-200 text-center">
+                          <span
+                            className="px-1.5 py-0.5 rounded text-[8.5px] font-bold text-white uppercase"
+                            style={{ backgroundColor: statusColor }}
+                          >
+                            {row.status_final}
+                          </span>
+                        </td>
+                        <td className="p-1.5 border border-slate-200 text-center font-bold">{row.is_total || 0}</td>
+                        <td className="p-1.5 border border-slate-200 text-center text-emerald-800 font-bold">{row.used || 0}</td>
+                        <td className="p-1.5 border border-slate-200 text-center text-red-800 font-bold">{row.avai || 0}</td>
+                        <td className="p-1.5 border border-slate-200 text-center font-extrabold">{occ.toFixed(1)}%</td>
+                        <td className="p-1.5 border border-slate-200 text-center font-bold" style={{ color: rxColor }}>
+                          {row.ont_rx_level !== null ? `${Number(row.ont_rx_level).toFixed(2)} dBm` : '-'}
+                        </td>
+                        <td className="p-1.5 border border-slate-200 font-mono text-[9px] text-slate-500">{row.latitude || '-'}</td>
+                        <td className="p-1.5 border border-slate-200 font-mono text-[9px] text-slate-500">{row.longitude || '-'}</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="bg-slate-50 p-2.5 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-2 text-xs font-semibold">
+              <span className="text-slate-600">
+                Halaman <strong>{currentPage}</strong> dari <strong>{totalPages}</strong> (Total <strong>{bottomTableData.length.toLocaleString()}</strong> data)
+              </span>
+
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                >
+                  &laquo; Pertama
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                >
+                  &lsaquo; Prev
+                </button>
+                <span className="px-2 font-bold text-slate-700">
+                  {currentPage} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                >
+                  Next &rsaquo;
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                >
+                  Terakhir &raquo;
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
