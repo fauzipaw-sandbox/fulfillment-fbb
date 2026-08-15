@@ -57,18 +57,12 @@ const getWeekNumber = (dateString) => {
   return `W${Math.ceil((((d - yearStart) / 86400000) + 1) / 7)}`;
 };
 
-function calculateDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+function parseCleanFloat(val) {
+  if (val === undefined || val === null || val === '') return null;
+  if (typeof val === 'number') return isNaN(val) ? null : val;
+  const cleaned = String(val).replace(/[^0-9.-]/g, '');
+  const parsed = parseFloat(cleaned);
+  return isNaN(parsed) ? null : parsed;
 }
 
 const renderCustomBarLabel = ({ x, y, width, height, value }) => {
@@ -136,12 +130,14 @@ export default function Dashboard() {
   const [suggestions, setSuggestions] = useState([]);
   const [focusedOdp, setFocusedOdp] = useState(null);
 
-  // Measure Jarak Input
+  // Road Routing Measure State
   const [showMeasureModal, setShowMeasureModal] = useState(false);
   const [pointAInput, setPointAInput] = useState('');
   const [pointBInput, setPointBInput] = useState('');
+  const [isRouting, setIsRouting] = useState(false);
   const [measureResult, setMeasureResult] = useState(null);
   const [manualMeasureLine, setManualMeasureLine] = useState(null);
+  const [roadRouteCoordinates, setRoadRouteCoordinates] = useState([]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -155,7 +151,6 @@ export default function Dashboard() {
           const avai = parseInt(item.avai) || Math.max(0, isTotal - used);
           const rsk = isTotal > 0 ? used / isTotal : 0;
 
-          // Status ODP
           let status = 'BLACK';
           if (rsk === 0) status = 'BLACK';
           else if (rsk > 0 && rsk <= 0.6) status = 'GREEN';
@@ -163,35 +158,27 @@ export default function Dashboard() {
           else if (rsk > 0.85 && rsk < 0.99) status = 'ORANGE';
           else if (rsk >= 0.99) status = 'RED';
 
-          // Normalisasi STO
           let sto = (item.sto || '').trim().toUpperCase();
           if (!sto || sto === 'UNKNOWN') {
             const match = (item.odp_name || '').match(/ODP-([A-Z0-9]{3})/i);
             sto = match && match[1] ? match[1].toUpperCase() : 'UNKNOWN';
           }
 
-          // Normalisasi WOK
           let wok = (item.wok || '').trim().toUpperCase();
           if (!wok || wok === 'UNKNOWN') {
             wok = STO_WOK_MAP[sto] || 'PALANGKARAYA';
           }
 
-          // Normalisasi Kabupaten
           let kab = (item.kabupaten || '').trim().toUpperCase();
           let finalKab = VALID_KABUPATEN.includes(kab) ? kab : 'LAINNYA';
 
-          // Kategori ONT RX Level
-          // > -18 GREEN, -19 s/d -21 YELLOW, -21 s/d -25 ORANGE, < -25 RED
-          let rxVal = null;
+          const rxVal = parseCleanFloat(item.ont_rx_level);
           let rxCategory = 'NO_DATA';
-          if (item.ont_rx_level !== null && item.ont_rx_level !== undefined && item.ont_rx_level !== '') {
-            rxVal = parseFloat(item.ont_rx_level);
-            if (!isNaN(rxVal)) {
-              if (rxVal > -18) rxCategory = 'GREEN';
-              else if (rxVal >= -21) rxCategory = 'YELLOW';
-              else if (rxVal >= -25) rxCategory = 'ORANGE';
-              else rxCategory = 'RED';
-            }
+          if (rxVal !== null) {
+            if (rxVal > -18) rxCategory = 'GREEN';
+            else if (rxVal >= -21) rxCategory = 'YELLOW';
+            else if (rxVal >= -25) rxCategory = 'ORANGE';
+            else rxCategory = 'RED';
           }
 
           return {
@@ -230,7 +217,6 @@ export default function Dashboard() {
     return selectedWeek === 'ALL' ? data : data.filter((d) => d.week === selectedWeek);
   }, [data, selectedWeek]);
 
-  // Data terfilter secara sinkron (Status ODP + RX Level + Kabupaten)
   const fullyFilteredData = useMemo(() => {
     return weekFilteredData.filter((d) => {
       const matchStatus = selectedStatus === 'ALL' || d.status_final === selectedStatus;
@@ -249,7 +235,6 @@ export default function Dashboard() {
     return formatDate(new Date(Math.max(...dates)));
   }, [weekFilteredData]);
 
-  // Overview Stats
   const statsOverview = useMemo(() => {
     let totalPort = 0;
     let usedPort = 0;
@@ -268,7 +253,6 @@ export default function Dashboard() {
     return { totalPort, usedPort, avaiPort, colorCounts, rxCounts };
   }, [weekFilteredData]);
 
-  // Chart & Table Stats
   const statsFiltered = useMemo(() => {
     const kabMap = {};
     const flatStosMap = {};
@@ -355,6 +339,23 @@ export default function Dashboard() {
     return sortableItems;
   }, [statsFiltered.flatStos, sortConfig]);
 
+  // Grand Total Tabel
+  const tableTotals = useMemo(() => {
+    let odp = 0;
+    let is_total = 0;
+    let used = 0;
+    let avai = 0;
+    statsFiltered.flatStos.forEach((r) => {
+      odp += r.odp_count;
+      is_total += r.is_total;
+      used += r.used;
+      avai += r.avai;
+    });
+    const occ = is_total > 0 ? (used / is_total) * 100 : 0;
+    const avai_perc = is_total > 0 ? (avai / is_total) * 100 : 0;
+    return { odp, is_total, used, avai, occ, avai_perc };
+  }, [statsFiltered.flatStos]);
+
   const requestSort = (key) => {
     let direction = 'desc';
     if (sortConfig.key === key && sortConfig.direction === 'desc') {
@@ -398,7 +399,8 @@ export default function Dashboard() {
     return null;
   };
 
-  const handleCalculateManualDistance = () => {
+  // OSRM Jarak Darat Jalan Raya (Driving Route)
+  const handleCalculateRoadDistance = async () => {
     const pA = parsePoint(pointAInput);
     const pB = parsePoint(pointBInput);
 
@@ -411,14 +413,58 @@ export default function Dashboard() {
       return;
     }
 
-    const distKm = calculateDistance(pA.lat, pA.lon, pB.lat, pB.lon);
-    setMeasureResult({
-      from: pA.name,
-      to: pB.name,
-      km: distKm.toFixed(2),
-      meter: Math.round(distKm * 1000).toLocaleString(),
-    });
-    setManualMeasureLine([[pA.lat, pA.lon], [pB.lat, pB.lon]]);
+    setIsRouting(true);
+    try {
+      // Panggil OSRM Public Driving Routing API
+      const url = `https://router.project-osrm.org/route/v1/driving/${pA.lon},${pA.lat};${pB.lon},${pB.lat}?overview=full&geometries=geojson`;
+      const res = await fetch(url);
+      const json = await res.json();
+
+      if (json.code === 'Ok' && json.routes && json.routes.length > 0) {
+        const route = json.routes[0];
+        const distanceMeters = route.distance;
+        const distanceKm = distanceMeters / 1000;
+
+        // Invert GeoJSON [lon, lat] -> Leaflet [lat, lon]
+        const latlngs = route.geometry.coordinates.map((c) => [c[1], c[0]]);
+
+        setRoadRouteCoordinates(latlngs);
+        setManualMeasureLine([[pA.lat, pA.lon], [pB.lat, pB.lon]]);
+        setMeasureResult({
+          from: pA.name,
+          to: pB.name,
+          km: distanceKm.toFixed(2),
+          meter: Math.round(distanceMeters).toLocaleString(),
+        });
+      } else {
+        throw new Error('Rute jalan tidak ditemukan');
+      }
+    } catch (err) {
+      // Fallback ke jarak lurus jika jalan offline
+      const distKm = ((pA, pB) => {
+        const R = 6371;
+        const dLat = ((pB.lat - pA.lat) * Math.PI) / 180;
+        const dLon = ((pB.lon - pA.lon) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((pA.lat * Math.PI) / 180) *
+            Math.cos((pB.lat * Math.PI) / 180) *
+            Math.sin(dLon / 2) *
+            Math.sin(dLon / 2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      })(pA, pB);
+
+      setManualMeasureLine([[pA.lat, pA.lon], [pB.lat, pB.lon]]);
+      setRoadRouteCoordinates([[pA.lat, pA.lon], [pB.lat, pB.lon]]);
+      setMeasureResult({
+        from: pA.name,
+        to: pB.name,
+        km: distKm.toFixed(2),
+        meter: Math.round(distKm * 1000).toLocaleString(),
+      });
+    } finally {
+      setIsRouting(false);
+    }
   };
 
   const resetAllFilters = () => {
@@ -475,7 +521,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* EXECUTIVE NARRATIVE */}
+        {/* NARRATIVE SUMMARY */}
         <div className="bg-white px-3 sm:px-4 py-2 text-xs sm:text-[13px] border border-gray-200 shadow-sm rounded flex flex-col sm:flex-row justify-between sm:items-center gap-2">
           <div>
             The total <strong className="font-extrabold">number of ODP</strong> in Branch Palangkaraya
@@ -495,7 +541,7 @@ export default function Dashboard() {
               onClick={resetAllFilters}
               className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold whitespace-nowrap self-start sm:self-auto shadow"
             >
-              ✕ Reset Semua Filter
+              ✕ Reset Filter
             </button>
           )}
         </div>
@@ -525,7 +571,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* MAIN DASHBOARD GRID */}
+        {/* MAIN DASHBOARD */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
           
           {/* ================= KOLOM KIRI ================= */}
@@ -758,7 +804,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* 3. ODP SHARE KABUPATEN LEVEL (INTERAKTIF KLIK) */}
+            {/* 3. ODP SHARE KABUPATEN LEVEL */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#4c1d95] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 ODP SHARE KABUPATEN LEVEL{' '}
@@ -817,7 +863,7 @@ export default function Dashboard() {
                     onClick={() => setShowMeasureModal(!showMeasureModal)}
                     className="px-2 py-0.5 bg-blue-700 hover:bg-blue-600 text-white rounded text-[10px] font-semibold flex items-center gap-1 shadow"
                   >
-                    <span>📐</span> Ukur Jarak Input
+                    <span>🚗</span> Ukur Jarak Rute Darat
                   </button>
                 </div>
 
@@ -850,10 +896,10 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Modal Input Jarak */}
+              {/* Modal Input Jarak Rute Jalan Raya (OSRM) */}
               {showMeasureModal && (
                 <div className="bg-slate-50 p-2.5 border-b border-slate-200 text-xs space-y-2">
-                  <p className="font-bold text-slate-800 text-[11px]">Hitung Jarak Berdasarkan ODP Name / Koordinat (Lat,Long):</p>
+                  <p className="font-bold text-slate-800 text-[11px]">Hitung Jarak Darat (Jalan Raya) Berdasarkan ODP Name / Koordinat:</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
                       <label className="text-[10px] text-slate-500 font-semibold">Titik A (Nama ODP / Lat,Long):</label>
@@ -880,14 +926,15 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between pt-1">
                     <button
                       type="button"
-                      onClick={handleCalculateManualDistance}
-                      className="px-3 py-1 bg-blue-600 text-white font-bold rounded text-[11px] hover:bg-blue-700 shadow"
+                      disabled={isRouting}
+                      onClick={handleCalculateRoadDistance}
+                      className="px-3 py-1 bg-blue-600 text-white font-bold rounded text-[11px] hover:bg-blue-700 shadow disabled:opacity-50"
                     >
-                      Hitung & Gambar di Peta
+                      {isRouting ? 'Menghitung Rute Darat...' : '🚗 Hitung Jarak Jalan & Gambar di Peta'}
                     </button>
                     {measureResult && (
                       <p className="font-bold text-blue-900 text-xs">
-                        Jarak: {measureResult.km} km ({measureResult.meter} m)
+                        Jarak Rute Darat: <span className="text-emerald-700">{measureResult.km} km</span> ({measureResult.meter} m)
                       </p>
                     )}
                   </div>
@@ -905,18 +952,19 @@ export default function Dashboard() {
                     focusLocation={focusedOdp}
                     manualMeasureLine={manualMeasureLine}
                     manualMeasureInfo={measureResult}
+                    roadRouteCoordinates={roadRouteCoordinates}
                   />
                 )}
               </div>
             </div>
 
-            {/* 2. OCCUPANCY & AVAILABLE PORT */}
+            {/* 2. OCCUPANCY & AVAILABLE PORT (LENGKAP DENGAN GRAND TOTAL ROW) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 OCCUPANCY & AVAILABLE PORT
               </div>
 
-              <div className="overflow-x-auto max-h-[340px] overflow-y-auto">
+              <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
                 <table className="w-full text-center border-collapse min-w-[500px]">
                   <thead className="bg-[#0f172a] text-white text-[9px] sm:text-[10px] sticky top-0 z-10 shadow-md cursor-pointer">
                     <tr>
@@ -970,6 +1018,21 @@ export default function Dashboard() {
                         </tr>
                       );
                     })}
+
+                    {/* GRAND TOTAL ROW DI PALING BAWAH */}
+                    <tr className="bg-[#0f172a] text-white font-extrabold sticky bottom-0 z-10 shadow-[0_-2px_10px_rgba(0,0,0,0.2)]">
+                      <td colSpan={2} className="p-2 border border-slate-700 text-left pl-3 uppercase">
+                        Grand Total
+                      </td>
+                      <td className="p-2 border border-slate-700">{tableTotals.odp.toLocaleString()}</td>
+                      <td className="p-2 border border-slate-700">{tableTotals.is_total.toLocaleString()}</td>
+                      <td className="p-2 border border-slate-700">{tableTotals.used.toLocaleString()}</td>
+                      <td className="p-2 border border-slate-700">{tableTotals.avai.toLocaleString()}</td>
+                      <td className="p-2 border border-slate-700 text-yellow-300 font-black">
+                        {tableTotals.occ.toFixed(1)}%
+                      </td>
+                      <td className="p-2 border border-slate-700">{tableTotals.avai_perc.toFixed(1)}%</td>
+                    </tr>
                   </tbody>
                 </table>
               </div>
