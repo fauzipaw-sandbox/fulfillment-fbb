@@ -8,7 +8,13 @@ body {
   overflow-x: hidden;
 }
 
-/* Custom Ultra-Compact Leaflet Popup */
+/* Hover otomatis memunculkan popup leaflet tanpa klik */
+.leaflet-interactive:hover + .leaflet-pane .leaflet-popup,
+.leaflet-popup-pane:hover .leaflet-popup,
+.leaflet-marker-icon:hover ~ .leaflet-popup-pane .leaflet-popup {
+  display: block !important;
+}
+
 .compact-custom-popup .leaflet-popup-content-wrapper {
   padding: 0;
   border-radius: 6px;
