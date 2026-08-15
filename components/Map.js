@@ -4,7 +4,6 @@ import {
   TileLayer,
   CircleMarker,
   Popup,
-  Tooltip as LeafletTooltip,
   Polyline,
   Marker,
   useMap,
@@ -83,6 +82,7 @@ export default function Map({
   const markerRefs = useRef({});
   const [clickPoints, setClickPoints] = useState([]);
   const [measureActive, setMeasureActive] = useState(false);
+  const [mapType, setMapType] = useState('street'); // 'street' | 'satellite'
 
   const getColor = (status) => {
     const s = (status || '').toUpperCase();
@@ -110,59 +110,83 @@ export default function Map({
 
   return (
     <div className="relative w-full h-full">
-      {/* Control: Multi-Point Measure */}
-      <div className="absolute top-2 right-2 z-[1000] flex flex-col items-end gap-1">
+      {/* Floating Control: Layer Selector (Street / Satellite) & Measure */}
+      <div className="absolute top-2 right-2 z-[1000] flex items-center gap-1.5">
+        <div className="bg-white rounded shadow border border-slate-300 overflow-hidden flex text-[10px] font-bold">
+          <button
+            type="button"
+            onClick={() => setMapType('street')}
+            className={`px-2 py-1 transition ${mapType === 'street' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
+          >
+            Peta
+          </button>
+          <button
+            type="button"
+            onClick={() => setMapType('satellite')}
+            className={`px-2 py-1 transition ${mapType === 'satellite' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
+          >
+            Satelit
+          </button>
+        </div>
+
         <button
           type="button"
           onClick={() => {
             setMeasureActive(!measureActive);
             if (measureActive) resetClickMeasure();
           }}
-          className={`px-2 py-0.5 text-[10px] font-bold rounded shadow border transition ${
+          className={`px-2 py-1 text-[10px] font-bold rounded shadow border transition ${
             measureActive
               ? 'bg-amber-500 text-white border-amber-600'
-              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
           }`}
         >
-          {measureActive ? '✕ Tutup Penggaris' : '📏 Penggaris Multi-Titik'}
+          {measureActive ? '✕ Tutup' : '📏 Ukur'}
         </button>
-
-        {measureActive && (
-          <div className="bg-white/95 backdrop-blur p-1.5 rounded shadow border border-slate-300 text-[10px] text-slate-800 min-w-[160px]">
-            <p className="font-bold border-b pb-0.5">
-              Titik: <span className="text-blue-600 font-black">{clickPoints.length}</span>
-            </p>
-            {clickPoints.length < 2 ? (
-              <p className="text-[9px] text-slate-500 mt-0.5">Klik titik di peta.</p>
-            ) : (
-              <div className="mt-0.5 space-y-0.5">
-                <p className="text-xs font-black text-blue-700">
-                  {totalClickDistance >= 1
-                    ? `${totalClickDistance.toFixed(2)} km`
-                    : `${Math.round(totalClickDistance * 1000)} m`}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setClickPoints([])}
-                  className="text-[9px] text-red-600 underline font-semibold"
-                >
-                  Reset
-                </button>
-              </div>
-            )}
-          </div>
-        )}
       </div>
+
+      {measureActive && (
+        <div className="absolute top-12 right-2 z-[1000] bg-white/95 backdrop-blur p-2 rounded shadow border border-slate-300 text-[10px] text-slate-800 min-w-[150px]">
+          <p className="font-bold border-b pb-0.5">
+            Titik: <span className="text-blue-600 font-black">{clickPoints.length}</span>
+          </p>
+          {clickPoints.length < 2 ? (
+            <p className="text-[9px] text-slate-500 mt-0.5">Klik peta berurutan.</p>
+          ) : (
+            <div className="mt-0.5 space-y-0.5">
+              <p className="text-xs font-black text-blue-700">
+                {totalClickDistance >= 1
+                  ? `${totalClickDistance.toFixed(2)} km`
+                  : `${Math.round(totalClickDistance * 1000)} m`}
+              </p>
+              <button
+                type="button"
+                onClick={() => setClickPoints([])}
+                className="text-[9px] text-red-600 underline font-semibold"
+              >
+                Reset
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <MapContainer
         center={defaultCenter}
         zoom={7}
         style={{ height: '100%', width: '100%', borderRadius: '0.375rem' }}
       >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        {mapType === 'satellite' ? (
+          <TileLayer
+            attribution='Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+          />
+        ) : (
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+        )}
 
         <MapController
           data={data}
@@ -173,45 +197,28 @@ export default function Map({
         />
         <MapClickHandler measureMode={measureActive} onMapClick={handleMapClick} />
 
-        {/* Visualisasi Rute Jalan */}
         {roadRouteCoordinates && roadRouteCoordinates.length > 0 && (
-          <Polyline
-            positions={roadRouteCoordinates}
-            pathOptions={{ color: '#2563eb', weight: 4, opacity: 0.9 }}
-          />
+          <Polyline positions={roadRouteCoordinates} pathOptions={{ color: '#2563eb', weight: 4, opacity: 0.9 }} />
         )}
 
-        {/* Pin Titik A & B */}
         {manualMeasureLine && manualMeasureLine.length === 2 && (
           <>
             <Marker position={manualMeasureLine[0]}>
-              <Popup>
-                <div className="text-[10px] font-sans">
-                  <p className="font-bold text-blue-700">Titik A (Awal)</p>
-                  <p>{manualMeasureInfo?.from || '-'}</p>
-                </div>
-              </Popup>
+              <Popup><div className="text-[10px] font-bold text-blue-700">Titik A</div></Popup>
             </Marker>
             <Marker position={manualMeasureLine[1]}>
               <Popup>
                 <div className="text-[10px] font-sans">
-                  <p className="font-bold text-emerald-700">Titik B (Tujuan)</p>
-                  <p>{manualMeasureInfo?.to || '-'}</p>
-                  <p className="font-bold text-blue-900 mt-0.5">
-                    Jarak: {manualMeasureInfo?.km} km
-                  </p>
+                  <p className="font-bold text-emerald-700">Titik B</p>
+                  <p className="font-bold text-blue-900 mt-0.5">Jarak: {manualMeasureInfo?.km} km</p>
                 </div>
               </Popup>
             </Marker>
           </>
         )}
 
-        {/* Garis Multi-Titik Manual */}
         {clickPoints.length > 1 && (
-          <Polyline
-            positions={clickPoints}
-            pathOptions={{ color: '#ea580c', weight: 2.5, dashArray: '4, 4' }}
-          />
+          <Polyline positions={clickPoints} pathOptions={{ color: '#ea580c', weight: 2.5, dashArray: '4, 4' }} />
         )}
 
         {clickPoints.map((pt, i) => (
@@ -220,17 +227,14 @@ export default function Map({
             center={pt}
             radius={5}
             pathOptions={{ fillColor: '#ea580c', color: '#fff', weight: 2, fillOpacity: 1 }}
-          >
-            <LeafletTooltip permanent direction="top" offset={[0, -4]}>
-              <span className="font-bold text-[9px]">#{i + 1}</span>
-            </LeafletTooltip>
-          </CircleMarker>
+          />
         ))}
 
-        {/* Titik Marker ODP */}
         {data.map((odp, idx) => {
           if (!odp.latitude || !odp.longitude) return null;
           const color = getColor(odp.status_final);
+          const formattedRx = odp.ont_rx_level !== null ? `${Number(odp.ont_rx_level).toFixed(2)} dBm` : '-';
+          const occVal = odp.is_total > 0 ? Math.round((odp.used / odp.is_total) * 100) : 0;
 
           return (
             <CircleMarker
@@ -247,65 +251,55 @@ export default function Map({
                 weight: 1,
               }}
             >
-              <LeafletTooltip direction="top" offset={[0, -3]} opacity={0.95}>
-                <div className="text-[10px] font-sans">
-                  <span className="font-bold" style={{ color }}>
-                    {odp.odp_name}
-                  </span>{' '}
-                  ({odp.sto || '-'})
-                </div>
-              </LeafletTooltip>
-
-              {/* POPUP DIBUAT PADAT, RINGKAS & MUAT DI MAPS */}
-              <Popup className="compact-custom-popup" maxWidth={230} minWidth={180}>
-                <div className="text-[10px] font-sans bg-white p-2 text-slate-800">
-                  {/* Header Popup */}
-                  <div className="border-b border-slate-200 pb-1 mb-1.5 flex items-center justify-between gap-1">
+              {/* POPUP MUNCUL OTOMATIS SAAT HOVER (Tanpa Klik) */}
+              <Popup autoClose={false} closeOnClick={false} className="compact-custom-popup" maxWidth={230} minWidth={180}>
+                <div className="text-[10px] font-sans bg-white p-2 text-slate-800 pointer-events-auto">
+                  <div className="border-b border-slate-200 pb-1 mb-1 flex items-center justify-between gap-1">
                     <p className="font-extrabold text-blue-900 truncate max-w-[130px]" title={odp.odp_name}>
                       {odp.odp_name}
                     </p>
                     <span
-                      className="text-[8px] font-bold px-1.5 py-0.5 rounded text-white tracking-wider uppercase"
+                      className="text-[8px] font-bold px-1.5 py-0.2 rounded text-white tracking-wider uppercase"
                       style={{ backgroundColor: color }}
                     >
                       {odp.status_final}
                     </span>
                   </div>
 
-                  {/* Grid Info Padat */}
                   <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[9.5px]">
                     <div>
-                      <span className="text-slate-400 block text-[8px] uppercase font-bold">STO / WOK</span>
-                      <span className="font-bold text-slate-700 truncate block">{odp.sto || '-'} / {odp.wok || '-'}</span>
+                      <span className="text-slate-400 block text-[7.5px] uppercase font-bold">STO</span>
+                      <span className="font-bold text-slate-700 truncate block">{odp.sto || '-'}</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block text-[8px] uppercase font-bold">KABUPATEN</span>
+                      <span className="text-slate-400 block text-[7.5px] uppercase font-bold">WOK</span>
+                      <span className="font-bold text-slate-700 truncate block">{odp.wok || '-'}</span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-slate-400 block text-[7.5px] uppercase font-bold">KABUPATEN</span>
                       <span className="font-bold text-slate-700 truncate block">{odp.kabupaten || '-'}</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block text-[8px] uppercase font-bold">PORT (USED/TOT)</span>
+                      <span className="text-slate-400 block text-[7.5px] uppercase font-bold">PORT (USED/TOT)</span>
                       <span className="font-bold text-slate-800">
                         {odp.used || 0}/{odp.is_total || 0}{' '}
-                        <span className="text-blue-600 font-black">
-                          ({odp.is_total > 0 ? Math.round((odp.used / odp.is_total) * 100) : 0}%)
+                        <span className="font-black" style={{ color }}>
+                          ({occVal}%)
                         </span>
                       </span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block text-[8px] uppercase font-bold">ONT RX LEVEL</span>
-                      <span className="font-bold text-slate-800">
-                        {odp.ont_rx_level !== null ? `${odp.ont_rx_level} dBm` : '-'}
-                      </span>
+                      <span className="text-slate-400 block text-[7.5px] uppercase font-bold">ONT RX LEVEL</span>
+                      <span className="font-bold text-slate-800">{formattedRx}</span>
                     </div>
                     {odp.sto_desc && (
                       <div className="col-span-2">
-                        <span className="text-slate-400 block text-[8px] uppercase font-bold">DESC</span>
+                        <span className="text-slate-400 block text-[7.5px] uppercase font-bold">DESC</span>
                         <span className="font-medium text-slate-600 truncate block">{odp.sto_desc}</span>
                       </div>
                     )}
                   </div>
 
-                  {/* Footer Koordinat */}
                   <div className="text-[8px] text-slate-400 font-mono pt-1 mt-1 border-t border-slate-100 flex justify-between">
                     <span>{odp.latitude?.toFixed(4)}, {odp.longitude?.toFixed(4)}</span>
                     <span className="font-sans font-semibold text-slate-500">Avai: {odp.avai || 0}</span>
