@@ -22,14 +22,14 @@ const ALLOWED_STOS = [
 
 const DURATION_ORDER = ['3 HARI', '7 HARI', '30 HARI', '3 BULAN'];
 
-function sortDurationColumns(cols) {
+function sortDurationColumns(cols = []) {
   return [...cols].sort((a, b) => {
     const idxA = DURATION_ORDER.indexOf(a);
     const idxB = DURATION_ORDER.indexOf(b);
     if (idxA !== -1 && idxB !== -1) return idxA - idxB;
     if (idxA !== -1) return -1;
     if (idxB !== -1) return 1;
-    return a.localeCompare(b);
+    return String(a).localeCompare(String(b));
   });
 }
 
@@ -57,7 +57,12 @@ function formatFullDateTime(d) {
 }
 
 export default function OrdersPage() {
-  const { ordersData: orders, ordersLoaded, reloadOrders, reloadAll } = useData();
+  const dataContext = useData() || {};
+  const orders = dataContext.ordersData || [];
+  const ordersLoaded = dataContext.ordersLoaded || false;
+  const reloadOrders = dataContext.reloadOrders || (() => {});
+  const reloadAll = dataContext.reloadAll || (() => {});
+
   const [showUploader, setShowUploader] = useState(false);
 
   // Filter States
@@ -77,11 +82,11 @@ export default function OrdersPage() {
   const [sortConfig, setSortConfig] = useState({ key: 'order_ts', direction: 'desc' });
   const rowsPerPage = 50;
 
-  // Header Cut-Off Date Range (Earliest to Latest dengan Jam)
+  // Header Cut-Off Date Range
   const headerCutoffText = useMemo(() => {
     if (!orders || orders.length === 0) return '*Cut Off Data -';
     const dates = orders
-      .map((o) => (o.order_ts ? new Date(o.order_ts).getTime() : null))
+      .map((o) => (o && o.order_ts ? new Date(o.order_ts).getTime() : null))
       .filter((t) => t && !isNaN(t));
 
     if (dates.length === 0) return '*Cut Off Data';
@@ -94,6 +99,7 @@ export default function OrdersPage() {
   // Filter Sinkron
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
+      if (!o) return false;
       const matchWok = selectedWok === 'ALL' || o.wok === selectedWok;
       const matchSto = selectedSto === 'ALL' || o.sto_co === selectedSto;
       const matchDur = selectedDuration === 'ALL' || o.order_duration_cat === selectedDuration;
@@ -111,7 +117,7 @@ export default function OrdersPage() {
     filteredOrders.forEach((o) => {
       const wok = o.wok || 'PALANGKARAYA';
       const sto = o.sto_co || 'UNKNOWN';
-      const dur = o.order_duration_cat;
+      const dur = o.order_duration_cat || 'LAINNYA';
       durColumnsSet.add(dur);
 
       if (!map[wok]) map[wok] = { name: wok, total: 0, stos: {}, colCounts: {} };
@@ -148,7 +154,7 @@ export default function OrdersPage() {
     return { sortedWoks, columns, grandColTotals, totalAll };
   }, [filteredOrders, pivot1Sort]);
 
-  // Pivot 2: WOK & STO vs Status
+  // Pivot 2: WOK & STO vs Status (FIXED)
   const pivotStatus = useMemo(() => {
     const statusSet = new Set();
     const map = {};
@@ -156,7 +162,7 @@ export default function OrdersPage() {
     filteredOrders.forEach((o) => {
       const wok = o.wok || 'PALANGKARAYA';
       const sto = o.sto_co || 'UNKNOWN';
-      const st = o.order_status_clean;
+      const st = o.order_status_clean || 'UNKNOWN';
       statusSet.add(st);
 
       if (!map[wok]) map[wok] = { name: wok, total: 0, stos: {}, colCounts: {} };
@@ -166,7 +172,7 @@ export default function OrdersPage() {
       map[wok].colCounts[st] = (map[wok].colCounts[st] || 0) + 1;
 
       map[wok].stos[sto].total++;
-      map[wok].stos[sto].colCounts[st] = (map[wok].stos[sto].colCounts[dur] || 0) + 1;
+      map[wok].stos[sto].colCounts[st] = (map[wok].stos[sto].colCounts[st] || 0) + 1;
     });
 
     const columns = Array.from(statusSet).sort();
@@ -200,7 +206,7 @@ export default function OrdersPage() {
 
     filteredOrders.forEach((o) => {
       if (!o.fallout_reason_clean) return;
-      const dur = o.order_duration_cat;
+      const dur = o.order_duration_cat || 'LAINNYA';
       const r = o.fallout_reason_clean;
 
       if (!tree[dur]) tree[dur] = { name: dur, total: 0, reasons: {} };
@@ -212,7 +218,7 @@ export default function OrdersPage() {
     return { tree, totalAll };
   }, [filteredOrders]);
 
-  // Chart Data (Duration Fallout: Ascending within Group)
+  // Chart Data: Ascending within duration group
   const { chartData, dividerIndices } = useMemo(() => {
     const list = [];
     const dividers = [];
@@ -235,7 +241,7 @@ export default function OrdersPage() {
         currentIndex++;
       });
 
-      if (idx < sortedDurKeys.length - 1 && sortedReasons.length > 0) {
+      if (idx < sortedDurKeys.length - 1 && sortedReasons.length > 0 && list.length > 0) {
         dividers.push(list[list.length - 1].reason);
       }
     });
@@ -329,7 +335,7 @@ export default function OrdersPage() {
       )}
 
       <div className="max-w-[1450px] mx-auto space-y-3">
-        {/* Header Bar dengan Rentang Cut Off Tanggal & Jam */}
+        {/* Header Bar */}
         <div className="bg-gradient-to-r from-[#211c47] to-[#4c1d95] text-white p-3 sm:p-4 rounded-lg flex flex-col md:flex-row justify-between items-start md:items-center shadow gap-2">
           <div>
             <h1 className="text-lg sm:text-2xl font-black uppercase italic tracking-wide">
@@ -546,7 +552,6 @@ export default function OrdersPage() {
                     );
                   })}
 
-                  {/* Grand Total Baris (Bisa Diklik) */}
                   <tr className="bg-[#0f172a] text-white font-black sticky bottom-0 z-10 shadow cursor-pointer">
                     <td
                       className="p-2 border border-slate-700 text-left pl-3 uppercase hover:text-yellow-300"
