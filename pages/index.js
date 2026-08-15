@@ -64,11 +64,10 @@ function parseCleanFloat(val) {
   return isNaN(parsed) ? null : parsed;
 }
 
-// Custom Label Presisi: Membaca nilai asli persentase segmen batang (bukan nilai stack kumulatif)
+// Custom Label Segmen Batang
 const renderSegmentLabel = (key) => (props) => {
   const { x, y, width, height, payload } = props;
   const val = payload ? payload[key] : null;
-
   if (val === undefined || val === null || val < 4 || height < 14) return null;
 
   return (
@@ -85,7 +84,6 @@ const renderSegmentLabel = (key) => (props) => {
   );
 };
 
-// Tooltip Pop-up Grafik Batang yang Sinkron
 const CustomChartTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
@@ -143,43 +141,61 @@ export default function Dashboard() {
       const res = await fetch('/api/odp');
       if (res.ok) {
         const odpData = await res.json();
-        const enrichedData = odpData.map((item) => {
-          const isTotal = parseInt(item.is_total) || 0;
-          const used = parseInt(item.used) || 0;
-          const avai = parseInt(item.avai) || Math.max(0, isTotal - used);
-          const rsk = isTotal > 0 ? used / isTotal : 0;
-          let status = rsk === 0 ? 'BLACK' : rsk <= 0.6 ? 'GREEN' : rsk <= 0.85 ? 'YELLOW' : rsk < 0.99 ? 'ORANGE' : 'RED';
-          
-          let sto = (item.sto || '').trim().toUpperCase();
-          if (!sto || sto === 'UNKNOWN') sto = (item.odp_name || '').match(/ODP-([A-Z0-9]{3})/i)?.[1].toUpperCase() || 'UNKNOWN';
-          
-          let wok = (item.wok || '').trim().toUpperCase();
-          if (!wok || wok === 'UNKNOWN') wok = STO_WOK_MAP[sto] || 'PALANGKARAYA';
+        const enrichedData = odpData
+          .filter((item) => {
+            // Poin 4: Format OTB- diabaikan
+            return item.odp_name && !String(item.odp_name).trim().toUpperCase().startsWith('OTB-');
+          })
+          .map((item) => {
+            const isTotal = parseInt(item.is_total) || 0;
+            const used = parseInt(item.used) || 0;
+            const avai = parseInt(item.avai) || Math.max(0, isTotal - used);
+            const rsk = isTotal > 0 ? used / isTotal : 0;
+            let status = rsk === 0 ? 'BLACK' : rsk <= 0.6 ? 'GREEN' : rsk <= 0.85 ? 'YELLOW' : rsk < 0.99 ? 'ORANGE' : 'RED';
+            
+            let sto = (item.sto || '').trim().toUpperCase();
+            if (!sto || sto === 'UNKNOWN') sto = (item.odp_name || '').match(/ODP-([A-Z0-9]{3})/i)?.[1].toUpperCase() || 'UNKNOWN';
+            
+            let wok = (item.wok || '').trim().toUpperCase();
+            if (!wok || wok === 'UNKNOWN') wok = STO_WOK_MAP[sto] || 'PALANGKARAYA';
 
-          let kab = (item.kabupaten || '').trim().toUpperCase();
-          let finalKab = VALID_KABUPATEN.includes(kab) ? kab : 'LAINNYA';
+            let kab = (item.kabupaten || '').trim().toUpperCase();
+            let finalKab = VALID_KABUPATEN.includes(kab) ? kab : 'LAINNYA';
 
-          const rxVal = parseCleanFloat(item.ont_rx_level);
-          const rxCategory = rxVal === null ? 'NO_DATA' : rxVal > -18 ? 'GREEN' : rxVal >= -21 ? 'YELLOW' : rxVal >= -25 ? 'ORANGE' : 'RED';
+            const rxVal = parseCleanFloat(item.ont_rx_level);
+            const rxCategory = rxVal === null ? 'NO_DATA' : rxVal > -18 ? 'GREEN' : rxVal >= -21 ? 'YELLOW' : rxVal >= -25 ? 'ORANGE' : 'RED';
 
-          const parsedDate = parseDateRobust(item.event_date);
-          return {
-            ...item,
-            sto,
-            wok,
-            kabupaten: finalKab,
-            is_total: isTotal,
-            used,
-            avai,
-            rsk,
-            parsed_date: parsedDate,
-            ont_rx_level: rxVal,
-            rx_category: rxCategory,
-            status_final: status,
-            week: getWeekNumber(parsedDate),
-          };
-        });
+            const parsedDate = parseDateRobust(item.event_date);
+            return {
+              ...item,
+              sto,
+              wok,
+              kabupaten: finalKab,
+              is_total: isTotal,
+              used,
+              avai,
+              rsk,
+              parsed_date: parsedDate,
+              ont_rx_level: rxVal,
+              rx_category: rxCategory,
+              status_final: status,
+              week: getWeekNumber(parsedDate),
+            };
+          });
+
         setData(enrichedData);
+
+        // Poin 1: Default Filter Week Otomatis Ambil Paling Terakhir
+        const weeks = [...new Set(enrichedData.map((d) => d.week).filter((w) => w !== 'Unknown'))].sort((a, b) => {
+          const numA = parseInt(a.replace(/\D/g, '')) || 0;
+          const numB = parseInt(b.replace(/\D/g, '')) || 0;
+          return numA - numB;
+        });
+
+        if (weeks.length > 0) {
+          const latestWeek = weeks[weeks.length - 1];
+          setSelectedWeek(latestWeek);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -190,7 +206,14 @@ export default function Dashboard() {
 
   useEffect(() => { fetchData(); }, []);
 
-  const availableWeeks = useMemo(() => [...new Set(data.map(d => d.week).filter(w => w !== 'Unknown'))].sort(), [data]);
+  const availableWeeks = useMemo(() => {
+    return [...new Set(data.map((d) => d.week).filter((w) => w !== 'Unknown'))].sort((a, b) => {
+      const numA = parseInt(a.replace(/\D/g, '')) || 0;
+      const numB = parseInt(b.replace(/\D/g, '')) || 0;
+      return numA - numB;
+    });
+  }, [data]);
+
   const weekFilteredData = useMemo(() => selectedWeek === 'ALL' ? data : data.filter(d => d.week === selectedWeek), [data, selectedWeek]);
   
   const fullyFilteredData = useMemo(() => {
@@ -454,9 +477,10 @@ export default function Dashboard() {
           </button>
         </div>
 
+        {/* Uploader Props Mengirim data untuk fitur export */}
         {showUploader && (
           <div className="transition-all duration-300">
-            <Uploader onUploadSuccess={fetchData} />
+            <Uploader onUploadSuccess={fetchData} rawData={data} />
           </div>
         )}
 
@@ -498,13 +522,14 @@ export default function Dashboard() {
                     </p>
                   </div>
 
+                  {/* Poin 3: AVAI PORT (Non Active) */}
                   <div
                     onClick={() => setSelectedPortFilter('AVAI')}
                     className={`border p-1.5 sm:p-2 rounded cursor-pointer transition-transform hover:scale-105 ${
                       selectedPortFilter === 'AVAI' ? 'border-red-600 bg-red-100 ring-2 ring-red-500 shadow' : 'border-red-300 bg-red-50/80 hover:bg-red-100'
                     }`}
                   >
-                    <p className="text-[8px] sm:text-[9px] font-black text-red-800 uppercase">AVAI PORT (Sales Target)</p>
+                    <p className="text-[8px] sm:text-[9px] font-black text-red-800 uppercase">AVAI PORT (Non Active)</p>
                     <p className="text-sm sm:text-base font-extrabold text-red-950 mt-0.5">
                       {(statsOverview.avaiPort / 1000).toFixed(1)} K{' '}
                       <span className="text-[10px] sm:text-xs font-bold text-red-800">({avaiTotal}%)</span>
@@ -688,7 +713,6 @@ export default function Dashboard() {
                       />
                       <YAxis tick={{ fontSize: 9, fontWeight: 'bold' }} domain={[0, 100]} unit="%" />
                       <Tooltip content={<CustomChartTooltip />} />
-                      {/* LABEL DI SETIAP SEGMEN BATANG: SINKRON 100% PERSENTASE DENGAN POPUP */}
                       <Bar dataKey="BLACK" stackId="a" fill="#000000" label={renderSegmentLabel('BLACK')} />
                       <Bar dataKey="GREEN" stackId="a" fill="#16a34a" label={renderSegmentLabel('GREEN')} />
                       <Bar dataKey="YELLOW" stackId="a" fill="#facc15" label={renderSegmentLabel('YELLOW')} />
