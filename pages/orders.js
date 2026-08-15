@@ -12,6 +12,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   Cell,
+  ReferenceLine,
 } from 'recharts';
 
 const ALLOWED_STOS = [
@@ -33,7 +34,6 @@ const WOK_GROUP_MAP = {
   PYM: 'PALANGKARAYA',
 };
 
-// Urutan Durasi Custom: 3 HARI -> 7 HARI -> 30 HARI -> 3 BULAN
 const DURATION_ORDER = ['3 HARI', '7 HARI', '30 HARI', '3 BULAN'];
 
 function sortDurationColumns(cols) {
@@ -48,10 +48,10 @@ function sortDurationColumns(cols) {
 }
 
 const DURATION_COLORS = {
-  '3 HARI': '#22c55e',  // Hijau
-  '7 HARI': '#f97316',  // Oranye
-  '30 HARI': '#3b82f6', // Biru
-  '3 BULAN': '#a855f7', // Ungu
+  '3 HARI': '#22c55e',
+  '7 HARI': '#f97316',
+  '30 HARI': '#3b82f6',
+  '3 BULAN': '#a855f7',
   DEFAULT: '#64748b',
 };
 
@@ -91,7 +91,11 @@ export default function OrdersPage() {
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [selectedFallout, setSelectedFallout] = useState('ALL');
 
-  // Bottom Table State
+  // Pivot Sorting States (Default Sort by Grand Total Descending)
+  const [pivot1Sort, setPivot1Sort] = useState({ key: 'total', direction: 'desc' });
+  const [pivot2Sort, setPivot2Sort] = useState({ key: 'total', direction: 'desc' });
+
+  // Bottom Table States
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortConfig, setSortConfig] = useState({ key: 'order_ts', direction: 'desc' });
@@ -132,7 +136,7 @@ export default function OrdersPage() {
     fetchOrders();
   }, []);
 
-  // Filter Sinkron Seluruh Komponen
+  // Filter Sinkron
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
       const matchWok = selectedWok === 'ALL' || o.wok === selectedWok;
@@ -177,8 +181,18 @@ export default function OrdersPage() {
       });
     });
 
-    return { tree: map, columns, grandColTotals, totalAll };
-  }, [filteredOrders]);
+    // Sorting Tree Berdasarkan Header / Default Total Descending
+    const sortedWoks = Object.values(map).sort((a, b) => {
+      let valA = pivot1Sort.key === 'total' ? a.total : (a.colCounts[pivot1Sort.key] || 0);
+      let valB = pivot1Sort.key === 'total' ? b.total : (b.colCounts[pivot1Sort.key] || 0);
+      if (pivot1Sort.key === 'name') {
+        return pivot1Sort.direction === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+      }
+      return pivot1Sort.direction === 'asc' ? valA - valB : valB - valA;
+    });
+
+    return { sortedWoks, columns, grandColTotals, totalAll };
+  }, [filteredOrders, pivot1Sort]);
 
   // Pivot 2: WOK & STO vs Status
   const pivotStatus = useMemo(() => {
@@ -213,8 +227,18 @@ export default function OrdersPage() {
       });
     });
 
-    return { tree: map, columns, grandColTotals, totalAll };
-  }, [filteredOrders]);
+    // Sorting Tree Berdasarkan Header / Default Total Descending
+    const sortedWoks = Object.values(map).sort((a, b) => {
+      let valA = pivot2Sort.key === 'total' ? a.total : (a.colCounts[pivot2Sort.key] || 0);
+      let valB = pivot2Sort.key === 'total' ? b.total : (b.colCounts[pivot2Sort.key] || 0);
+      if (pivot2Sort.key === 'name') {
+        return pivot2Sort.direction === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+      }
+      return pivot2Sort.direction === 'asc' ? valA - valB : valB - valA;
+    });
+
+    return { sortedWoks, columns, grandColTotals, totalAll };
+  }, [filteredOrders, pivot2Sort]);
 
   // Pivot 3: Duration vs Fallout
   const pivotFallout = useMemo(() => {
@@ -235,39 +259,59 @@ export default function OrdersPage() {
     return { tree, totalAll };
   }, [filteredOrders]);
 
-  // Chart Data (Duration Fallout)
-  const chartData = useMemo(() => {
+  // Chart Data (Duration Fallout: Makin ke kanan makin banyak jumlahnya)
+  const { chartData, dividerIndices } = useMemo(() => {
     const list = [];
+    const dividers = [];
     const sortedDurKeys = sortDurationColumns(Object.keys(pivotFallout.tree));
 
-    sortedDurKeys.forEach((durKey) => {
+    let currentIndex = 0;
+    sortedDurKeys.forEach((durKey, idx) => {
       const reasonsObj = pivotFallout.tree[durKey]?.reasons || {};
-      const sortedReasons = Object.entries(reasonsObj).sort((a, b) => b[1] - a[1]);
+      // Diurutkan Ascending (Makin ke kanan makin banyak)
+      const sortedReasons = Object.entries(reasonsObj).sort((a, b) => a[1] - b[1]);
 
       sortedReasons.forEach(([reason, count]) => {
         list.push({
+          index: currentIndex,
           duration: durKey,
           reason: reason,
           count: count,
           fillColor: DURATION_COLORS[durKey] || DURATION_COLORS.DEFAULT,
           fullLabel: `${reason} (${durKey})`,
         });
+        currentIndex++;
       });
+
+      if (idx < sortedDurKeys.length - 1 && sortedReasons.length > 0) {
+        dividers.push(list[list.length - 1].reason);
+      }
     });
 
-    return list;
+    return { chartData: list, dividerIndices: dividers };
   }, [pivotFallout]);
 
-  // Sort Handler
+  // Sorting Handler Pivot
+  const handlePivot1Sort = (key) => {
+    let direction = 'desc';
+    if (pivot1Sort.key === key && pivot1Sort.direction === 'desc') direction = 'asc';
+    setPivot1Sort({ key, direction });
+  };
+
+  const handlePivot2Sort = (key) => {
+    let direction = 'desc';
+    if (pivot2Sort.key === key && pivot2Sort.direction === 'desc') direction = 'asc';
+    setPivot2Sort({ key, direction });
+  };
+
+  // Sorting Handler Bottom Table
   const requestSort = (key) => {
     let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
+    if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
     setSortConfig({ key, direction });
   };
 
-  // Bottom Table Data dengan Sorting Semua Kolom
+  // Bottom Table Data
   const sortedBottomTableData = useMemo(() => {
     let filtered = filteredOrders;
     if (searchTerm.trim()) {
@@ -434,13 +478,18 @@ export default function OrdersPage() {
           <div className="bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase">
               <span>Count of order_id &bull; Duration SLA</span>
-              <span className="text-[10px] text-emerald-400 font-semibold">(Klik sel untuk filter)</span>
+              <span className="text-[10px] text-emerald-400 font-semibold">(Klik header untuk sort / sel untuk filter)</span>
             </div>
             <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
               <table className="w-full text-center border-collapse text-[10.5px]">
-                <thead className="bg-[#1e293b] text-white sticky top-0 z-10 shadow-xs">
+                <thead className="bg-[#1e293b] text-white sticky top-0 z-10 shadow-xs select-none">
                   <tr>
-                    <th className="p-1.5 border border-slate-600 text-left pl-3">Row Labels</th>
+                    <th
+                      className="p-1.5 border border-slate-600 text-left pl-3 cursor-pointer hover:bg-slate-700"
+                      onClick={() => handlePivot1Sort('name')}
+                    >
+                      Row Labels {pivot1Sort.key === 'name' ? (pivot1Sort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
                     {pivotDuration.columns.map((c) => (
                       <th
                         key={c}
@@ -450,81 +499,131 @@ export default function OrdersPage() {
                           c === '30 HARI' ? 'bg-[#bfdbfe] text-blue-950 font-black' :
                           c === '3 BULAN' ? 'bg-[#e9d5ff] text-purple-950 font-black' : 'bg-slate-700'
                         }`}
-                        onClick={() => setSelectedDuration((prev) => (prev === c ? 'ALL' : c))}
-                        title="Klik untuk filter kolom ini"
+                        onClick={() => handlePivot1Sort(c)}
+                        title="Klik untuk sort kolom ini"
                       >
-                        {c}
+                        {c} {pivot1Sort.key === c ? (pivot1Sort.direction === 'asc' ? '↑' : '↓') : ''}
                       </th>
                     ))}
-                    <th className="p-1.5 border border-slate-600 bg-[#0f172a] text-yellow-300 font-black">Grand Total</th>
+                    <th
+                      className="p-1.5 border border-slate-600 bg-[#0f172a] text-yellow-300 font-black cursor-pointer hover:bg-slate-800"
+                      onClick={() => handlePivot1Sort('total')}
+                      title="Klik untuk sort Grand Total"
+                    >
+                      Grand Total {pivot1Sort.key === 'total' ? (pivot1Sort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.values(pivotDuration.tree).map((wok) => (
-                    <React.Fragment key={wok.name}>
-                      <tr className="bg-slate-100 font-black text-slate-800 border-b border-slate-300">
-                        <td
-                          className="p-1.5 border border-slate-300 text-left pl-2 cursor-pointer hover:text-blue-700"
-                          onClick={() => setSelectedWok((prev) => (prev === wok.name ? 'ALL' : wok.name))}
-                        >
-                          &oplus; {wok.name}
-                        </td>
-                        {pivotDuration.columns.map((c) => (
-                          <td
-                            key={c}
-                            className="p-1.5 border border-slate-300 cursor-pointer hover:bg-emerald-100"
-                            onClick={() => {
-                              setSelectedWok(wok.name);
-                              setSelectedDuration(c);
-                            }}
-                          >
-                            {wok.colCounts[c] || ''}
-                          </td>
-                        ))}
-                        <td className="p-1.5 border border-slate-300 font-extrabold bg-slate-200">
-                          {wok.total}
-                        </td>
-                      </tr>
+                  {pivotDuration.sortedWoks.map((wok) => {
+                    const sortedStos = Object.values(wok.stos).sort((a, b) => {
+                      let valA = pivot1Sort.key === 'total' ? a.total : (a.colCounts[pivot1Sort.key] || 0);
+                      let valB = pivot1Sort.key === 'total' ? b.total : (b.colCounts[pivot1Sort.key] || 0);
+                      if (pivot1Sort.key === 'name') {
+                        return pivot1Sort.direction === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+                      }
+                      return pivot1Sort.direction === 'asc' ? valA - valB : valB - valA;
+                    });
 
-                      {Object.values(wok.stos).map((sto) => (
-                        <tr
-                          key={sto.name}
-                          className="border-b border-slate-200 hover:bg-blue-50/70 transition bg-white"
-                        >
+                    return (
+                      <React.Fragment key={wok.name}>
+                        <tr className="bg-slate-100 font-black text-slate-800 border-b border-slate-300">
                           <td
-                            className="p-1 border border-slate-200 text-left pl-6 font-semibold text-slate-700 cursor-pointer hover:text-blue-700"
-                            onClick={() => setSelectedSto((prev) => (prev === sto.name ? 'ALL' : sto.name))}
+                            className="p-1.5 border border-slate-300 text-left pl-2 cursor-pointer hover:text-blue-700"
+                            onClick={() => setSelectedWok((prev) => (prev === wok.name ? 'ALL' : wok.name))}
                           >
-                            {sto.name}
+                            &oplus; {wok.name}
                           </td>
                           {pivotDuration.columns.map((c) => (
                             <td
                               key={c}
-                              className="p-1 border border-slate-200 text-slate-600 cursor-pointer hover:bg-blue-100"
+                              className="p-1.5 border border-slate-300 cursor-pointer hover:bg-emerald-100"
                               onClick={() => {
-                                setSelectedSto(sto.name);
+                                setSelectedWok(wok.name);
                                 setSelectedDuration(c);
                               }}
                             >
-                              {sto.colCounts[c] || ''}
+                              {wok.colCounts[c] || ''}
                             </td>
                           ))}
-                          <td className="p-1 border border-slate-200 font-bold text-slate-800 bg-slate-50">
-                            {sto.total}
+                          <td
+                            className="p-1.5 border border-slate-300 font-extrabold bg-slate-200 cursor-pointer hover:bg-yellow-100"
+                            onClick={() => {
+                              setSelectedWok(wok.name);
+                              setSelectedDuration('ALL');
+                            }}
+                            title="Klik Grand Total WOK"
+                          >
+                            {wok.total}
                           </td>
                         </tr>
-                      ))}
-                    </React.Fragment>
-                  ))}
 
-                  <tr className="bg-[#0f172a] text-white font-black sticky bottom-0 z-10 shadow">
-                    <td className="p-2 border border-slate-700 text-left pl-3 uppercase">Grand Total</td>
+                        {sortedStos.map((sto) => (
+                          <tr
+                            key={sto.name}
+                            className="border-b border-slate-200 hover:bg-blue-50/70 transition bg-white"
+                          >
+                            <td
+                              className="p-1 border border-slate-200 text-left pl-6 font-semibold text-slate-700 cursor-pointer hover:text-blue-700"
+                              onClick={() => setSelectedSto((prev) => (prev === sto.name ? 'ALL' : sto.name))}
+                            >
+                              {sto.name}
+                            </td>
+                            {pivotDuration.columns.map((c) => (
+                              <td
+                                key={c}
+                                className="p-1 border border-slate-200 text-slate-600 cursor-pointer hover:bg-blue-100"
+                                onClick={() => {
+                                  setSelectedSto(sto.name);
+                                  setSelectedDuration(c);
+                                }}
+                              >
+                                {sto.colCounts[c] || ''}
+                              </td>
+                            ))}
+                            <td
+                              className="p-1 border border-slate-200 font-bold text-slate-800 bg-slate-50 cursor-pointer hover:bg-yellow-100"
+                              onClick={() => {
+                                setSelectedSto(sto.name);
+                                setSelectedDuration('ALL');
+                              }}
+                              title="Klik Grand Total STO"
+                            >
+                              {sto.total}
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })}
+
+                  {/* Baris Grand Total (Bisa Diklik) */}
+                  <tr className="bg-[#0f172a] text-white font-black sticky bottom-0 z-10 shadow cursor-pointer">
+                    <td
+                      className="p-2 border border-slate-700 text-left pl-3 uppercase hover:text-yellow-300"
+                      onClick={() => {
+                        setSelectedWok('ALL');
+                        setSelectedSto('ALL');
+                      }}
+                      title="Klik untuk reset WOK & STO"
+                    >
+                      Grand Total
+                    </td>
                     {pivotDuration.columns.map((c) => (
-                      <td key={c} className="p-2 border border-slate-700">
+                      <td
+                        key={c}
+                        className="p-2 border border-slate-700 hover:bg-slate-800"
+                        onClick={() => setSelectedDuration(c)}
+                        title={`Klik untuk filter durasi ${c}`}
+                      >
                         {pivotDuration.grandColTotals[c] || 0}
                       </td>
                     ))}
-                    <td className="p-2 border border-slate-700 text-yellow-300 font-black">
+                    <td
+                      className="p-2 border border-slate-700 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
+                      onClick={resetFilters}
+                      title="Klik untuk reset semua filter"
+                    >
                       {pivotDuration.totalAll}
                     </td>
                   </tr>
@@ -537,92 +636,147 @@ export default function OrdersPage() {
           <div className="bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase">
               <span>Count of order_id &bull; Order Status</span>
-              <span className="text-[10px] text-blue-400 font-semibold">(Klik sel untuk filter)</span>
+              <span className="text-[10px] text-blue-400 font-semibold">(Klik header untuk sort / sel untuk filter)</span>
             </div>
             <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
               <table className="w-full text-center border-collapse text-[10.5px]">
-                <thead className="bg-[#1e293b] text-white sticky top-0 z-10 shadow-xs">
+                <thead className="bg-[#1e293b] text-white sticky top-0 z-10 shadow-xs select-none">
                   <tr>
-                    <th className="p-1.5 border border-slate-600 text-left pl-3">Row Labels</th>
+                    <th
+                      className="p-1.5 border border-slate-600 text-left pl-3 cursor-pointer hover:bg-slate-700"
+                      onClick={() => handlePivot2Sort('name')}
+                    >
+                      Row Labels {pivot2Sort.key === 'name' ? (pivot2Sort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
                     {pivotStatus.columns.map((st) => (
                       <th
                         key={st}
                         className="p-1.5 border border-slate-600 font-bold bg-[#e0f2fe] text-blue-950 cursor-pointer max-w-[110px] truncate hover:opacity-80"
                         title={st}
-                        onClick={() => setSelectedStatus((prev) => (prev === st ? 'ALL' : st))}
+                        onClick={() => handlePivot2Sort(st)}
                       >
-                        {st}
+                        {st} {pivot2Sort.key === st ? (pivot2Sort.direction === 'asc' ? '↑' : '↓') : ''}
                       </th>
                     ))}
-                    <th className="p-1.5 border border-slate-600 bg-[#0f172a] text-yellow-300 font-black">Grand Total</th>
+                    <th
+                      className="p-1.5 border border-slate-600 bg-[#0f172a] text-yellow-300 font-black cursor-pointer hover:bg-slate-800"
+                      onClick={() => handlePivot2Sort('total')}
+                      title="Klik untuk sort Grand Total"
+                    >
+                      Grand Total {pivot2Sort.key === 'total' ? (pivot2Sort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.values(pivotStatus.tree).map((wok) => (
-                    <React.Fragment key={wok.name}>
-                      <tr className="bg-slate-100 font-black text-slate-800 border-b border-slate-300">
-                        <td
-                          className="p-1.5 border border-slate-300 text-left pl-2 cursor-pointer hover:text-blue-700"
-                          onClick={() => setSelectedWok((prev) => (prev === wok.name ? 'ALL' : wok.name))}
-                        >
-                          &oplus; {wok.name}
-                        </td>
-                        {pivotStatus.columns.map((st) => (
-                          <td
-                            key={st}
-                            className="p-1.5 border border-slate-300 cursor-pointer hover:bg-blue-100"
-                            onClick={() => {
-                              setSelectedWok(wok.name);
-                              setSelectedStatus(st);
-                            }}
-                          >
-                            {wok.colCounts[st] || ''}
-                          </td>
-                        ))}
-                        <td className="p-1.5 border border-slate-300 font-extrabold bg-slate-200">
-                          {wok.total}
-                        </td>
-                      </tr>
+                  {pivotStatus.sortedWoks.map((wok) => {
+                    const sortedStos = Object.values(wok.stos).sort((a, b) => {
+                      let valA = pivot2Sort.key === 'total' ? a.total : (a.colCounts[pivot2Sort.key] || 0);
+                      let valB = pivot2Sort.key === 'total' ? b.total : (b.colCounts[pivot2Sort.key] || 0);
+                      if (pivot2Sort.key === 'name') {
+                        return pivot2Sort.direction === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+                      }
+                      return pivot2Sort.direction === 'asc' ? valA - valB : valB - valA;
+                    });
 
-                      {Object.values(wok.stos).map((sto) => (
-                        <tr
-                          key={sto.name}
-                          className="border-b border-slate-200 hover:bg-blue-50/70 transition bg-white"
-                        >
+                    return (
+                      <React.Fragment key={wok.name}>
+                        <tr className="bg-slate-100 font-black text-slate-800 border-b border-slate-300">
                           <td
-                            className="p-1 border border-slate-200 text-left pl-6 font-semibold text-slate-700 cursor-pointer hover:text-blue-700"
-                            onClick={() => setSelectedSto((prev) => (prev === sto.name ? 'ALL' : sto.name))}
+                            className="p-1.5 border border-slate-300 text-left pl-2 cursor-pointer hover:text-blue-700"
+                            onClick={() => setSelectedWok((prev) => (prev === wok.name ? 'ALL' : wok.name))}
                           >
-                            {sto.name}
+                            &oplus; {wok.name}
                           </td>
                           {pivotStatus.columns.map((st) => (
                             <td
                               key={st}
-                              className="p-1 border border-slate-200 text-slate-600 cursor-pointer hover:bg-blue-100"
+                              className="p-1.5 border border-slate-300 cursor-pointer hover:bg-blue-100"
                               onClick={() => {
-                                setSelectedSto(sto.name);
+                                setSelectedWok(wok.name);
                                 setSelectedStatus(st);
                               }}
                             >
-                              {sto.colCounts[st] || ''}
+                              {wok.colCounts[st] || ''}
                             </td>
                           ))}
-                          <td className="p-1 border border-slate-200 font-bold text-slate-800 bg-slate-50">
-                            {sto.total}
+                          <td
+                            className="p-1.5 border border-slate-300 font-extrabold bg-slate-200 cursor-pointer hover:bg-yellow-100"
+                            onClick={() => {
+                              setSelectedWok(wok.name);
+                              setSelectedStatus('ALL');
+                            }}
+                            title="Klik Grand Total WOK"
+                          >
+                            {wok.total}
                           </td>
                         </tr>
-                      ))}
-                    </React.Fragment>
-                  ))}
 
-                  <tr className="bg-[#0f172a] text-white font-black sticky bottom-0 z-10 shadow">
-                    <td className="p-2 border border-slate-700 text-left pl-3 uppercase">Grand Total</td>
+                        {sortedStos.map((sto) => (
+                          <tr
+                            key={sto.name}
+                            className="border-b border-slate-200 hover:bg-blue-50/70 transition bg-white"
+                          >
+                            <td
+                              className="p-1 border border-slate-200 text-left pl-6 font-semibold text-slate-700 cursor-pointer hover:text-blue-700"
+                              onClick={() => setSelectedSto((prev) => (prev === sto.name ? 'ALL' : sto.name))}
+                            >
+                              {sto.name}
+                            </td>
+                            {pivotStatus.columns.map((st) => (
+                              <td
+                                key={st}
+                                className="p-1 border border-slate-200 text-slate-600 cursor-pointer hover:bg-blue-100"
+                                onClick={() => {
+                                  setSelectedSto(sto.name);
+                                  setSelectedStatus(st);
+                                }}
+                              >
+                                {sto.colCounts[st] || ''}
+                              </td>
+                            ))}
+                            <td
+                              className="p-1 border border-slate-200 font-bold text-slate-800 bg-slate-50 cursor-pointer hover:bg-yellow-100"
+                              onClick={() => {
+                                setSelectedSto(sto.name);
+                                setSelectedStatus('ALL');
+                              }}
+                              title="Klik Grand Total STO"
+                            >
+                              {sto.total}
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })}
+
+                  {/* Baris Grand Total (Bisa Diklik) */}
+                  <tr className="bg-[#0f172a] text-white font-black sticky bottom-0 z-10 shadow cursor-pointer">
+                    <td
+                      className="p-2 border border-slate-700 text-left pl-3 uppercase hover:text-yellow-300"
+                      onClick={() => {
+                        setSelectedWok('ALL');
+                        setSelectedSto('ALL');
+                      }}
+                      title="Klik untuk reset WOK & STO"
+                    >
+                      Grand Total
+                    </td>
                     {pivotStatus.columns.map((st) => (
-                      <td key={st} className="p-2 border border-slate-700">
+                      <td
+                        key={st}
+                        className="p-2 border border-slate-700 hover:bg-slate-800"
+                        onClick={() => setSelectedStatus(st)}
+                        title={`Klik untuk filter status ${st}`}
+                      >
                         {pivotStatus.grandColTotals[st] || 0}
                       </td>
                     ))}
-                    <td className="p-2 border border-slate-700 text-yellow-300 font-black">
+                    <td
+                      className="p-2 border border-slate-700 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
+                      onClick={resetFilters}
+                      title="Klik untuk reset semua filter"
+                    >
                       {pivotStatus.totalAll}
                     </td>
                   </tr>
@@ -635,11 +789,11 @@ export default function OrdersPage() {
         {/* ================= SECTION TENGAH: PIVOT FALLOUT & DURATION FALLOUT CHART ================= */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4">
           
-          {/* PIVOT 3: FALLOUT */}
+          {/* PIVOT 3: FALLOUT (DENGAN DIVIDER PER KATEGORI HARI) */}
           <div className="xl:col-span-1 bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase">
               <span>Row Labels &bull; Fallout Reason</span>
-              <span className="text-[10px] text-yellow-300">(Klik untuk filter)</span>
+              <span className="text-[10px] text-yellow-300">(Klik sel untuk filter)</span>
             </div>
             <div className="overflow-x-auto max-h-[340px] overflow-y-auto">
               <table className="w-full text-left border-collapse text-[10.5px]">
@@ -650,12 +804,22 @@ export default function OrdersPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortDurationColumns(Object.keys(pivotFallout.tree)).map((durKey) => {
+                  {sortDurationColumns(Object.keys(pivotFallout.tree)).map((durKey, durIdx) => {
                     const dur = pivotFallout.tree[durKey];
+                    // Urutkan fallout reasons di dalam tabel dari kecil ke besar (sinkron dengan chart)
+                    const sortedReasons = Object.entries(dur.reasons).sort((a, b) => a[1] - b[1]);
+
                     return (
                       <React.Fragment key={dur.name}>
+                        {/* Divider Header Kategori Hari */}
                         <tr
-                          className="bg-slate-100 font-black text-slate-900 border-b border-slate-300 cursor-pointer hover:bg-slate-200"
+                          className={`font-black text-slate-900 border-b border-slate-300 cursor-pointer ${
+                            durIdx > 0 ? 'border-t-2 border-t-slate-400' : ''
+                          } ${
+                            dur.name === '3 HARI' ? 'bg-emerald-100 hover:bg-emerald-200' :
+                            dur.name === '7 HARI' ? 'bg-orange-100 hover:bg-orange-200' :
+                            dur.name === '30 HARI' ? 'bg-blue-100 hover:bg-blue-200' : 'bg-purple-100 hover:bg-purple-200'
+                          }`}
                           onClick={() => setSelectedDuration((prev) => (prev === dur.name ? 'ALL' : dur.name))}
                         >
                           <td className="p-1.5 border border-slate-300 pl-2">
@@ -666,7 +830,7 @@ export default function OrdersPage() {
                           </td>
                         </tr>
 
-                        {Object.entries(dur.reasons).map(([reason, cnt]) => (
+                        {sortedReasons.map(([reason, cnt]) => (
                           <tr
                             key={reason}
                             className="border-b border-slate-200 hover:bg-red-50/70 cursor-pointer transition bg-white"
@@ -687,9 +851,23 @@ export default function OrdersPage() {
                     );
                   })}
 
-                  <tr className="bg-[#0f172a] text-white font-black sticky bottom-0 z-10 shadow">
-                    <td className="p-2 border border-slate-700 uppercase">Grand Total</td>
-                    <td className="p-2 border border-slate-700 text-right pr-4 text-yellow-300 font-black">
+                  {/* Grand Total Pivot Fallout */}
+                  <tr className="bg-[#0f172a] text-white font-black sticky bottom-0 z-10 shadow cursor-pointer">
+                    <td
+                      className="p-2 border border-slate-700 uppercase hover:text-yellow-300"
+                      onClick={() => {
+                        setSelectedDuration('ALL');
+                        setSelectedFallout('ALL');
+                      }}
+                      title="Klik untuk reset filter Fallout"
+                    >
+                      Grand Total
+                    </td>
+                    <td
+                      className="p-2 border border-slate-700 text-right pr-4 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
+                      onClick={resetFilters}
+                      title="Klik untuk reset semua filter"
+                    >
                       {pivotFallout.totalAll}
                     </td>
                   </tr>
@@ -698,11 +876,17 @@ export default function OrdersPage() {
             </div>
           </div>
 
-          {/* DIAGRAM BATANG DURATION FALLOUT */}
+          {/* DIAGRAM BATANG DURATION FALLOUT (DENGAN DIVIDER & MAKIN KE KANAN MAKIN TINGGI) */}
           <div className="xl:col-span-2 bg-white border border-slate-300 shadow-xs rounded p-3">
-            <h4 className="text-center font-extrabold text-slate-800 text-xs sm:text-sm tracking-wide uppercase mb-2">
-              DURATION FALLOUT
-            </h4>
+            <div className="flex items-center justify-between border-b pb-1.5 mb-2">
+              <h4 className="font-extrabold text-slate-800 text-xs sm:text-sm tracking-wide uppercase">
+                DURATION FALLOUT
+              </h4>
+              <span className="text-[10px] text-slate-400 font-semibold italic">
+                *Urutan per kelompok: makin ke kanan makin banyak
+              </span>
+            </div>
+
             <div className="h-72 w-full">
               {chartData.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-slate-400 font-bold text-xs">
@@ -712,7 +896,7 @@ export default function OrdersPage() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
                     data={chartData}
-                    margin={{ top: 20, right: 10, left: -20, bottom: 50 }}
+                    margin={{ top: 20, right: 10, left: -20, bottom: 55 }}
                     onClick={(e) => {
                       if (e && e.activePayload && e.activePayload.length) {
                         const payload = e.activePayload[0].payload;
@@ -750,7 +934,7 @@ export default function OrdersPage() {
                           return (
                             <div className="bg-white p-2 rounded shadow-lg border border-slate-300 text-xs font-sans">
                               <p className="font-black text-slate-900">{d.reason}</p>
-                              <p className="text-[11px] font-bold text-slate-600">Durasi: {d.duration}</p>
+                              <p className="text-[11px] font-bold text-slate-600">Kategori Durasi: {d.duration}</p>
                               <p className="text-xs font-black text-blue-700 mt-1">Total: {d.count} Order</p>
                               <p className="text-[9px] text-slate-400 mt-0.5">(Klik batang untuk filter)</p>
                             </div>
@@ -759,6 +943,18 @@ export default function OrdersPage() {
                         return null;
                       }}
                     />
+
+                    {/* Garis Divider Antar Kategori Hari di Diagram */}
+                    {dividerIndices.map((xVal, dIdx) => (
+                      <ReferenceLine
+                        key={`div-${dIdx}`}
+                        x={xVal}
+                        stroke="#94a3b8"
+                        strokeDasharray="4 4"
+                        strokeWidth={1.5}
+                      />
+                    ))}
+
                     <Bar
                       dataKey="count"
                       label={({ x, y, width, value }) => (
@@ -782,6 +978,7 @@ export default function OrdersPage() {
                 </ResponsiveContainer>
               )}
             </div>
+
             {/* Legend Durasi Lengkap */}
             <div className="flex flex-wrap items-center justify-center gap-4 text-[10px] font-bold text-slate-600 mt-2 border-t pt-1.5">
               <span className="flex items-center gap-1">
