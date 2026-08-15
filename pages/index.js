@@ -64,11 +64,28 @@ function parseCleanFloat(val) {
   return isNaN(parsed) ? null : parsed;
 }
 
-const renderCustomBarLabel = ({ x, y, width, height, value }) => {
-  if (!value || value < 3 || height < 12) return null;
-  return <text x={x + width / 2} y={y + height / 2 + 3} fill="#ffffff" textAnchor="middle" fontSize={8} fontWeight="bold">{`${value}%`}</text>;
+// Custom Label Presisi: Membaca nilai asli persentase segmen batang (bukan nilai stack kumulatif)
+const renderSegmentLabel = (key) => (props) => {
+  const { x, y, width, height, payload } = props;
+  const val = payload ? payload[key] : null;
+
+  if (val === undefined || val === null || val < 4 || height < 14) return null;
+
+  return (
+    <text
+      x={x + width / 2}
+      y={y + height / 2 + 3}
+      fill="#ffffff"
+      textAnchor="middle"
+      fontSize={8.5}
+      fontWeight="bold"
+    >
+      {`${val}%`}
+    </text>
+  );
 };
 
+// Tooltip Pop-up Grafik Batang yang Sinkron
 const CustomChartTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
@@ -85,7 +102,9 @@ const CustomChartTooltip = ({ active, payload, label }) => {
                   <span className="w-2.5 h-2.5 inline-block mr-1.5 rounded-sm" style={{ backgroundColor: entry.fill }}></span>
                   {entry.dataKey}:
                 </span>
-                <span className="font-semibold text-slate-700"><strong className="text-slate-900">{entry.value}%</strong> ({count.toLocaleString()} ODP | {ports.toLocaleString()} Port)</span>
+                <span className="font-semibold text-slate-700">
+                  <strong className="text-slate-900">{entry.value}%</strong> ({count.toLocaleString()} ODP | {ports.toLocaleString()} Port)
+                </span>
               </div>
             );
           })}
@@ -669,11 +688,12 @@ export default function Dashboard() {
                       />
                       <YAxis tick={{ fontSize: 9, fontWeight: 'bold' }} domain={[0, 100]} unit="%" />
                       <Tooltip content={<CustomChartTooltip />} />
-                      <Bar dataKey="BLACK" stackId="a" fill="#000000" label={renderCustomBarLabel} />
-                      <Bar dataKey="GREEN" stackId="a" fill="#16a34a" label={renderCustomBarLabel} />
-                      <Bar dataKey="YELLOW" stackId="a" fill="#facc15" label={renderCustomBarLabel} />
-                      <Bar dataKey="ORANGE" stackId="a" fill="#ea580c" label={renderCustomBarLabel} />
-                      <Bar dataKey="RED" stackId="a" fill="#ef4444" label={renderCustomBarLabel} />
+                      {/* LABEL DI SETIAP SEGMEN BATANG: SINKRON 100% PERSENTASE DENGAN POPUP */}
+                      <Bar dataKey="BLACK" stackId="a" fill="#000000" label={renderSegmentLabel('BLACK')} />
+                      <Bar dataKey="GREEN" stackId="a" fill="#16a34a" label={renderSegmentLabel('GREEN')} />
+                      <Bar dataKey="YELLOW" stackId="a" fill="#facc15" label={renderSegmentLabel('YELLOW')} />
+                      <Bar dataKey="ORANGE" stackId="a" fill="#ea580c" label={renderSegmentLabel('ORANGE')} />
+                      <Bar dataKey="RED" stackId="a" fill="#ef4444" label={renderSegmentLabel('RED')} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
