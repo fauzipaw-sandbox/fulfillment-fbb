@@ -100,7 +100,6 @@ const renderExactSegmentLabel = (key) => (props) => {
   );
 };
 
-// Custom X-Axis Tick Highlight Bersih untuk LAINNYA
 const CustomXAxisTick = ({ x, y, payload }) => {
   const isLainnya = payload.value === 'LAINNYA';
   return (
@@ -208,8 +207,16 @@ export default function Dashboard() {
             let kab = (item.kabupaten || '').trim().toUpperCase();
             let finalKab = VALID_KABUPATEN.includes(kab) ? kab : 'LAINNYA';
 
+            // Logika ONT RX Level Baru:
+            // > -18 GREEN, -21 s/d -18 YELLOW, -25 s/d -21 ORANGE, < -25 RED
             const rxVal = parseCleanFloat(item.ont_rx_level);
-            const rxCategory = rxVal === null ? 'NO_DATA' : rxVal > -18 ? 'GREEN' : rxVal >= -21 ? 'YELLOW' : rxVal >= -25 ? 'ORANGE' : 'RED';
+            let rxCategory = 'NO_DATA';
+            if (rxVal !== null) {
+              if (rxVal > -18) rxCategory = 'GREEN';
+              else if (rxVal >= -21 && rxVal <= -18) rxCategory = 'YELLOW';
+              else if (rxVal >= -25 && rxVal < -21) rxCategory = 'ORANGE';
+              else if (rxVal < -25) rxCategory = 'RED';
+            }
 
             const parsedDate = parseDateRobust(item.event_date);
             return {
@@ -264,8 +271,8 @@ export default function Dashboard() {
     let totalPort = 0, usedPort = 0, avaiPort = 0;
     let colorCounts = { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 };
     let colorPorts = { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 };
-    let rxCounts = { GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0, NO_DATA: 0 };
-    let rxPorts = { GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0, NO_DATA: 0 };
+    let rxCounts = { RED: 0, ORANGE: 0, YELLOW: 0, GREEN: 0, NO_DATA: 0 };
+    let rxPorts = { RED: 0, ORANGE: 0, YELLOW: 0, GREEN: 0, NO_DATA: 0 };
 
     fullyFilteredData.forEach(item => {
       totalPort += item.is_total;
@@ -669,7 +676,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* KUALITAS REDAMAN (ONT RX LEVEL) */}
+            {/* KUALITAS REDAMAN (ONT RX LEVEL) - DIBALIK DARI < -25 dBm KE > -18 dBm */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#059669] via-[#0d9488] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 KUALITAS REDAMAN (ONT RX LEVEL){' '}
@@ -679,54 +686,7 @@ export default function Dashboard() {
               </div>
 
               <div className="p-2 sm:p-3 grid grid-cols-4 gap-2 text-center">
-                <div
-                  onClick={() => setSelectedRx((p) => (p === 'GREEN' ? 'ALL' : 'GREEN'))}
-                  className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
-                    selectedRx === 'GREEN' ? 'ring-2 ring-emerald-600 bg-emerald-100 shadow' : 'bg-emerald-50 border-emerald-200'
-                  }`}
-                >
-                  <div className="bg-emerald-600 text-white text-[9px] font-bold py-0.5 rounded-sm">&gt; -18 dBm</div>
-                  <p className="text-base sm:text-lg font-black text-emerald-900 mt-1">{statsOverview.rxCounts.GREEN.toLocaleString()}</p>
-                  <p className="text-[10px] font-bold text-emerald-700">
-                    {totalRxValid > 0 ? ((statsOverview.rxCounts.GREEN / totalRxValid) * 100).toFixed(1) : 0}%
-                  </p>
-                  <p className="text-[9px] font-bold text-emerald-800 mt-0.5">
-                    {(statsOverview.rxPorts.GREEN / 1000).toFixed(1)}K Port
-                  </p>
-                </div>
-
-                <div
-                  onClick={() => setSelectedRx((p) => (p === 'YELLOW' ? 'ALL' : 'YELLOW'))}
-                  className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
-                    selectedRx === 'YELLOW' ? 'ring-2 ring-yellow-500 bg-yellow-100 shadow' : 'bg-yellow-50 border-yellow-200'
-                  }`}
-                >
-                  <div className="bg-yellow-400 text-black text-[9px] font-bold py-0.5 rounded-sm">-19 s/d -21</div>
-                  <p className="text-base sm:text-lg font-black text-yellow-950 mt-1">{statsOverview.rxCounts.YELLOW.toLocaleString()}</p>
-                  <p className="text-[10px] font-bold text-yellow-800">
-                    {totalRxValid > 0 ? ((statsOverview.rxCounts.YELLOW / totalRxValid) * 100).toFixed(1) : 0}%
-                  </p>
-                  <p className="text-[9px] font-bold text-yellow-800 mt-0.5">
-                    {(statsOverview.rxPorts.YELLOW / 1000).toFixed(1)}K Port
-                  </p>
-                </div>
-
-                <div
-                  onClick={() => setSelectedRx((p) => (p === 'ORANGE' ? 'ALL' : 'ORANGE'))}
-                  className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
-                    selectedRx === 'ORANGE' ? 'ring-2 ring-orange-500 bg-orange-100 shadow' : 'bg-orange-50 border-orange-200'
-                  }`}
-                >
-                  <div className="bg-orange-500 text-white text-[9px] font-bold py-0.5 rounded-sm">-21 s/d -25</div>
-                  <p className="text-base sm:text-lg font-black text-orange-950 mt-1">{statsOverview.rxCounts.ORANGE.toLocaleString()}</p>
-                  <p className="text-[10px] font-bold text-orange-800">
-                    {totalRxValid > 0 ? ((statsOverview.rxCounts.ORANGE / totalRxValid) * 100).toFixed(1) : 0}%
-                  </p>
-                  <p className="text-[9px] font-bold text-orange-800 mt-0.5">
-                    {(statsOverview.rxPorts.ORANGE / 1000).toFixed(1)}K Port
-                  </p>
-                </div>
-
+                {/* 1. RED (< -25 dBm) */}
                 <div
                   onClick={() => setSelectedRx((p) => (p === 'RED' ? 'ALL' : 'RED'))}
                   className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
@@ -740,6 +700,57 @@ export default function Dashboard() {
                   </p>
                   <p className="text-[9px] font-bold text-red-800 mt-0.5">
                     {(statsOverview.rxPorts.RED / 1000).toFixed(1)}K Port
+                  </p>
+                </div>
+
+                {/* 2. ORANGE (-25 s/d -21 dBm) */}
+                <div
+                  onClick={() => setSelectedRx((p) => (p === 'ORANGE' ? 'ALL' : 'ORANGE'))}
+                  className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
+                    selectedRx === 'ORANGE' ? 'ring-2 ring-orange-500 bg-orange-100 shadow' : 'bg-orange-50 border-orange-200'
+                  }`}
+                >
+                  <div className="bg-orange-500 text-white text-[9px] font-bold py-0.5 rounded-sm">-25 s/d -21</div>
+                  <p className="text-base sm:text-lg font-black text-orange-950 mt-1">{statsOverview.rxCounts.ORANGE.toLocaleString()}</p>
+                  <p className="text-[10px] font-bold text-orange-800">
+                    {totalRxValid > 0 ? ((statsOverview.rxCounts.ORANGE / totalRxValid) * 100).toFixed(1) : 0}%
+                  </p>
+                  <p className="text-[9px] font-bold text-orange-800 mt-0.5">
+                    {(statsOverview.rxPorts.ORANGE / 1000).toFixed(1)}K Port
+                  </p>
+                </div>
+
+                {/* 3. YELLOW (-21 s/d -18 dBm) */}
+                <div
+                  onClick={() => setSelectedRx((p) => (p === 'YELLOW' ? 'ALL' : 'YELLOW'))}
+                  className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
+                    selectedRx === 'YELLOW' ? 'ring-2 ring-yellow-500 bg-yellow-100 shadow' : 'bg-yellow-50 border-yellow-200'
+                  }`}
+                >
+                  <div className="bg-yellow-400 text-black text-[9px] font-bold py-0.5 rounded-sm">-21 s/d -18</div>
+                  <p className="text-base sm:text-lg font-black text-yellow-950 mt-1">{statsOverview.rxCounts.YELLOW.toLocaleString()}</p>
+                  <p className="text-[10px] font-bold text-yellow-800">
+                    {totalRxValid > 0 ? ((statsOverview.rxCounts.YELLOW / totalRxValid) * 100).toFixed(1) : 0}%
+                  </p>
+                  <p className="text-[9px] font-bold text-yellow-800 mt-0.5">
+                    {(statsOverview.rxPorts.YELLOW / 1000).toFixed(1)}K Port
+                  </p>
+                </div>
+
+                {/* 4. GREEN (> -18 dBm) */}
+                <div
+                  onClick={() => setSelectedRx((p) => (p === 'GREEN' ? 'ALL' : 'GREEN'))}
+                  className={`p-2 rounded border cursor-pointer transition-transform hover:scale-105 ${
+                    selectedRx === 'GREEN' ? 'ring-2 ring-emerald-600 bg-emerald-100 shadow' : 'bg-emerald-50 border-emerald-200'
+                  }`}
+                >
+                  <div className="bg-emerald-600 text-white text-[9px] font-bold py-0.5 rounded-sm">&gt; -18 dBm</div>
+                  <p className="text-base sm:text-lg font-black text-emerald-900 mt-1">{statsOverview.rxCounts.GREEN.toLocaleString()}</p>
+                  <p className="text-[10px] font-bold text-emerald-700">
+                    {totalRxValid > 0 ? ((statsOverview.rxCounts.GREEN / totalRxValid) * 100).toFixed(1) : 0}%
+                  </p>
+                  <p className="text-[9px] font-bold text-emerald-800 mt-0.5">
+                    {(statsOverview.rxPorts.GREEN / 1000).toFixed(1)}K Port
                   </p>
                 </div>
               </div>
