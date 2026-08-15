@@ -38,6 +38,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ message: 'Data Order successfully upserted' });
   } catch (err) {
+    console.error('Server Catch Error:', err);
     return res.status(500).json({ error: err.message });
   }
 }
