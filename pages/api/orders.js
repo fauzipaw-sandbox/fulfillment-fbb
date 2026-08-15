@@ -14,14 +14,35 @@ export default async function handler(req, res) {
 
   try {
     const supabase = createClient(supabaseUrl, supabaseKey);
-    const { data, error } = await supabase
-      .from('orders_kalimantan')
-      .select('*')
-      .order('order_ts', { ascending: false });
+    
+    let allOrders = [];
+    let from = 0;
+    const step = 1000;
+    let hasMore = true;
 
-    if (error) throw error;
+    // Loop penarikan data per 1000 baris sampai semua 4.324+ data tertarik utuh
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('orders_kalimantan')
+        .select('*')
+        .order('order_ts', { ascending: false })
+        .range(from, from + step - 1);
 
-    return res.status(200).json(data || []);
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        allOrders = allOrders.concat(data);
+        if (data.length < step) {
+          hasMore = false;
+        } else {
+          from += step;
+        }
+      } else {
+        hasMore = false;
+      }
+    }
+
+    return res.status(200).json(allOrders);
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
