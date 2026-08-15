@@ -37,6 +37,55 @@ const MONTH_NAMES = [
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 
+const FALLOUT_KEYWORDS = [
+  'ODP BELUM GO LIVE',
+  'ODP FULL',
+  'ODP JAUH',
+  'ODP LOSS',
+  'ODP RETI',
+  'ODP RUSAK',
+  'TIDAK ADA ODP',
+  'KENDALA JALUR/RUTE TARIKAN',
+  'KENDALA IKR/IKG',
+  'KENDALA IZIN',
+  'KENDALA MATERIAL/NTE',
+  'KENDALA PERANGKAT',
+  'ALAMAT TIDAK DITEMUKAN',
+  'INDIKASI CABUT PASANG',
+  'PELANGGAN MASIH RAGU',
+  'PELANGGAN TIDAK MERASA PASANG',
+  'RUMAH KOSONG',
+  'CROSS JALAN',
+  'DOUBLE INPUT',
+  'GANTI PAKET',
+  'LIMITASI ONU',
+  'TIANG',
+  'BATAL',
+  'PENDING',
+  'SYSTEM',
+  'ACTIVATION',
+  'DATA',
+  'RNA',
+  'ODP',
+  'LAINNYA',
+];
+
+function normalizeFalloutReason(rawVal) {
+  if (!rawVal || String(rawVal).trim() === '' || String(rawVal).toLowerCase() === 'nan' || String(rawVal).toLowerCase() === 'null') {
+    return null;
+  }
+  const cleanStr = String(rawVal).toUpperCase().replace(/_/g, ' ');
+  for (const kw of FALLOUT_KEYWORDS) {
+    const kwClean = kw.toUpperCase().replace(/_/g, ' ');
+    const escaped = kwClean.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const regex = new RegExp(`(?<![A-Z0-9])${escaped}(?![A-Z0-9])`, 'i');
+    if (regex.test(cleanStr)) {
+      return kwClean;
+    }
+  }
+  return 'LAINNYA';
+}
+
 function extractSto(odpName, existingSto) {
   if (existingSto && String(existingSto).trim() !== '' && String(existingSto).toUpperCase() !== 'UNKNOWN') {
     return String(existingSto).trim().toUpperCase();
@@ -169,7 +218,6 @@ export default function Dashboard() {
   const [sortConfig, setSortConfig] = useState({ key: 'occ', direction: 'desc' });
   const [showUploader, setShowUploader] = useState(false);
   
-  // Filter States
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [selectedRx, setSelectedRx] = useState('ALL');
   const [selectedKabupaten, setSelectedKabupaten] = useState('ALL');
@@ -181,7 +229,6 @@ export default function Dashboard() {
   const [suggestions, setSuggestions] = useState([]);
   const [focusedOdp, setFocusedOdp] = useState(null);
 
-  // Measure Jarak
   const [showMeasureModal, setShowMeasureModal] = useState(false);
   const [pointAInput, setPointAInput] = useState('');
   const [pointBInput, setPointBInput] = useState('');
@@ -190,15 +237,13 @@ export default function Dashboard() {
   const [manualMeasureLine, setManualMeasureLine] = useState(null);
   const [roadRouteCoordinates, setRoadRouteCoordinates] = useState([]);
 
-  // Tab & Table States Bagian Bawah
-  const [bottomActiveTab, setBottomActiveTab] = useState('ODP'); // 'ODP' | 'ORDER'
+  const [bottomActiveTab, setBottomActiveTab] = useState('ODP');
   const [tableSearch, setTableSearch] = useState('');
   const [orderTableSearch, setOrderTableSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [currentOrderPage, setCurrentOrderPage] = useState(1);
   const rowsPerPage = 50;
 
-  // 1. Fetch Data ODP
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -256,13 +301,16 @@ export default function Dashboard() {
     }
   };
 
-  // 2. Fetch Data Order
   const fetchOrders = async () => {
     try {
       const res = await fetch('/api/orders');
       if (res.ok) {
         const oData = await res.json();
-        setOrdersData(oData || []);
+        const enriched = (oData || []).map((row) => ({
+          ...row,
+          fallout_reason_clean: normalizeFalloutReason(row.fallout_reason || row.fallout_category),
+        }));
+        setOrdersData(enriched);
       }
     } catch (err) {
       console.error('Fetch Orders Error:', err);
@@ -274,7 +322,6 @@ export default function Dashboard() {
     fetchOrders();
   }, []);
 
-  // Filter Sinkron Seluruh Komponen ODP
   const fullyFilteredData = useMemo(() => {
     return data.filter((d) => {
       const matchStatus = selectedStatus === 'ALL' || d.status_final === selectedStatus;
@@ -288,7 +335,6 @@ export default function Dashboard() {
     });
   }, [data, selectedStatus, selectedRx, selectedKabupaten, selectedStoFilter, selectedWokFilter, selectedPortFilter]);
 
-  // Filter Sinkron untuk Data Order
   const filteredOrders = useMemo(() => {
     return ordersData.filter((o) => {
       const matchSto = selectedStoFilter === 'ALL' || o.sto_co === selectedStoFilter;
@@ -299,7 +345,8 @@ export default function Dashboard() {
         (o.order_id && o.order_id.toLowerCase().includes(s)) ||
         (o.name && o.name.toLowerCase().includes(s)) ||
         (o.odp_name && o.odp_name.toLowerCase().includes(s)) ||
-        (o.sto_co && o.sto_co.toLowerCase().includes(s));
+        (o.sto_co && o.sto_co.toLowerCase().includes(s)) ||
+        (o.fallout_reason_clean && o.fallout_reason_clean.toLowerCase().includes(s));
 
       return matchSto && matchWok && matchSearch;
     });
@@ -409,7 +456,6 @@ export default function Dashboard() {
     return { odp, is_total, used, avai, occ, avai_perc };
   }, [statsFiltered.flatStos]);
 
-  // Data Tabel ODP Bawah
   const bottomOdpData = useMemo(() => {
     if (!tableSearch.trim()) return fullyFilteredData;
     const s = tableSearch.toLowerCase();
@@ -434,7 +480,6 @@ export default function Dashboard() {
     return filteredOrders.slice(start, start + rowsPerPage);
   }, [filteredOrders, currentOrderPage]);
 
-  // Export CSV ODP
   const handleExportFilteredOdpCSV = () => {
     if (fullyFilteredData.length === 0) return alert('Tidak ada data ODP terfilter.');
     const clean = fullyFilteredData.map(({ parsed_date, ...rest }) => rest);
@@ -449,7 +494,6 @@ export default function Dashboard() {
     document.body.removeChild(link);
   };
 
-  // Export CSV Orders
   const handleExportFilteredOrderCSV = () => {
     if (filteredOrders.length === 0) return alert('Tidak ada data Order.');
     const csv = Papa.unparse(filteredOrders);
@@ -1161,7 +1205,7 @@ export default function Dashboard() {
                 <>
                   <input
                     type="text"
-                    placeholder="Cari Order ID, Pelanggan, ODP..."
+                    placeholder="Cari Order ID, Pelanggan, Fallout..."
                     value={orderTableSearch}
                     onChange={(e) => setOrderTableSearch(e.target.value)}
                     className="px-2.5 py-1 text-black rounded text-xs outline-none w-full sm:w-48"
@@ -1278,7 +1322,8 @@ export default function Dashboard() {
                     <th className="p-2 border border-purple-800">ODP Name</th>
                     <th className="p-2 border border-purple-800">Product Name</th>
                     <th className="p-2 border border-purple-800">Duration Cat</th>
-                    <th className="p-2 border border-purple-800">Fallout Reason</th>
+                    <th className="p-2 border border-purple-800">Fallout Reason (Clean)</th>
+                    <th className="p-2 border border-purple-800">Raw Fallout Reason</th>
                     <th className="p-2 border border-purple-800">Price</th>
                     <th className="p-2 border border-purple-800">Order Date</th>
                     <th className="p-2 border border-purple-800">PS Date</th>
@@ -1291,7 +1336,7 @@ export default function Dashboard() {
                 <tbody>
                   {paginatedOrderData.length === 0 ? (
                     <tr>
-                      <td colSpan={18} className="p-4 text-center text-slate-400 font-bold">
+                      <td colSpan={19} className="p-4 text-center text-slate-400 font-bold">
                         Belum ada data Order yang diunggah atau tidak sesuai filter.
                       </td>
                     </tr>
@@ -1310,7 +1355,14 @@ export default function Dashboard() {
                           <td className="p-1.5 border border-slate-200 font-bold text-blue-800">{row.odp_name || '-'}</td>
                           <td className="p-1.5 border border-slate-200">{row.product_commercial_name || '-'}</td>
                           <td className="p-1.5 border border-slate-200 font-bold text-emerald-800">{row.order_duration_cat || '-'}</td>
-                          <td className="p-1.5 border border-slate-200 text-red-600 font-semibold max-w-[200px] truncate" title={row.fallout_reason}>{row.fallout_reason || '-'}</td>
+                          <td className="p-1.5 border border-slate-200 text-red-600 font-bold">
+                            {row.fallout_reason_clean ? (
+                              <span className="bg-red-50 px-1.5 py-0.5 rounded border border-red-200">
+                                {row.fallout_reason_clean}
+                              </span>
+                            ) : '-'}
+                          </td>
+                          <td className="p-1.5 border border-slate-200 text-slate-500 max-w-[200px] truncate" title={row.fallout_reason}>{row.fallout_reason || '-'}</td>
                           <td className="p-1.5 border border-slate-200 text-right">{row.price_package ? Number(row.price_package).toLocaleString() : '-'}</td>
                           <td className="p-1.5 border border-slate-200">{row.order_ts || '-'}</td>
                           <td className="p-1.5 border border-slate-200">{row.ps_ts || '-'}</td>
