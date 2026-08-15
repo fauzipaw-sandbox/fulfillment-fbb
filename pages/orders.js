@@ -33,9 +33,58 @@ const WOK_GROUP_MAP = {
   PYM: 'PALANGKARAYA',
 };
 
+const FALLOUT_KEYWORDS = [
+  'ODP BELUM GO LIVE',
+  'ODP FULL',
+  'ODP JAUH',
+  'ODP LOSS',
+  'ODP RETI',
+  'ODP RUSAK',
+  'TIDAK ADA ODP',
+  'KENDALA JALUR/RUTE TARIKAN',
+  'KENDALA IKR/IKG',
+  'KENDALA IZIN',
+  'KENDALA MATERIAL/NTE',
+  'KENDALA PERANGKAT',
+  'ALAMAT TIDAK DITEMUKAN',
+  'INDIKASI CABUT PASANG',
+  'PELANGGAN MASIH RAGU',
+  'PELANGGAN TIDAK MERASA PASANG',
+  'RUMAH KOSONG',
+  'CROSS JALAN',
+  'DOUBLE INPUT',
+  'GANTI PAKET',
+  'LIMITASI ONU',
+  'TIANG',
+  'BATAL',
+  'PENDING',
+  'SYSTEM',
+  'ACTIVATION',
+  'DATA',
+  'RNA',
+  'ODP',
+  'LAINNYA',
+];
+
+function normalizeFalloutReason(rawVal) {
+  if (!rawVal || String(rawVal).trim() === '' || String(rawVal).toLowerCase() === 'nan' || String(rawVal).toLowerCase() === 'null') {
+    return null;
+  }
+  const cleanStr = String(rawVal).toUpperCase().replace(/_/g, ' ');
+  for (const kw of FALLOUT_KEYWORDS) {
+    const kwClean = kw.toUpperCase().replace(/_/g, ' ');
+    const escaped = kwClean.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const regex = new RegExp(`(?<![A-Z0-9])${escaped}(?![A-Z0-9])`, 'i');
+    if (regex.test(cleanStr)) {
+      return kwClean;
+    }
+  }
+  return 'LAINNYA';
+}
+
 const DURATION_COLORS = {
-  '3 HARI': '#22c55e', // Green
-  '7 HARI': '#f97316', // Orange
+  '3 HARI': '#22c55e',
+  '7 HARI': '#f97316',
   DEFAULT: '#3b82f6',
 };
 
@@ -66,7 +115,7 @@ export default function OrdersPage() {
           const wok = (row.wok && row.wok.trim() !== '') ? row.wok.trim().toUpperCase() : (WOK_GROUP_MAP[sto] || 'PALANGKARAYA');
           const dur = (row.order_duration_cat && row.order_duration_cat.trim() !== '') ? row.order_duration_cat.trim().toUpperCase() : 'LAINNYA';
           const status = (row.order_status_desc || row.process_state || 'UNKNOWN').trim().toUpperCase();
-          const falloutReason = (row.fallout_reason && row.fallout_reason.trim() !== '') ? row.fallout_reason.trim().toUpperCase() : (row.fallout_category || 'LAIN-LAIN');
+          const falloutClean = normalizeFalloutReason(row.fallout_reason || row.fallout_category);
 
           return {
             ...row,
@@ -74,7 +123,7 @@ export default function OrdersPage() {
             wok,
             order_duration_cat: dur,
             order_status_clean: status,
-            fallout_reason_clean: falloutReason,
+            fallout_reason_clean: falloutClean,
           };
         });
         setOrders(enriched);
@@ -90,7 +139,6 @@ export default function OrdersPage() {
     fetchOrders();
   }, []);
 
-  // Filter Sinkron Seluruh Komponen
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
       const matchWok = selectedWok === 'ALL' || o.wok === selectedWok;
@@ -101,7 +149,7 @@ export default function OrdersPage() {
     });
   }, [orders, selectedWok, selectedSto, selectedDuration, selectedStatus]);
 
-  // ================= 1. PIVOT 1: WOK & STO vs ORDER DURATION (3 HARI, 7 HARI, etc.) =================
+  // Pivot Duration
   const pivotDuration = useMemo(() => {
     const durColumnsSet = new Set();
     const map = {};
@@ -137,7 +185,7 @@ export default function OrdersPage() {
     return { tree: map, columns, grandColTotals, totalAll };
   }, [filteredOrders]);
 
-  // ================= 2. PIVOT 2: WOK & STO vs ORDER STATUS =================
+  // Pivot Status
   const pivotStatus = useMemo(() => {
     const statusSet = new Set();
     const map = {};
@@ -173,12 +221,13 @@ export default function OrdersPage() {
     return { tree: map, columns, grandColTotals, totalAll };
   }, [filteredOrders]);
 
-  // ================= 3. PIVOT 3: DURATION -> FALLOUT REASONS =================
+  // Pivot Fallout
   const pivotFallout = useMemo(() => {
     const tree = {};
     let totalAll = 0;
 
     filteredOrders.forEach((o) => {
+      if (!o.fallout_reason_clean) return;
       const dur = o.order_duration_cat;
       const r = o.fallout_reason_clean;
 
@@ -191,7 +240,7 @@ export default function OrdersPage() {
     return { tree, totalAll };
   }, [filteredOrders]);
 
-  // ================= 4. CHART: DURATION FALLOUT (GROUPED BARS) =================
+  // Chart Data
   const chartData = useMemo(() => {
     const list = [];
     const durKeys = Object.keys(pivotFallout.tree).sort();
@@ -204,7 +253,6 @@ export default function OrdersPage() {
           reason: reason,
           count: count,
           fillColor: DURATION_COLORS[durKey] || DURATION_COLORS.DEFAULT,
-          fullLabel: `${reason} (${durKey})`,
         });
       });
     });
@@ -212,7 +260,7 @@ export default function OrdersPage() {
     return list;
   }, [pivotFallout]);
 
-  // Bottom Table Data
+  // Table Data
   const bottomTableData = useMemo(() => {
     if (!searchTerm.trim()) return filteredOrders;
     const s = searchTerm.toLowerCase();
@@ -266,7 +314,6 @@ export default function OrdersPage() {
       )}
 
       <div className="max-w-[1450px] mx-auto space-y-3">
-        {/* Header Bar */}
         <div className="bg-gradient-to-r from-[#211c47] to-[#4c1d95] text-white p-3 sm:p-4 rounded-lg flex flex-col md:flex-row justify-between items-start md:items-center shadow gap-2">
           <div>
             <h1 className="text-lg sm:text-2xl font-black uppercase italic tracking-wide">
@@ -288,11 +335,9 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        {/* Filter Bar */}
         <div className="bg-white p-2.5 rounded shadow-xs border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-bold text-slate-600 text-[11px]">Filter Cepat:</span>
-            
             <select
               value={selectedWok}
               onChange={(e) => setSelectedWok(e.target.value)}
@@ -346,10 +391,8 @@ export default function OrdersPage() {
           </div>
         )}
 
-        {/* ================= SECTION ATAS: 2 PIVOT TABLE MATRIKS ================= */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
-          
-          {/* PIVOT 1: WOK & STO vs DURATION (3 HARI, 7 HARI) */}
+          {/* PIVOT 1 */}
           <div className="bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase">
               <span>Count of order_id &bull; Duration SLA</span>
@@ -367,7 +410,6 @@ export default function OrdersPage() {
                           c === '3 HARI' ? 'bg-[#bbf7d0] text-emerald-950 font-black' : c === '7 HARI' ? 'bg-[#fed7aa] text-orange-950 font-black' : ''
                         }`}
                         onClick={() => setSelectedDuration((prev) => (prev === c ? 'ALL' : c))}
-                        title="Klik untuk filter durasi"
                       >
                         {c}
                       </th>
@@ -378,7 +420,6 @@ export default function OrdersPage() {
                 <tbody>
                   {Object.values(pivotDuration.tree).map((wok) => (
                     <React.Fragment key={wok.name}>
-                      {/* Baris WOK Header */}
                       <tr className="bg-slate-100 font-black text-slate-800 border-b border-slate-300">
                         <td
                           className="p-1.5 border border-slate-300 text-left pl-2 cursor-pointer hover:text-blue-700"
@@ -396,7 +437,6 @@ export default function OrdersPage() {
                         </td>
                       </tr>
 
-                      {/* Baris STO Sub-items */}
                       {Object.values(wok.stos).map((sto) => (
                         <tr
                           key={sto.name}
@@ -421,7 +461,6 @@ export default function OrdersPage() {
                     </React.Fragment>
                   ))}
 
-                  {/* Baris Grand Total */}
                   <tr className="bg-[#0f172a] text-white font-black sticky bottom-0 z-10 shadow">
                     <td className="p-2 border border-slate-700 text-left pl-3 uppercase">Grand Total</td>
                     {pivotDuration.columns.map((c) => (
@@ -438,7 +477,7 @@ export default function OrdersPage() {
             </div>
           </div>
 
-          {/* PIVOT 2: WOK & STO vs ORDER STATUS / PROCESS STATE */}
+          {/* PIVOT 2 */}
           <div className="bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase">
               <span>Count of order_id &bull; Order Status</span>
@@ -523,10 +562,8 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        {/* ================= SECTION TENGAH: PIVOT FALLOUT & DURATION FALLOUT CHART ================= */}
+        {/* SECTION PIVOT FALLOUT & CHART */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4">
-          
-          {/* PIVOT 3: DURATION -> FALLOUT REASON */}
           <div className="xl:col-span-1 bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase">
               <span>Row Labels &bull; Fallout Reason</span>
@@ -576,7 +613,6 @@ export default function OrdersPage() {
             </div>
           </div>
 
-          {/* DIAGRAM BATANG DURATION FALLOUT */}
           <div className="xl:col-span-2 bg-white border border-slate-300 shadow-xs rounded p-3">
             <h4 className="text-center font-extrabold text-slate-800 text-xs sm:text-sm tracking-wide uppercase mb-2">
               DURATION FALLOUT
@@ -663,7 +699,7 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        {/* ================= SECTION BAWAH: RAW DATA ORDER FULFILLMENT ================= */}
+        {/* RAW DATA TABLE */}
         <div className="bg-white border border-slate-300 shadow-xs rounded overflow-hidden mt-4">
           <div className="bg-gradient-to-r from-[#0f172a] via-[#1e293b] to-[#334155] text-white p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <div>
@@ -711,7 +747,8 @@ export default function OrdersPage() {
                   <th className="p-2 border border-purple-800">ODP Name</th>
                   <th className="p-2 border border-purple-800">Product Name</th>
                   <th className="p-2 border border-purple-800">Duration Cat</th>
-                  <th className="p-2 border border-purple-800">Fallout Reason</th>
+                  <th className="p-2 border border-purple-800">Fallout Reason (Clean)</th>
+                  <th className="p-2 border border-purple-800">Raw Fallout Reason</th>
                   <th className="p-2 border border-purple-800">Price</th>
                   <th className="p-2 border border-purple-800">Order Date</th>
                   <th className="p-2 border border-purple-800">PS Date</th>
@@ -724,7 +761,7 @@ export default function OrdersPage() {
               <tbody>
                 {paginatedData.length === 0 ? (
                   <tr>
-                    <td colSpan={18} className="p-4 text-center text-slate-400 font-bold">
+                    <td colSpan={19} className="p-4 text-center text-slate-400 font-bold">
                       Tidak ada data Order yang cocok dengan filter atau pencarian.
                     </td>
                   </tr>
@@ -746,7 +783,14 @@ export default function OrdersPage() {
                         <td className="p-1.5 border border-slate-200 font-bold text-blue-800">{row.odp_name || '-'}</td>
                         <td className="p-1.5 border border-slate-200">{row.product_commercial_name || '-'}</td>
                         <td className="p-1.5 border border-slate-200 font-bold text-emerald-800">{row.order_duration_cat || '-'}</td>
-                        <td className="p-1.5 border border-slate-200 text-red-600 font-semibold max-w-[200px] truncate" title={row.fallout_reason_clean}>{row.fallout_reason_clean || '-'}</td>
+                        <td className="p-1.5 border border-slate-200 text-red-600 font-bold">
+                          {row.fallout_reason_clean ? (
+                            <span className="bg-red-50 px-1.5 py-0.5 rounded border border-red-200">
+                              {row.fallout_reason_clean}
+                            </span>
+                          ) : '-'}
+                        </td>
+                        <td className="p-1.5 border border-slate-200 text-slate-500 max-w-[200px] truncate" title={row.fallout_reason}>{row.fallout_reason || '-'}</td>
                         <td className="p-1.5 border border-slate-200 text-right">{row.price_package ? Number(row.price_package).toLocaleString() : '-'}</td>
                         <td className="p-1.5 border border-slate-200">{row.order_ts || '-'}</td>
                         <td className="p-1.5 border border-slate-200">{row.ps_ts || '-'}</td>
@@ -762,50 +806,47 @@ export default function OrdersPage() {
             </table>
           </div>
 
-          {/* Pagination Controls */}
-          {totalPages > 1 && (
-            <div className="bg-slate-50 p-2.5 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-2 text-xs font-semibold">
-              <span className="text-slate-600">
-                Halaman <strong>{currentPage}</strong> dari <strong>{totalPages}</strong> (Total <strong>{bottomTableData.length.toLocaleString()}</strong> data)
-              </span>
+          <div className="bg-slate-50 p-2.5 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-2 text-xs font-semibold">
+            <span className="text-slate-600">
+              Halaman <strong>{currentPage}</strong> dari <strong>{totalPages}</strong> (Total <strong>{bottomTableData.length.toLocaleString()}</strong> data)
+            </span>
 
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage(1)}
-                  disabled={currentPage === 1}
-                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
-                >
-                  &laquo; Pertama
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
-                >
-                  &lsaquo; Prev
-                </button>
-                <span className="px-2 font-bold text-slate-700">{currentPage} / {totalPages}</span>
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
-                >
-                  Next &rsaquo;
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCurrentPage(totalPages)}
-                  disabled={currentPage === totalPages}
-                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
-                >
-                  Terakhir &raquo;
-                </button>
-              </div>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+              >
+                &laquo; Pertama
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+              >
+                &lsaquo; Prev
+              </button>
+              <span className="px-2 font-bold text-slate-700">{currentPage} / {totalPages}</span>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+              >
+                Next &rsaquo;
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+              >
+                Terakhir &raquo;
+              </button>
             </div>
-          )}
+          </div>
         </div>
       </div>
     </Sidebar>
