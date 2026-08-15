@@ -36,7 +36,6 @@ const MONTH_NAMES = [
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 
-// Helper Ekstrak STO
 function extractSto(odpName, existingSto) {
   if (existingSto && String(existingSto).trim() !== '' && String(existingSto).toUpperCase() !== 'UNKNOWN') {
     return String(existingSto).trim().toUpperCase();
@@ -46,7 +45,6 @@ function extractSto(odpName, existingSto) {
   return match && match[1] ? match[1].toUpperCase() : 'UNKNOWN';
 }
 
-// Filter Ketat Whitelist STO (Nama ODP WAJIB mengandung 12 STO Resmi)
 function isAllowedOdp(odpName, existingSto) {
   if (!odpName) return false;
   const nameUpper = String(odpName).trim().toUpperCase();
@@ -94,6 +92,7 @@ function parseCleanFloat(val) {
   return isNaN(parsed) ? null : parsed;
 }
 
+// Poin 2: Custom Label Segmen Batang yang Membaca Nilai Asli (Sama Persis dengan Popup)
 const renderSegmentLabel = (key) => (props) => {
   const { x, y, width, height, payload } = props;
   const val = payload ? payload[key] : null;
@@ -156,10 +155,17 @@ export default function Dashboard() {
   const [selectedWeek, setSelectedWeek] = useState('ALL');
   const [sortConfig, setSortConfig] = useState({ key: 'occ', direction: 'desc' });
   const [showUploader, setShowUploader] = useState(false);
+  
+  // Filter States
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [selectedRx, setSelectedRx] = useState('ALL');
   const [selectedKabupaten, setSelectedKabupaten] = useState('ALL');
   const [selectedPortFilter, setSelectedPortFilter] = useState('ALL');
+  
+  // Poin 3: State Filter Klik Tabel STO & WOK
+  const [selectedStoFilter, setSelectedStoFilter] = useState('ALL');
+  const [selectedWokFilter, setSelectedWokFilter] = useState('ALL');
+
   const [searchTerm, setSearchTerm] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [focusedOdp, setFocusedOdp] = useState(null);
@@ -247,15 +253,19 @@ export default function Dashboard() {
 
   const weekFilteredData = useMemo(() => selectedWeek === 'ALL' ? data : data.filter(d => d.week === selectedWeek), [data, selectedWeek]);
   
+  // Filter Sinkron Seluruh Dashboard Termasuk Pilihan STO / WOK
   const fullyFilteredData = useMemo(() => {
     return weekFilteredData.filter((d) => {
       const matchStatus = selectedStatus === 'ALL' || d.status_final === selectedStatus;
       const matchRx = selectedRx === 'ALL' || d.rx_category === selectedRx;
       const matchKab = selectedKabupaten === 'ALL' || d.kabupaten === selectedKabupaten;
+      const matchSto = selectedStoFilter === 'ALL' || d.sto === selectedStoFilter;
+      const matchWok = selectedWokFilter === 'ALL' || d.wok === selectedWokFilter;
       const matchPort = selectedPortFilter === 'ALL' || (selectedPortFilter === 'USED' && d.used > 0) || (selectedPortFilter === 'AVAI' && d.avai > 0);
-      return matchStatus && matchRx && matchKab && matchPort;
+      
+      return matchStatus && matchRx && matchKab && matchSto && matchWok && matchPort;
     });
-  }, [weekFilteredData, selectedStatus, selectedRx, selectedKabupaten, selectedPortFilter]);
+  }, [weekFilteredData, selectedStatus, selectedRx, selectedKabupaten, selectedStoFilter, selectedWokFilter, selectedPortFilter]);
 
   const headerCutoffText = useMemo(() => {
     if (weekFilteredData.length === 0) return '*Cut Off Data until -';
@@ -265,13 +275,14 @@ export default function Dashboard() {
     return `*${selectedWeek === 'ALL' ? getWeekNumber(latestDate) : selectedWeek} - Cut Off Data until ${formatDateFormatted(latestDate)}`;
   }, [weekFilteredData, selectedWeek]);
 
+  // Overview Stats
   const statsOverview = useMemo(() => {
     let totalPort = 0, usedPort = 0, avaiPort = 0;
     let colorCounts = { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 };
     let colorPorts = { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 };
     let rxCounts = { GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0, NO_DATA: 0 };
 
-    weekFilteredData.forEach(item => {
+    fullyFilteredData.forEach(item => {
       totalPort += item.is_total;
       usedPort += item.used;
       avaiPort += item.avai;
@@ -283,15 +294,16 @@ export default function Dashboard() {
     });
 
     return { totalPort, usedPort, avaiPort, colorCounts, colorPorts, rxCounts };
-  }, [weekFilteredData]);
+  }, [fullyFilteredData]);
 
+  // Agregasi Chart & Tabel
   const statsFiltered = useMemo(() => {
     const kabMap = {}, flatStosMap = {};
     VALID_KABUPATEN.concat(['LAINNYA']).forEach(k => {
       kabMap[k] = { name: k, rawCounts: { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 }, rawPorts: { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 }, total: 0 };
     });
 
-    weekFilteredData.forEach(item => {
+    fullyFilteredData.forEach(item => {
       const kab = item.kabupaten;
       if (!kabMap[kab]) {
         kabMap[kab] = { name: kab, rawCounts: { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 }, rawPorts: { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 }, total: 0 };
@@ -299,8 +311,16 @@ export default function Dashboard() {
       kabMap[kab].rawCounts[item.status_final]++;
       kabMap[kab].rawPorts[item.status_final] += item.is_total;
       kabMap[kab].total++;
+
+      const key = `${item.wok}_${item.sto}`;
+      if (!flatStosMap[key]) flatStosMap[key] = { wok: item.wok, sto: item.sto, odp_count: 0, is_total: 0, used: 0, avai: 0 };
+      flatStosMap[key].odp_count++;
+      flatStosMap[key].is_total += item.is_total;
+      flatStosMap[key].used += item.used;
+      flatStosMap[key].avai += item.avai;
     });
 
+    // Poin 1 & 2: Normalisasi Chart Data agar pas 100% dan sinkron dengan popup
     const chartData = Object.values(kabMap).filter(k => k.total > 0 || VALID_KABUPATEN.includes(k.name)).map(k => {
       const tot = k.total || 1;
       return {
@@ -316,15 +336,6 @@ export default function Dashboard() {
       };
     });
 
-    fullyFilteredData.forEach(item => {
-      const key = `${item.wok}_${item.sto}`;
-      if (!flatStosMap[key]) flatStosMap[key] = { wok: item.wok, sto: item.sto, odp_count: 0, is_total: 0, used: 0, avai: 0 };
-      flatStosMap[key].odp_count++;
-      flatStosMap[key].is_total += item.is_total;
-      flatStosMap[key].used += item.used;
-      flatStosMap[key].avai += item.avai;
-    });
-
     const flatStos = Object.values(flatStosMap).map(row => ({
       ...row,
       occ: row.is_total > 0 ? (row.used / row.is_total) * 100 : 0,
@@ -332,7 +343,7 @@ export default function Dashboard() {
     }));
 
     return { chartData, flatStos };
-  }, [weekFilteredData, fullyFilteredData]);
+  }, [fullyFilteredData]);
 
   const sortedTableData = useMemo(() => {
     let sortableItems = [...statsFiltered.flatStos];
@@ -425,12 +436,22 @@ export default function Dashboard() {
     setSelectedRx('ALL');
     setSelectedKabupaten('ALL');
     setSelectedPortFilter('ALL');
+    setSelectedStoFilter('ALL');
+    setSelectedWokFilter('ALL');
   };
 
-  const totalOdp = weekFilteredData.length;
+  const totalOdp = fullyFilteredData.length;
   const occTotal = statsOverview.totalPort > 0 ? ((statsOverview.usedPort / statsOverview.totalPort) * 100).toFixed(1) : '0.0';
   const avaiTotal = statsOverview.totalPort > 0 ? ((statsOverview.avaiPort / statsOverview.totalPort) * 100).toFixed(1) : '0.0';
   const totalRxValid = totalOdp - statsOverview.rxCounts.NO_DATA;
+
+  // Poin 4: Helper Conditional Formatting % Avail (Semakin Kecil Semakin Merah)
+  const getAvailBg = (availPerc) => {
+    if (availPerc <= 1) return 'bg-[#fca5a5] text-red-950 font-bold'; // < 1% Merah Pekat (Habis)
+    if (availPerc <= 15) return 'bg-[#fed7aa] text-orange-950 font-bold'; // 1-15% Oranye (Kritis)
+    if (availPerc <= 40) return 'bg-[#fef08a] text-yellow-950 font-bold'; // 15-40% Kuning (Sedang)
+    return 'bg-[#86efac] text-emerald-950 font-bold'; // > 40% Hijau (Banyak Port)
+  };
 
   return (
     <div className="min-h-screen p-2 sm:p-4 text-gray-800 font-sans text-xs bg-[#f1f5f9] relative">
@@ -489,12 +510,12 @@ export default function Dashboard() {
             </strong>{' '}
             port tersedia untuk <strong className="font-extrabold">penjualan baru.</strong>
           </div>
-          {(selectedStatus !== 'ALL' || selectedRx !== 'ALL' || selectedKabupaten !== 'ALL' || selectedPortFilter !== 'ALL') && (
+          {(selectedStatus !== 'ALL' || selectedRx !== 'ALL' || selectedKabupaten !== 'ALL' || selectedPortFilter !== 'ALL' || selectedStoFilter !== 'ALL' || selectedWokFilter !== 'ALL') && (
             <button
               onClick={resetAllFilters}
               className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold whitespace-nowrap self-start sm:self-auto shadow"
             >
-              ✕ Reset Semua Filter
+              ✕ Reset Semua Filter ({selectedStoFilter !== 'ALL' ? `STO: ${selectedStoFilter}` : selectedWokFilter !== 'ALL' ? `WOK: ${selectedWokFilter}` : 'Aktif'})
             </button>
           )}
         </div>
@@ -524,7 +545,9 @@ export default function Dashboard() {
         )}
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
+          {/* ================= KOLOM KIRI ================= */}
           <div className="space-y-3 sm:space-y-4">
+            {/* OVERVIEW ODP PROFILE */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 OVERVIEW ODP PROFILE{' '}
@@ -673,6 +696,7 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* KUALITAS REDAMAN (ONT RX LEVEL) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#059669] via-[#0d9488] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 KUALITAS REDAMAN (ONT RX LEVEL){' '}
@@ -736,6 +760,7 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* Poin 1 & 2: ODP SHARE KABUPATEN LEVEL (Y-Axis Bersih & Label Batang Sinkron) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#4c1d95] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
                 ODP SHARE KABUPATEN LEVEL{' '}
@@ -766,8 +791,15 @@ export default function Dashboard() {
                         angle={-25}
                         textAnchor="end"
                       />
-                      <YAxis tick={{ fontSize: 9, fontWeight: 'bold' }} domain={[0, 100]} unit="%" />
+                      {/* Poin 1: YAxis dibatasi domain [0, 100] dengan tick formatter bulat */}
+                      <YAxis
+                        tick={{ fontSize: 9, fontWeight: 'bold' }}
+                        domain={[0, 100]}
+                        ticks={[0, 25, 50, 75, 100]}
+                        tickFormatter={(val) => `${Math.round(val)}%`}
+                      />
                       <Tooltip content={<CustomChartTooltip />} />
+                      {/* Poin 2: Label Persentase di Segmen Batang Sinkron 100% */}
                       <Bar dataKey="BLACK" stackId="a" fill="#000000" label={renderSegmentLabel('BLACK')} />
                       <Bar dataKey="GREEN" stackId="a" fill="#16a34a" label={renderSegmentLabel('GREEN')} />
                       <Bar dataKey="YELLOW" stackId="a" fill="#facc15" label={renderSegmentLabel('YELLOW')} />
@@ -780,7 +812,9 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {/* ================= KOLOM KANAN ================= */}
           <div className="space-y-3 sm:space-y-4">
+            {/* MAPS LOKASI ODP */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm relative">
               <div className="bg-gradient-to-r from-[#1e3a8a] to-[#3a3575] text-white p-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                 <div className="flex items-center gap-2">
@@ -878,9 +912,13 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* Poin 3 & 4: OCCUPANCY & AVAILABLE PORT (Tabel Bisa Diklik Filter + Conditional Formatting Avail) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white text-center py-1.5 font-bold text-xs sm:text-sm tracking-wide">
-                OCCUPANCY & AVAILABLE PORT
+                OCCUPANCY & AVAILABLE PORT{' '}
+                <span className="text-[10px] font-normal text-purple-200">
+                  (Klik STO / WOK untuk filter)
+                </span>
               </div>
 
               <div className="overflow-x-auto max-h-[350px] overflow-y-auto">
@@ -921,19 +959,48 @@ export default function Dashboard() {
                       else if (row.occ >= 85) occBg = 'bg-[#fdba74] text-orange-900';
                       else if (row.occ >= 60) occBg = 'bg-[#fde047] text-yellow-900';
 
+                      // Poin 4: Format Warna % Avail (Makin Kecil Makin Merah)
+                      const availBg = getAvailBg(row.avai_perc);
+
+                      // Poin 3: Cek status seleksi baris
+                      const isStoSelected = selectedStoFilter === row.sto;
+                      const isWokSelected = selectedWokFilter === row.wok;
+
                       return (
                         <tr
                           key={`${row.wok}_${row.sto}_${idx}`}
-                          className="border-b border-gray-300 bg-white hover:bg-gray-100"
+                          className={`border-b border-gray-300 transition ${
+                            isStoSelected || isWokSelected ? 'bg-blue-100 ring-1 ring-blue-500' : 'bg-white hover:bg-slate-100'
+                          }`}
                         >
-                          <td className="p-1 border border-gray-300 font-bold text-gray-600">{row.wok}</td>
-                          <td className="p-1 border border-gray-300 font-bold text-gray-700">{row.sto}</td>
+                          {/* Poin 3: WOK Bisa Diklik untuk Filter */}
+                          <td
+                            onClick={() => setSelectedWokFilter((prev) => (prev === row.wok ? 'ALL' : row.wok))}
+                            className="p-1 border border-gray-300 font-bold text-gray-600 cursor-pointer hover:text-blue-700 hover:underline"
+                            title="Klik untuk filter WOK ini"
+                          >
+                            {row.wok}
+                          </td>
+
+                          {/* Poin 3: STO Bisa Diklik untuk Filter */}
+                          <td
+                            onClick={() => setSelectedStoFilter((prev) => (prev === row.sto ? 'ALL' : row.sto))}
+                            className="p-1 border border-gray-300 font-bold text-gray-700 cursor-pointer hover:text-blue-700 hover:underline"
+                            title="Klik untuk filter STO ini"
+                          >
+                            {row.sto}
+                          </td>
+
                           <td className="p-1 border border-gray-300 text-gray-600">{row.odp_count.toLocaleString()}</td>
                           <td className="p-1 border border-gray-300 text-gray-600">{row.is_total.toLocaleString()}</td>
                           <td className="p-1 border border-gray-300 text-gray-600">{row.used.toLocaleString()}</td>
                           <td className="p-1 border border-gray-300 text-gray-600">{row.avai.toLocaleString()}</td>
+                          
+                          {/* % OCC Formatting */}
                           <td className={`p-1 border border-gray-300 font-bold ${occBg}`}>{row.occ.toFixed(1)}%</td>
-                          <td className="p-1 border border-gray-300 font-bold bg-gray-50 text-gray-600">{row.avai_perc.toFixed(1)}%</td>
+                          
+                          {/* Poin 4: % Avail Conditional Formatting */}
+                          <td className={`p-1 border border-gray-300 ${availBg}`}>{row.avai_perc.toFixed(1)}%</td>
                         </tr>
                       );
                     })}
@@ -949,7 +1016,9 @@ export default function Dashboard() {
                       <td className="p-2 border border-slate-700 text-yellow-300 font-black">
                         {tableTotals.occ.toFixed(1)}%
                       </td>
-                      <td className="p-2 border border-slate-700">{tableTotals.avai_perc.toFixed(1)}%</td>
+                      <td className={`p-2 border border-slate-700 font-black ${getAvailBg(tableTotals.avai_perc)}`}>
+                        {tableTotals.avai_perc.toFixed(1)}%
+                      </td>
                     </tr>
                   </tbody>
                 </table>
