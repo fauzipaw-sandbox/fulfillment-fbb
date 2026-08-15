@@ -49,8 +49,23 @@ function parseCleanFloat(val) {
   return isNaN(parsed) ? null : parsed;
 }
 
+function cleanString(val) {
+  if (val === undefined || val === null || val === '' || String(val).trim() === '' || String(val).toLowerCase() === 'nan' || String(val).toLowerCase() === 'null') {
+    return null;
+  }
+  return String(val).trim();
+}
+
+function cleanNumericString(val) {
+  if (val === undefined || val === null || val === '' || String(val).toLowerCase() === 'nan') return null;
+  // Jika formatnya 162215215399.0 buang desimal .0
+  const str = String(val).trim();
+  if (str.endsWith('.0')) return str.slice(0, -2);
+  return str;
+}
+
 export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
-  const [activeTab, setActiveTab] = useState('ODP'); // 'ODP' | 'ORDER'
+  const [activeTab, setActiveTab] = useState('ODP');
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -81,14 +96,14 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
         const rxVal = parseCleanFloat(row.ont_rx_level);
 
         return {
-          event_date: row.event_date ? String(row.event_date) : null,
+          event_date: cleanString(row.event_date),
           noss_id: parseInt(row.noss_id) || null,
-          odp_name: row.odp_name ? String(row.odp_name).trim() : null,
-          odp_index: row.odp_index ? String(row.odp_index) : null,
-          witel: row.witel ? String(row.witel) : 'KALTIMTARA',
-          datel: row.datel ? String(row.datel) : null,
+          odp_name: cleanString(row.odp_name),
+          odp_index: cleanString(row.odp_index),
+          witel: cleanString(row.witel) || 'KALTIMTARA',
+          datel: cleanString(row.datel),
           sto: finalSto,
-          sto_desc: row.sto_desc ? String(row.sto_desc) : null,
+          sto_desc: cleanString(row.sto_desc),
           longitude: parseCleanFloat(row.longitude),
           latitude: parseCleanFloat(row.latitude),
           avai: avai,
@@ -96,24 +111,24 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
           rsv: parseInt(row.rsv) || 0,
           rsk: parseCleanFloat(row.rsk) || rsk,
           is_total: isTotal,
-          status: row.status ? String(row.status) : null,
+          status: cleanString(row.status),
           status_final: statusFinal,
-          regional: row.regional ? String(row.regional) : null,
-          id_desa: row.id_desa ? String(row.id_desa) : null,
-          desa: row.desa ? String(row.desa) : null,
-          id_kec: row.id_kec ? String(row.id_kec) : null,
-          kecamatan: row.kecamatan ? String(row.kecamatan) : null,
-          id_kab: row.id_kab ? String(row.id_kab) : null,
+          regional: cleanString(row.regional),
+          id_desa: cleanString(row.id_desa),
+          desa: cleanString(row.desa),
+          id_kec: cleanString(row.id_kec),
+          kecamatan: cleanString(row.kecamatan),
+          id_kab: cleanString(row.id_kab),
           kabupaten: finalKab,
           distance: parseCleanFloat(row.distance),
           osrm_distance: parseCleanFloat(row.osrm_distance),
-          no_speedy_ct0: row.no_speedy_ct0 ? String(row.no_speedy_ct0) : null,
-          branch: row.branch ? String(row.branch) : 'PALANGKARAYA',
+          no_speedy_ct0: cleanString(row.no_speedy_ct0),
+          branch: cleanString(row.branch) || 'PALANGKARAYA',
           wok: finalWok,
-          nop: row.nop ? String(row.nop) : null,
-          olt: row.olt ? String(row.olt) : null,
-          last_update_valins: row.last_update_valins ? String(row.last_update_valins) : null,
-          valins_at: row.valins_at ? String(row.valins_at) : null,
+          nop: cleanString(row.nop),
+          olt: cleanString(row.olt),
+          last_update_valins: cleanString(row.last_update_valins),
+          valins_at: cleanString(row.valins_at),
           ont_rx_level: rxVal,
         };
       });
@@ -125,7 +140,7 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
       return;
     }
 
-    const BATCH_SIZE = 500;
+    const BATCH_SIZE = 300;
     let successCount = 0;
 
     try {
@@ -137,7 +152,10 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
           body: JSON.stringify(chunk),
         });
 
-        if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `HTTP Error ${res.status}`);
+        }
         successCount += chunk.length;
         setProgress(Math.round((successCount / totalRecords) * 100));
       }
@@ -158,87 +176,87 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
     setProgress(0);
 
     const formattedData = rawDataInput
-      .filter((row) => row.order_id && String(row.order_id).trim() !== '')
+      .filter((row) => row.order_id && String(row.order_id).trim() !== '' && String(row.order_id).toLowerCase() !== 'nan')
       .map((row) => ({
         order_id: String(row.order_id).trim(),
-        package_type: row.package_type ? String(row.package_type) : null,
-        order_type: row.order_type ? String(row.order_type) : null,
-        order_mode: row.order_mode ? String(row.order_mode) : null,
-        sto_co: row.sto_co ? String(row.sto_co).trim().toUpperCase() : null,
-        branch: row.branch ? String(row.branch) : null,
-        wok: row.wok ? String(row.wok) : null,
-        region: row.region ? String(row.region) : null,
-        area: row.area ? String(row.area) : null,
-        channel_name: row.channel_name ? String(row.channel_name) : null,
-        service_id: row.service_id ? String(row.service_id) : null,
-        product_commercial_name: row.product_commercial_name ? String(row.product_commercial_name) : null,
-        package_cat: row.package_cat ? String(row.package_cat) : null,
-        order_status_desc: row.order_status_desc ? String(row.order_status_desc) : null,
+        package_type: cleanString(row.package_type),
+        order_type: cleanString(row.order_type),
+        order_mode: cleanString(row.order_mode),
+        sto_co: cleanString(row.sto_co)?.toUpperCase() || null,
+        branch: cleanString(row.branch),
+        wok: cleanString(row.wok),
+        region: cleanString(row.region),
+        area: cleanString(row.area),
+        channel_name: cleanString(row.channel_name),
+        service_id: cleanNumericString(row.service_id),
+        product_commercial_name: cleanString(row.product_commercial_name),
+        package_cat: cleanString(row.package_cat),
+        order_status_desc: cleanString(row.order_status_desc),
         price_package: parseCleanFloat(row.price_package),
-        payment_method: row.payment_method ? String(row.payment_method) : null,
-        funneling_group: row.funneling_group ? String(row.funneling_group) : null,
-        funneling_subgroup: row.funneling_subgroup ? String(row.funneling_subgroup) : null,
-        process_state: row.process_state ? String(row.process_state) : null,
-        provi_ts: row.provi_ts ? String(row.provi_ts) : null,
-        order_ts: row.order_ts ? String(row.order_ts) : null,
-        ps_ts: row.ps_ts ? String(row.ps_ts) : null,
-        name: row.name ? String(row.name) : null,
-        no_handphone: row.no_handphone ? String(row.no_handphone) : null,
-        address: row.address ? String(row.address) : null,
-        segmentation: row.segmentation ? String(row.segmentation) : null,
-        tgl_manja: row.tgl_manja ? String(row.tgl_manja) : null,
-        detail_manja: row.detail_manja ? String(row.detail_manja) : null,
-        prev_state: row.prev_state ? String(row.prev_state) : null,
+        payment_method: cleanString(row.payment_method),
+        funneling_group: cleanString(row.funneling_group),
+        funneling_subgroup: cleanString(row.funneling_subgroup),
+        process_state: cleanString(row.process_state),
+        provi_ts: cleanString(row.provi_ts),
+        order_ts: cleanString(row.order_ts),
+        ps_ts: cleanString(row.ps_ts),
+        name: cleanString(row.name),
+        no_handphone: cleanNumericString(row.no_handphone),
+        address: cleanString(row.address),
+        segmentation: cleanString(row.segmentation),
+        tgl_manja: cleanString(row.tgl_manja),
+        detail_manja: cleanString(row.detail_manja),
+        prev_state: cleanString(row.prev_state),
         longitude: parseCleanFloat(row.longitude),
         latitude: parseCleanFloat(row.latitude),
-        c_amcrew: row.c_amcrew ? String(row.c_amcrew) : null,
-        c_chief_code: row.c_chief_code ? String(row.c_chief_code) : null,
-        c_chief_name: row.c_chief_name ? String(row.c_chief_name) : null,
-        c_wonum: row.c_wonum ? String(row.c_wonum) : null,
-        appointment_id: row.appointment_id ? String(row.appointment_id) : null,
-        appointment_start: row.appointment_start ? String(row.appointment_start) : null,
-        appointment_end: row.appointment_end ? String(row.appointment_end) : null,
-        reservation_id_odp: row.reservation_id_odp ? String(row.reservation_id_odp) : null,
-        c_actstart: row.c_actstart ? String(row.c_actstart) : null,
-        c_actfinish: row.c_actfinish ? String(row.c_actfinish) : null,
-        c_urlevidence: row.c_urlevidence ? String(row.c_urlevidence) : null,
-        channel_group: row.channel_group ? String(row.channel_group) : null,
-        order_channel: row.order_channel ? String(row.order_channel) : null,
+        c_amcrew: cleanString(row.c_amcrew),
+        c_chief_code: cleanString(row.c_chief_code),
+        c_chief_name: cleanString(row.c_chief_name),
+        c_wonum: cleanString(row.c_wonum),
+        appointment_id: cleanString(row.appointment_id),
+        appointment_start: cleanString(row.appointment_start),
+        appointment_end: cleanString(row.appointment_end),
+        reservation_id_odp: cleanNumericString(row.reservation_id_odp),
+        c_actstart: cleanString(row.c_actstart),
+        c_actfinish: cleanString(row.c_actfinish),
+        c_urlevidence: cleanString(row.c_urlevidence),
+        channel_group: cleanString(row.channel_group),
+        order_channel: cleanString(row.order_channel),
         provi_duration: parseCleanFloat(row.provi_duration),
-        c_engineermemo: row.c_engineermemo ? String(row.c_engineermemo) : null,
-        order_initiator_id: row.order_initiator_id ? String(row.order_initiator_id) : null,
-        order_initiator_id_type: row.order_initiator_id_type ? String(row.order_initiator_id_type) : null,
-        fallout_source: row.fallout_source ? String(row.fallout_source) : null,
-        fallout_category: row.fallout_category ? String(row.fallout_category) : null,
-        fallout_reason: row.fallout_reason ? String(row.fallout_reason) : null,
-        sf_name: row.sf_name ? String(row.sf_name) : null,
-        sf_contact_number: row.sf_contact_number ? String(row.sf_contact_number) : null,
-        sf_code: row.sf_code ? String(row.sf_code) : null,
-        sf_company_name: row.sf_company_name ? String(row.sf_company_name) : null,
-        completed_ts: row.completed_ts ? String(row.completed_ts) : null,
-        re_ts: row.re_ts ? String(row.re_ts) : null,
-        referral_code: row.referral_code ? String(row.referral_code) : null,
-        subchannel: row.subchannel ? String(row.subchannel) : null,
-        odp_name: row.odp_name ? String(row.odp_name).trim() : null,
-        io_ts: row.io_ts ? String(row.io_ts) : null,
-        list_sn_ont: row.list_sn_ont ? String(row.list_sn_ont) : null,
-        list_sn_stb: row.list_sn_stb ? String(row.list_sn_stb) : null,
-        list_sn_orbit: row.list_sn_orbit ? String(row.list_sn_orbit) : null,
-        list_msisdn_orbit: row.list_msisdn_orbit ? String(row.list_msisdn_orbit) : null,
-        order_id_prev: row.order_id_prev ? String(row.order_id_prev) : null,
-        order_id_next: row.order_id_next ? String(row.order_id_next) : null,
-        customer_account_id: row.customer_account_id ? String(row.customer_account_id) : null,
+        c_engineermemo: cleanString(row.c_engineermemo),
+        order_initiator_id: cleanNumericString(row.order_initiator_id),
+        order_initiator_id_type: cleanString(row.order_initiator_id_type),
+        fallout_source: cleanString(row.fallout_source),
+        fallout_category: cleanString(row.fallout_category),
+        fallout_reason: cleanString(row.fallout_reason),
+        sf_name: cleanString(row.sf_name),
+        sf_contact_number: cleanNumericString(row.sf_contact_number),
+        sf_code: cleanString(row.sf_code),
+        sf_company_name: cleanString(row.sf_company_name),
+        completed_ts: cleanString(row.completed_ts),
+        re_ts: cleanString(row.re_ts),
+        referral_code: cleanString(row.referral_code),
+        subchannel: cleanString(row.subchannel),
+        odp_name: cleanString(row.odp_name),
+        io_ts: cleanString(row.io_ts),
+        list_sn_ont: cleanString(row.list_sn_ont),
+        list_sn_stb: cleanString(row.list_sn_stb),
+        list_sn_orbit: cleanString(row.list_sn_orbit),
+        list_msisdn_orbit: cleanString(row.list_msisdn_orbit),
+        order_id_prev: cleanString(row.order_id_prev),
+        order_id_next: cleanString(row.order_id_next),
+        customer_account_id: cleanString(row.customer_account_id),
         fee_psb: parseCleanFloat(row.fee_psb),
-        fallout_ts: row.fallout_ts ? String(row.fallout_ts) : null,
-        unit_type: row.unit_type ? String(row.unit_type) : null,
-        unit_name: row.unit_name ? String(row.unit_name) : null,
-        order_duration_cat: row.order_duration_cat ? String(row.order_duration_cat) : null,
-        region_nop: row.region_nop ? String(row.region_nop) : null,
-        nop: row.nop ? String(row.nop) : null,
-        citem_product: row.citem_product ? String(row.citem_product) : null,
-        speed_product: row.speed_product ? String(row.speed_product) : null,
-        homepass: row.homepass ? String(row.homepass) : null,
-        no_handphone_mask: row.no_handphone_mask ? String(row.no_handphone_mask) : null,
+        fallout_ts: cleanString(row.fallout_ts),
+        unit_type: cleanString(row.unit_type),
+        unit_name: cleanString(row.unit_name),
+        order_duration_cat: cleanString(row.order_duration_cat),
+        region_nop: cleanString(row.region_nop),
+        nop: cleanString(row.nop),
+        citem_product: cleanString(row.citem_product),
+        speed_product: parseCleanFloat(row.speed_product),
+        homepass: cleanNumericString(row.homepass),
+        no_handphone_mask: cleanString(row.no_handphone_mask),
       }));
 
     const totalRecords = formattedData.length;
@@ -248,7 +266,8 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
       return;
     }
 
-    const BATCH_SIZE = 500;
+    // Gunakan batch 200 baris agar ukuran request aman
+    const BATCH_SIZE = 200;
     let successCount = 0;
 
     try {
@@ -260,7 +279,10 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
           body: JSON.stringify(chunk),
         });
 
-        if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `HTTP Error ${res.status}`);
+        }
         successCount += chunk.length;
         setProgress(Math.round((successCount / totalRecords) * 100));
       }
@@ -278,7 +300,6 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
   const handleFile = (file) => {
     if (!file) return;
     const ext = file.name.split('.').pop().toLowerCase();
-
     const callback = activeTab === 'ODP' ? processOdpData : processOrderData;
 
     if (ext === 'csv') {
@@ -329,7 +350,7 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
 
   return (
     <div className="bg-white p-3 sm:p-4 rounded shadow-sm border border-slate-200 space-y-3">
-      {/* Poin 3: Tab Selector Upload Data ODP & Upload Data Order */}
+      {/* Tab Selector */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2">
         <div className="flex items-center gap-2">
           <button
@@ -352,7 +373,7 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            📦 2. Upload Data Order (78 Kolom)
+            📦 2. Upload Data Order (79 Kolom)
           </button>
         </div>
         
@@ -415,7 +436,7 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
             <p className="text-[10px] text-slate-500 mt-1">
               {activeTab === 'ODP'
                 ? 'Mendukung CSV/XLSX ODP Kalimantan (12 STO Valid)'
-                : 'Mendukung CSV/XLSX Data Order Fulfillment (78 Kolom Otomatis Masuk Tabel Order)'}
+                : 'Mendukung CSV/XLSX Data Order Fulfillment (kpro-detail-order)'}
             </p>
           </div>
         )}
