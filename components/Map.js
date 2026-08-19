@@ -34,7 +34,7 @@ const createTriangleIcon = (color = '#e11d48') => {
     `,
     iconSize: [14, 14],
     iconAnchor: [7, 7],
-    tooltipAnchor: [0, -8],
+    tooltipAnchor: [0, -7],
   });
 };
 
@@ -114,7 +114,7 @@ export default function Map({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedOrderState, setSelectedOrderState] = useState('FALLOUT');
 
-  // Listen to Browser Fullscreen changes (e.g. Esc key pressed)
+  // Fullscreen Listener
   useEffect(() => {
     const handleFullscreenChange = () => {
       const isCurrentlyFs = !!(
@@ -306,7 +306,7 @@ export default function Map({
           {measureActive ? '✕ Tutup' : '📏 Ukur'}
         </button>
 
-        {/* Tombol Fullscreen Maps */}
+        {/* Fullscreen Button */}
         <button
           type="button"
           onClick={toggleFullscreen}
@@ -404,7 +404,7 @@ export default function Map({
           />
         ))}
 
-        {/* ================= 1. MARKER LINGKARAN ODP ================= */}
+        {/* ================= 1. MARKER LINGKARAN ODP (INTERACTIVE HOVER) ================= */}
         {data.map((odp, idx) => {
           if (!odp.latitude || !odp.longitude) return null;
           const color = getColor(odp.status_final);
@@ -429,8 +429,9 @@ export default function Map({
             >
               <LeafletTooltip
                 direction="top"
-                offset={[0, -5]}
+                offset={[0, -2]}
                 opacity={1}
+                interactive={true}
                 className="compact-custom-tooltip"
               >
                 <div className="text-[10px] font-sans bg-white p-2 rounded shadow-lg text-slate-800 min-w-[190px] max-w-[240px]">
@@ -492,7 +493,7 @@ export default function Map({
           );
         })}
 
-        {/* ================= 2. MARKER SEGITIGA ORDER (HOVER TOOLTIP LENGKAP & RESPONSIF) ================= */}
+        {/* ================= 2. MARKER SEGITIGA ORDER (INTERACTIVE HOVER DENGAN SCROLL REMARKS PENUH) ================= */}
         {visibleOrders.map((fo, fIdx) => {
           if (!fo.lat || !fo.lon) return null;
           const nearestOdp = findNearestOdp(fo.lat, fo.lon);
@@ -513,11 +514,12 @@ export default function Map({
             >
               <LeafletTooltip
                 direction="top"
-                offset={[0, -5]}
+                offset={[0, -2]}
                 opacity={1}
+                interactive={true}
                 className="compact-custom-tooltip"
               >
-                <div className="text-[10px] font-sans bg-white p-2.5 rounded-lg shadow-xl text-slate-800 min-w-[210px] max-w-[260px] space-y-1.5">
+                <div className="text-[10px] font-sans bg-white p-2.5 rounded-lg shadow-2xl text-slate-800 min-w-[220px] max-w-[280px] space-y-1.5 border border-slate-200">
                   {/* Header Badge */}
                   <div className="border-b border-slate-200 pb-1 flex items-center justify-between gap-1.5">
                     <span className="font-black text-[11px] truncate flex items-center gap-1" style={{ color: markerColor }}>
@@ -571,19 +573,19 @@ export default function Map({
                     )}
                   </div>
 
-                  {/* Remarks / Fallout Reason Box */}
+                  {/* Remarks / Fallout Reason Box (Scrollable Tanpa Hilang Saat Diarahkan Mouse) */}
                   {(fo.fallout_reason || fo.fallout_reason_clean) && (
-                    <div className="bg-red-50/90 p-1.5 rounded border border-red-200 text-[9px] text-red-900 space-y-0.5">
-                      <span className="text-red-600 font-black block text-[8px] uppercase tracking-wide">
+                    <div className="bg-red-50/95 p-1.5 rounded border border-red-200 text-[9px] text-red-900 space-y-0.5">
+                      <span className="text-red-700 font-black block text-[8px] uppercase tracking-wide">
                         REMARKS / FALLOUT REASON:
                       </span>
-                      <p className="font-bold text-red-700 leading-tight">
+                      <p className="font-bold text-red-800 leading-tight">
                         {fo.fallout_reason_clean || 'LAINNYA'}
                       </p>
                       {fo.fallout_reason && (
-                        <p className="text-[8px] text-slate-600 leading-tight break-words max-h-12 overflow-y-auto pt-0.5">
+                        <div className="text-[8.5px] text-slate-700 leading-snug break-words max-h-24 overflow-y-auto pr-1 pt-1 border-t border-red-200/60 font-mono bg-white/70 p-1 rounded">
                           {fo.fallout_reason}
-                        </p>
+                        </div>
                       )}
                     </div>
                   )}
