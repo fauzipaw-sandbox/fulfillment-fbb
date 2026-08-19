@@ -20,21 +20,19 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-// Custom Icon Segitiga Order (14px)
 const createTriangleIcon = (color = '#e11d48') => {
   return L.divIcon({
     className: 'custom-triangle-marker',
     html: `
-      <div style="filter: drop-shadow(0 1.5px 2.5px rgba(0,0,0,0.5)); display: flex; align-items: center; justify-content: center; cursor: pointer;">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="${color}" stroke="#ffffff" stroke-width="2">
+      <div style="filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5)); display: flex; align-items: center; justify-content: center; cursor: pointer;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="${color}" stroke="#ffffff" stroke-width="2">
           <path d="M12 2L1 21h22L12 2z" />
           <circle cx="12" cy="14" r="1.5" fill="#ffffff"/>
         </svg>
       </div>
     `,
-    iconSize: [14, 14],
-    iconAnchor: [7, 7],
-    tooltipAnchor: [0, -7],
+    iconSize: [15, 15],
+    iconAnchor: [7.5, 7.5],
   });
 };
 
@@ -86,11 +84,13 @@ function MapController({ data, focusLocation, markerRefs, roadRouteCoordinates, 
   return null;
 }
 
-function MapClickHandler({ measureMode, onMapClick }) {
+function MapClickHandler({ measureMode, onMapClick, onClearActiveOrder }) {
   useMapEvents({
     click(e) {
       if (measureMode) {
         onMapClick([e.latlng.lat, e.latlng.lng]);
+      } else {
+        onClearActiveOrder();
       }
     },
   });
@@ -108,13 +108,18 @@ export default function Map({
   const defaultCenter = [-1.7, 114.8];
   const containerRef = useRef(null);
   const markerRefs = useRef({});
+  const hideTimerRef = useRef(null);
+
   const [clickPoints, setClickPoints] = useState([]);
   const [measureActive, setMeasureActive] = useState(false);
   const [mapType, setMapType] = useState('street');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedOrderState, setSelectedOrderState] = useState('FALLOUT');
 
-  // Fullscreen Listener
+  // State Hover Card & Pin Card untuk Order
+  const [activeOrder, setActiveOrder] = useState(null);
+  const [isPinned, setIsPinned] = useState(false);
+
   useEffect(() => {
     const handleFullscreenChange = () => {
       const isCurrentlyFs = !!(
@@ -147,10 +152,6 @@ export default function Map({
         containerRef.current.requestFullscreen().catch(() => setIsFullscreen(true));
       } else if (containerRef.current.webkitRequestFullscreen) {
         containerRef.current.webkitRequestFullscreen();
-      } else if (containerRef.current.mozRequestFullScreen) {
-        containerRef.current.mozRequestFullScreen();
-      } else if (containerRef.current.msRequestFullscreen) {
-        containerRef.current.msRequestFullscreen();
       } else {
         setIsFullscreen(true);
       }
@@ -159,10 +160,6 @@ export default function Map({
         document.exitFullscreen().catch(() => setIsFullscreen(false));
       } else if (document.webkitExitFullscreen) {
         document.webkitExitFullscreen();
-      } else if (document.mozCancelFullScreen) {
-        document.mozCancelFullScreen();
-      } else if (document.msExitFullscreen) {
-        document.msExitFullscreen();
       } else {
         setIsFullscreen(false);
       }
@@ -238,6 +235,41 @@ export default function Map({
     return nearest ? { ...nearest, distanceKm: minDistance } : null;
   };
 
+  // Hover Management dengan 350ms Buffer Delay
+  const handleOrderMouseEnter = (order) => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+    setActiveOrder(order);
+  };
+
+  const handleOrderMouseLeave = () => {
+    if (isPinned) return; // Jika di-PIN, jangan tutup saat mouse keluar
+    hideTimerRef.current = setTimeout(() => {
+      setActiveOrder(null);
+    }, 350);
+  };
+
+  const handlePopupMouseEnter = () => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+  };
+
+  const handlePopupMouseLeave = () => {
+    if (isPinned) return;
+    hideTimerRef.current = setTimeout(() => {
+      setActiveOrder(null);
+    }, 300);
+  };
+
+  const activeNearestOdp = useMemo(() => {
+    if (!activeOrder || !activeOrder.lat || !activeOrder.lon) return null;
+    return findNearestOdp(activeOrder.lat, activeOrder.lon);
+  }, [activeOrder, data]);
+
   return (
     <div
       ref={containerRef}
@@ -247,7 +279,7 @@ export default function Map({
     >
       {/* Map Control Buttons Top Right */}
       <div className="absolute top-2.5 right-2.5 z-[1000] flex items-center gap-1.5 flex-wrap justify-end">
-        {/* Dropdown Filter Process State Order */}
+        {/* Dropdown Filter Order */}
         <div className="bg-white/95 backdrop-blur px-2 py-1 rounded shadow border border-slate-300 flex items-center gap-1.5 text-[10.5px]">
           <span className="font-bold text-slate-700 flex items-center gap-1">
             <span className="inline-block w-2.5 h-2.5 bg-rose-600 rounded-xs"></span>
@@ -306,7 +338,7 @@ export default function Map({
           {measureActive ? '✕ Tutup' : '📏 Ukur'}
         </button>
 
-        {/* Fullscreen Button */}
+        {/* Tombol Fullscreen */}
         <button
           type="button"
           onClick={toggleFullscreen}
@@ -317,6 +349,135 @@ export default function Map({
           <span>{isFullscreen ? 'Exit' : 'Fullscreen'}</span>
         </button>
       </div>
+
+      {/* Floating Detail Card untuk Order yang Di-Hover / Di-Klik (Tidak Akan Hilang Saat Diarahkan Mouse) */}
+      {activeOrder && (
+        <div
+          onMouseEnter={handlePopupMouseEnter}
+          onMouseLeave={handlePopupMouseLeave}
+          className="absolute bottom-6 left-3 z-[1001] bg-white/98 backdrop-blur-md p-3 rounded-xl shadow-2xl border-2 border-purple-400 text-slate-800 w-[300px] sm:w-[340px] space-y-2 transition-all animate-fadeIn"
+        >
+          {/* Header Card */}
+          <div className="border-b border-slate-200 pb-1.5 flex items-center justify-between gap-1">
+            <div className="flex items-center gap-1.5">
+              <span className="text-base">🔺</span>
+              <div>
+                <span className="font-black text-xs uppercase tracking-wide text-rose-700 block">
+                  {activeOrder.process_state || 'FALLOUT'}
+                </span>
+                <span className="text-[9px] font-mono text-purple-900 font-bold">
+                  {activeOrder.order_id}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <span className="bg-purple-100 text-purple-900 font-extrabold px-2 py-0.5 rounded text-[9px]">
+                {activeOrder.order_duration_cat || '3 HARI'}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveOrder(null);
+                  setIsPinned(false);
+                }}
+                className="w-5 h-5 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-black text-xs ml-1"
+                title="Tutup Detail"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          {/* Grid Detail Pelanggan */}
+          <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10px]">
+            <div>
+              <span className="text-slate-400 block text-[8px] uppercase font-bold">PELANGGAN</span>
+              <span className="font-bold text-slate-800 block truncate" title={activeOrder.name}>
+                {activeOrder.name || '-'}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-400 block text-[8px] uppercase font-bold">NO HANDPHONE</span>
+              <span className="font-mono text-slate-700 block truncate">
+                {activeOrder.no_handphone || activeOrder.no_handphone_mask || '-'}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-400 block text-[8px] uppercase font-bold">STO</span>
+              <span className="font-bold text-slate-800">{activeOrder.sto_co || '-'}</span>
+            </div>
+            <div>
+              <span className="text-slate-400 block text-[8px] uppercase font-bold">WOK</span>
+              <span className="font-bold text-slate-800 truncate block">{activeOrder.wok || '-'}</span>
+            </div>
+            {activeOrder.address && activeOrder.address !== '-' && (
+              <div className="col-span-2">
+                <span className="text-slate-400 block text-[8px] uppercase font-bold">ALAMAT</span>
+                <span className="text-slate-600 block text-[9px] leading-tight line-clamp-2" title={activeOrder.address}>
+                  {activeOrder.address}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Remarks Box Lengkap dengan Scrollable Area Nyaman */}
+          {(activeOrder.fallout_reason || activeOrder.fallout_reason_clean) && (
+            <div className="bg-rose-50/90 p-2 rounded-lg border border-rose-200 text-[10px] space-y-1">
+              <div className="flex justify-between items-center">
+                <span className="text-rose-700 font-black text-[8.5px] uppercase tracking-wide">
+                  REMARKS / FALLOUT REASON
+                </span>
+                <span className="text-[8px] text-rose-500 font-semibold">(Bisa di-scroll)</span>
+              </div>
+              <p className="font-black text-rose-900 leading-tight">
+                {activeOrder.fallout_reason_clean || 'LAINNYA'}
+              </p>
+              {activeOrder.fallout_reason && (
+                <div className="text-[9px] text-slate-700 leading-snug break-words max-h-24 overflow-y-auto pr-1 pt-1 border-t border-rose-200/60 font-mono bg-white/80 p-1.5 rounded shadow-inner select-text">
+                  {activeOrder.fallout_reason}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Analisis ODP Terdekat */}
+          {activeNearestOdp ? (
+            <div className="bg-slate-50 p-2 rounded-lg border border-slate-200 text-[9.5px] space-y-1">
+              <div className="flex justify-between items-center border-b border-slate-200 pb-0.5">
+                <span className="font-black text-slate-700 text-[8.5px] uppercase">📍 ODP TERDEKAT</span>
+                <span className="font-extrabold text-blue-700">
+                  {activeNearestOdp.distanceKm >= 1
+                    ? `${activeNearestOdp.distanceKm.toFixed(2)} km`
+                    : `${Math.round(activeNearestOdp.distanceKm * 1000)} m`}
+                </span>
+              </div>
+              <p className="font-extrabold text-blue-900 truncate" title={activeNearestOdp.odp_name}>
+                {activeNearestOdp.odp_name}
+              </p>
+              <div className="flex items-center justify-between pt-0.5">
+                <span>
+                  Port: <strong>{activeNearestOdp.used}/{activeNearestOdp.is_total}</strong> ({Math.round((activeNearestOdp.used / (activeNearestOdp.is_total || 1)) * 100)}%)
+                </span>
+                <span
+                  className="text-white px-2 py-0.5 rounded text-[8px] font-black uppercase shadow-xs"
+                  style={{ backgroundColor: getColor(activeNearestOdp.status_final) }}
+                >
+                  {activeNearestOdp.status_final}
+                </span>
+              </div>
+            </div>
+          ) : (
+            <p className="text-slate-400 italic text-[9px] text-center">Tidak ada ODP terdekat dalam radius</p>
+          )}
+
+          {/* Coordinate Footer */}
+          <div className="text-[8.5px] text-slate-400 font-mono pt-1 border-t border-slate-100 flex justify-between items-center">
+            <span>Sumber: {activeOrder.coordSource || 'ROW'}</span>
+            <span>{activeOrder.lat?.toFixed(5)}, {activeOrder.lon?.toFixed(5)}</span>
+          </div>
+        </div>
+      )}
 
       {measureActive && (
         <div className="absolute top-12 right-2.5 z-[1000] bg-white/95 backdrop-blur p-2 rounded shadow border border-slate-300 text-[10px] text-slate-800 min-w-[150px]">
@@ -369,7 +530,13 @@ export default function Map({
           manualMeasureLine={manualMeasureLine}
           isFullscreen={isFullscreen}
         />
-        <MapClickHandler measureMode={measureActive} onMapClick={handleMapClick} />
+        <MapClickHandler
+          measureMode={measureActive}
+          onMapClick={handleMapClick}
+          onClearActiveOrder={() => {
+            if (!isPinned) setActiveOrder(null);
+          }}
+        />
 
         {roadRouteCoordinates && roadRouteCoordinates.length > 0 && (
           <Polyline positions={roadRouteCoordinates} pathOptions={{ color: '#2563eb', weight: 4, opacity: 0.9 }} />
@@ -404,7 +571,7 @@ export default function Map({
           />
         ))}
 
-        {/* ================= 1. MARKER LINGKARAN ODP (INTERACTIVE HOVER) ================= */}
+        {/* 1. MARKER LINGKARAN ODP */}
         {data.map((odp, idx) => {
           if (!odp.latitude || !odp.longitude) return null;
           const color = getColor(odp.status_final);
@@ -475,12 +642,6 @@ export default function Map({
                         {formattedRx}
                       </span>
                     </div>
-                    {odp.sto_desc && (
-                      <div className="col-span-2">
-                        <span className="text-slate-400 block text-[7.5px] uppercase font-bold">DESC</span>
-                        <span className="font-medium text-slate-600 truncate block">{odp.sto_desc}</span>
-                      </div>
-                    )}
                   </div>
 
                   <div className="text-[8px] text-slate-400 font-mono pt-1 mt-1 border-t border-slate-100 flex justify-between">
@@ -493,15 +654,9 @@ export default function Map({
           );
         })}
 
-        {/* ================= 2. MARKER SEGITIGA ORDER (INTERACTIVE HOVER DENGAN SCROLL REMARKS PENUH) ================= */}
+        {/* 2. MARKER SEGITIGA ORDER DENGAN EVENT HOVER & PIN CARD */}
         {visibleOrders.map((fo, fIdx) => {
           if (!fo.lat || !fo.lon) return null;
-          const nearestOdp = findNearestOdp(fo.lat, fo.lon);
-          const nearestColor = nearestOdp ? getColor(nearestOdp.status_final) : '#64748b';
-          const nearestOcc = nearestOdp && nearestOdp.is_total > 0
-            ? Math.round((nearestOdp.used / nearestOdp.is_total) * 100)
-            : 0;
-
           const pState = (fo.process_state || 'UNKNOWN').toUpperCase();
           const markerColor = pState === 'FALLOUT' ? '#e11d48' : pState === 'COMPLETED' ? '#16a34a' : pState.includes('CANCEL') ? '#ea580c' : '#8b5cf6';
           const icon = createTriangleIcon(markerColor);
@@ -511,123 +666,15 @@ export default function Map({
               key={`order-${fo.order_id}-${fIdx}`}
               position={[fo.lat, fo.lon]}
               icon={icon}
-            >
-              <LeafletTooltip
-                direction="top"
-                offset={[0, -2]}
-                opacity={1}
-                interactive={true}
-                className="compact-custom-tooltip"
-              >
-                <div className="text-[10px] font-sans bg-white p-2.5 rounded-lg shadow-2xl text-slate-800 min-w-[220px] max-w-[280px] space-y-1.5 border border-slate-200">
-                  {/* Header Badge */}
-                  <div className="border-b border-slate-200 pb-1 flex items-center justify-between gap-1.5">
-                    <span className="font-black text-[11px] truncate flex items-center gap-1" style={{ color: markerColor }}>
-                      <span>🔺</span> {pState}
-                    </span>
-                    <span className="bg-slate-100 text-slate-700 font-bold px-1.5 py-0.5 rounded text-[8.5px] whitespace-nowrap">
-                      {fo.order_duration_cat || '3 HARI'}
-                    </span>
-                  </div>
-
-                  {/* Order Details Grid */}
-                  <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[9.5px]">
-                    <div className="col-span-2">
-                      <span className="text-slate-400 block text-[7.5px] uppercase font-bold">ORDER ID</span>
-                      <span className="font-mono font-black text-purple-900 block truncate" title={fo.order_id}>
-                        {fo.order_id}
-                      </span>
-                    </div>
-
-                    <div>
-                      <span className="text-slate-400 block text-[7.5px] uppercase font-bold">PELANGGAN</span>
-                      <span className="font-bold text-slate-800 block truncate" title={fo.name}>
-                        {fo.name || '-'}
-                      </span>
-                    </div>
-
-                    <div>
-                      <span className="text-slate-400 block text-[7.5px] uppercase font-bold">NO HP</span>
-                      <span className="font-mono text-slate-700 block truncate">
-                        {fo.no_handphone || fo.no_handphone_mask || '-'}
-                      </span>
-                    </div>
-
-                    <div>
-                      <span className="text-slate-400 block text-[7.5px] uppercase font-bold">STO</span>
-                      <span className="font-bold text-slate-700 block truncate">{fo.sto_co || '-'}</span>
-                    </div>
-
-                    <div>
-                      <span className="text-slate-400 block text-[7.5px] uppercase font-bold">WOK</span>
-                      <span className="font-bold text-slate-700 block truncate">{fo.wok || '-'}</span>
-                    </div>
-
-                    {fo.address && fo.address !== '-' && (
-                      <div className="col-span-2">
-                        <span className="text-slate-400 block text-[7.5px] uppercase font-bold">ALAMAT</span>
-                        <span className="text-slate-600 block text-[8.5px] leading-tight line-clamp-2" title={fo.address}>
-                          {fo.address}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Remarks / Fallout Reason Box (Scrollable Tanpa Hilang Saat Diarahkan Mouse) */}
-                  {(fo.fallout_reason || fo.fallout_reason_clean) && (
-                    <div className="bg-red-50/95 p-1.5 rounded border border-red-200 text-[9px] text-red-900 space-y-0.5">
-                      <span className="text-red-700 font-black block text-[8px] uppercase tracking-wide">
-                        REMARKS / FALLOUT REASON:
-                      </span>
-                      <p className="font-bold text-red-800 leading-tight">
-                        {fo.fallout_reason_clean || 'LAINNYA'}
-                      </p>
-                      {fo.fallout_reason && (
-                        <div className="text-[8.5px] text-slate-700 leading-snug break-words max-h-24 overflow-y-auto pr-1 pt-1 border-t border-red-200/60 font-mono bg-white/70 p-1 rounded">
-                          {fo.fallout_reason}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Nearest ODP Analysis */}
-                  {nearestOdp ? (
-                    <div className="bg-slate-50 p-1.5 rounded border border-slate-200 text-[9px] space-y-0.5">
-                      <div className="flex justify-between items-center border-b border-slate-200 pb-0.5">
-                        <span className="font-black text-slate-700 text-[8px] uppercase">📍 ODP TERDEKAT</span>
-                        <span className="font-bold text-blue-700 text-[8.5px]">
-                          {nearestOdp.distanceKm >= 1
-                            ? `${nearestOdp.distanceKm.toFixed(2)} km`
-                            : `${Math.round(nearestOdp.distanceKm * 1000)} m`}
-                        </span>
-                      </div>
-                      <p className="font-extrabold text-blue-900 truncate" title={nearestOdp.odp_name}>
-                        {nearestOdp.odp_name}
-                      </p>
-                      <div className="flex items-center justify-between pt-0.5">
-                        <span>
-                          Port: <strong>{nearestOdp.used}/{nearestOdp.is_total}</strong> ({nearestOcc}%)
-                        </span>
-                        <span
-                          className="text-white px-1.5 py-0.2 rounded text-[7.5px] font-black uppercase"
-                          style={{ backgroundColor: nearestColor }}
-                        >
-                          {nearestOdp.status_final}
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-slate-400 italic text-[8.5px]">Tidak ada ODP terdekat terdeteksi</p>
-                  )}
-
-                  {/* Coordinate Footer */}
-                  <div className="text-[8px] text-slate-400 font-mono pt-1 border-t border-slate-100 flex justify-between">
-                    <span>Sumber: {fo.coordSource || 'ROW'}</span>
-                    <span>{fo.lat?.toFixed(4)}, {fo.lon?.toFixed(4)}</span>
-                  </div>
-                </div>
-              </LeafletTooltip>
-            </Marker>
+              eventHandlers={{
+                mouseover: () => handleOrderMouseEnter(fo),
+                mouseout: () => handleOrderMouseLeave(),
+                click: () => {
+                  handleOrderMouseEnter(fo);
+                  setIsPinned(true); // Kunci popup saat di-klik
+                },
+              }}
+            />
           );
         })}
       </MapContainer>
