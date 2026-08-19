@@ -91,14 +91,20 @@ export default function OrdersPage() {
 
   const [showUploader, setShowUploader] = useState(false);
 
-  // Filter States
+  // Filter Global Bar States
   const [selectedMonth, setSelectedMonth] = useState('ALL');
   const [selectedWok, setSelectedWok] = useState('ALL');
   const [selectedSto, setSelectedSto] = useState('ALL');
   const [selectedDuration, setSelectedDuration] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
-  const [selectedSubgroup, setSelectedSubgroup] = useState('ALL'); // 'ALL' | 'PI_INPROGRESS' | specific
+  const [selectedSubgroup, setSelectedSubgroup] = useState('ALL');
   const [selectedFallout, setSelectedFallout] = useState('ALL');
+
+  // Filter Dropdown Mandiri Bagian Atas Pivot 1 & 2 (Default: PROVISION_ISSUED & INPROGRESS_PC)
+  const [pivotSubgroupFilter, setPivotSubgroupFilter] = useState('PI_INPROGRESS');
+
+  // Filter Dropdown Mandiri Bagian Fallout Reason Pivot 3 & Chart (Default: FALLOUT)
+  const [falloutSectionStatusFilter, setFalloutSectionStatusFilter] = useState('FALLOUT');
 
   // Pivot Sorting States
   const [pivot1Sort, setPivot1Sort] = useState({ key: 'total', direction: 'desc' });
@@ -110,6 +116,26 @@ export default function OrdersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [sortConfig, setSortConfig] = useState({ key: 'order_ts', direction: 'desc' });
   const rowsPerPage = 50;
+
+  // List Unik Subgroup untuk Dropdown
+  const availableSubgroups = useMemo(() => {
+    const set = new Set();
+    orders.forEach((o) => {
+      const sub = (o.funneling_subgroup || '').trim().toUpperCase();
+      if (sub) set.add(sub);
+    });
+    return Array.from(set).sort();
+  }, [orders]);
+
+  // List Unik Process State untuk Dropdown
+  const availableProcessStates = useMemo(() => {
+    const set = new Set();
+    orders.forEach((o) => {
+      const ps = (o.process_state || '').trim().toUpperCase();
+      if (ps) set.add(ps);
+    });
+    return Array.from(set).sort();
+  }, [orders]);
 
   // List Bulan Dinamis
   const availableMonths = useMemo(() => {
@@ -183,7 +209,7 @@ export default function OrdersPage() {
     });
   }, [orders, selectedMonth, selectedWok, selectedSto, selectedDuration, selectedStatus, selectedSubgroup, selectedFallout]);
 
-  // Data Basis Khusus untuk Pivot 1 & Pivot 2 (Mengabaikan filter status/fallout saat membentuk matriks pivot)
+  // Data Basis Khusus Pivot 1 & Pivot 2 (Mengikuti Dropdown Subgroup di Card Atas)
   const pivotBaseOrders = useMemo(() => {
     return orders.filter((o) => {
       if (!o) return false;
@@ -198,13 +224,19 @@ export default function OrdersPage() {
       const matchWok = selectedWok === 'ALL' || o.wok === selectedWok;
       const matchSto = selectedSto === 'ALL' || o.sto_co === selectedSto;
       const sub = (o.funneling_subgroup || '').trim().toUpperCase();
-      const matchSub = ALLOWED_FUNNELING_SUBGROUPS.includes(sub);
+
+      let matchSub = true;
+      if (pivotSubgroupFilter === 'PI_INPROGRESS') {
+        matchSub = ALLOWED_FUNNELING_SUBGROUPS.includes(sub);
+      } else if (pivotSubgroupFilter !== 'ALL') {
+        matchSub = sub === pivotSubgroupFilter;
+      }
 
       return matchMonth && matchWok && matchSto && matchSub;
     });
-  }, [orders, selectedMonth, selectedWok, selectedSto]);
+  }, [orders, selectedMonth, selectedWok, selectedSto, pivotSubgroupFilter]);
 
-  // Pivot 1: WOK & STO vs Duration (Khusus PROVISION_ISSUED & INPROGRESS_PC)
+  // Pivot 1: WOK & STO vs Duration
   const pivotDuration = useMemo(() => {
     const durColumnsSet = new Set();
     const map = {};
@@ -249,7 +281,7 @@ export default function OrdersPage() {
     return { sortedWoks, columns, grandColTotals, totalAll };
   }, [pivotBaseOrders, pivot1Sort]);
 
-  // Pivot 2: WOK & STO vs Process State (Khusus PROVISION_ISSUED & INPROGRESS_PC)
+  // Pivot 2: WOK & STO vs Process State
   const pivotStatus = useMemo(() => {
     const statusSet = new Set();
     const map = {};
@@ -294,7 +326,7 @@ export default function OrdersPage() {
     return { sortedWoks, columns, grandColTotals, totalAll };
   }, [pivotBaseOrders, pivot2Sort]);
 
-  // Pivot 3: Duration vs Fallout (Khusus process_state === 'FALLOUT')
+  // Pivot 3: Duration vs Fallout (Mengikuti Dropdown Status di Card Bawah)
   const pivotFallout = useMemo(() => {
     const tree = {};
     let totalAll = 0;
@@ -310,7 +342,9 @@ export default function OrdersPage() {
       const matchWok = selectedWok === 'ALL' || o.wok === selectedWok;
       const matchSto = selectedSto === 'ALL' || o.sto_co === selectedSto;
       const pState = (o.process_state || '').trim().toUpperCase();
-      return matchMonth && matchWok && matchSto && pState === 'FALLOUT';
+      const matchState = falloutSectionStatusFilter === 'ALL' || pState === falloutSectionStatusFilter;
+
+      return matchMonth && matchWok && matchSto && matchState;
     });
 
     baseOrders.forEach((o) => {
@@ -324,7 +358,7 @@ export default function OrdersPage() {
     });
 
     return { tree, totalAll };
-  }, [orders, selectedMonth, selectedWok, selectedSto]);
+  }, [orders, selectedMonth, selectedWok, selectedSto, falloutSectionStatusFilter]);
 
   // Chart Data (Duration Fallout)
   const { chartData, dividerIndices } = useMemo(() => {
@@ -443,6 +477,8 @@ export default function OrdersPage() {
     setSelectedStatus('ALL');
     setSelectedSubgroup('ALL');
     setSelectedFallout('ALL');
+    setPivotSubgroupFilter('PI_INPROGRESS');
+    setFalloutSectionStatusFilter('FALLOUT');
   };
 
   return (
@@ -481,12 +517,11 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        {/* Filter Bar */}
+        {/* Global Filter Bar */}
         <div className="bg-white p-2.5 rounded shadow-xs border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-bold text-slate-600 text-[11px]">Filter:</span>
 
-            {/* Filter Bulan */}
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
@@ -500,7 +535,6 @@ export default function OrdersPage() {
               ))}
             </select>
 
-            {/* Filter WOK */}
             <select
               value={selectedWok}
               onChange={(e) => setSelectedWok(e.target.value)}
@@ -511,7 +545,6 @@ export default function OrdersPage() {
               <option value="PALANGKARAYA">PALANGKARAYA</option>
             </select>
 
-            {/* Filter STO */}
             <select
               value={selectedSto}
               onChange={(e) => setSelectedSto(e.target.value)}
@@ -523,7 +556,6 @@ export default function OrdersPage() {
               ))}
             </select>
 
-            {/* Filter Durasi */}
             <select
               value={selectedDuration}
               onChange={(e) => setSelectedDuration(e.target.value)}
@@ -535,14 +567,13 @@ export default function OrdersPage() {
               ))}
             </select>
 
-            {/* Filter Status (process_state) */}
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
               className="p-1 border rounded font-semibold text-slate-700 bg-slate-50 text-[11px]"
             >
               <option value="ALL">Semua Status (Process State)</option>
-              {pivotStatus.columns.map((st) => (
+              {availableProcessStates.map((st) => (
                 <option key={st} value={st}>{st}</option>
               ))}
             </select>
@@ -568,17 +599,33 @@ export default function OrdersPage() {
           </div>
         )}
 
-        {/* ================= SECTION ATAS: 2 PIVOT TABLE (SINKRON PI_INPROGRESS) ================= */}
+        {/* ================= SECTION ATAS: 2 PIVOT TABLE (DENGAN DROPDOWN SUBGROUP MANDIRI) ================= */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
           
           {/* PIVOT 1: DURATION */}
           <div className="bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase flex-wrap gap-1">
               <span>Count of order_id &bull; Duration SLA</span>
-              <span className="text-[9.5px] text-emerald-300 font-semibold bg-white/10 px-1.5 py-0.5 rounded">
-                Subgroup: PROVISION_ISSUED & INPROGRESS_PC
-              </span>
+              
+              {/* Dropdown Subgroup Mandiri Pivot 1 & 2 */}
+              <div className="flex items-center gap-1">
+                <span className="text-[9px] text-slate-300 font-bold">Subgroup:</span>
+                <select
+                  value={pivotSubgroupFilter}
+                  onChange={(e) => setPivotSubgroupFilter(e.target.value)}
+                  className="bg-slate-800 text-emerald-300 border border-slate-600 rounded px-1.5 py-0.5 text-[9.5px] font-bold outline-none cursor-pointer"
+                >
+                  <option value="PI_INPROGRESS">PROVISION_ISSUED & INPROGRESS_PC (Default)</option>
+                  <option value="ALL">Semua Subgroup ({orders.length})</option>
+                  {availableSubgroups.map((sg) => (
+                    <option key={sg} value={sg}>
+                      {sg} ({orders.filter(o => (o.funneling_subgroup||'').toUpperCase() === sg).length})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
+
             <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
               <table className="w-full text-center border-collapse text-[10.5px]">
                 <thead className="bg-[#1e293b] text-white sticky top-0 z-10 shadow-xs select-none">
@@ -599,7 +646,7 @@ export default function OrdersPage() {
                           c === '3 BULAN' ? 'bg-[#e9d5ff] text-purple-950 font-black' : 'bg-slate-700'
                         }`}
                         onClick={() => {
-                          setSelectedSubgroup('PI_INPROGRESS');
+                          setSelectedSubgroup(pivotSubgroupFilter);
                           setSelectedStatus('ALL');
                           setSelectedFallout('ALL');
                           setSelectedDuration(c);
@@ -622,7 +669,7 @@ export default function OrdersPage() {
                   {pivotDuration.sortedWoks.length === 0 ? (
                     <tr>
                       <td colSpan={pivotDuration.columns.length + 2} className="p-4 text-slate-400 font-bold text-center">
-                        Tidak ada data dengan subgroup PROVISION_ISSUED / INPROGRESS_PC pada filter ini.
+                        Tidak ada data pada subgroup yang dipilih.
                       </td>
                     </tr>
                   ) : (
@@ -642,7 +689,7 @@ export default function OrdersPage() {
                             <td
                               className="p-1.5 border border-slate-300 text-left pl-2 cursor-pointer hover:text-blue-700"
                               onClick={() => {
-                                setSelectedSubgroup('PI_INPROGRESS');
+                                setSelectedSubgroup(pivotSubgroupFilter);
                                 setSelectedStatus('ALL');
                                 setSelectedFallout('ALL');
                                 setSelectedWok((prev) => (prev === wok.name ? 'ALL' : wok.name));
@@ -655,7 +702,7 @@ export default function OrdersPage() {
                                 key={c}
                                 className="p-1.5 border border-slate-300 cursor-pointer hover:bg-emerald-100 font-semibold"
                                 onClick={() => {
-                                  setSelectedSubgroup('PI_INPROGRESS');
+                                  setSelectedSubgroup(pivotSubgroupFilter);
                                   setSelectedStatus('ALL');
                                   setSelectedFallout('ALL');
                                   setSelectedWok(wok.name);
@@ -669,7 +716,7 @@ export default function OrdersPage() {
                             <td
                               className="p-1.5 border border-slate-300 font-extrabold bg-slate-200 cursor-pointer hover:bg-yellow-100"
                               onClick={() => {
-                                setSelectedSubgroup('PI_INPROGRESS');
+                                setSelectedSubgroup(pivotSubgroupFilter);
                                 setSelectedStatus('ALL');
                                 setSelectedFallout('ALL');
                                 setSelectedWok(wok.name);
@@ -689,7 +736,7 @@ export default function OrdersPage() {
                               <td
                                 className="p-1 border border-slate-200 text-left pl-6 font-semibold text-slate-700 cursor-pointer hover:text-blue-700"
                                 onClick={() => {
-                                  setSelectedSubgroup('PI_INPROGRESS');
+                                  setSelectedSubgroup(pivotSubgroupFilter);
                                   setSelectedStatus('ALL');
                                   setSelectedFallout('ALL');
                                   setSelectedSto((prev) => (prev === sto.name ? 'ALL' : sto.name));
@@ -702,7 +749,7 @@ export default function OrdersPage() {
                                   key={c}
                                   className="p-1 border border-slate-200 text-slate-600 cursor-pointer hover:bg-blue-100 font-semibold"
                                   onClick={() => {
-                                    setSelectedSubgroup('PI_INPROGRESS');
+                                    setSelectedSubgroup(pivotSubgroupFilter);
                                     setSelectedStatus('ALL');
                                     setSelectedFallout('ALL');
                                     setSelectedSto(sto.name);
@@ -716,7 +763,7 @@ export default function OrdersPage() {
                               <td
                                 className="p-1 border border-slate-200 font-bold text-slate-800 bg-slate-50 cursor-pointer hover:bg-yellow-100"
                                 onClick={() => {
-                                  setSelectedSubgroup('PI_INPROGRESS');
+                                  setSelectedSubgroup(pivotSubgroupFilter);
                                   setSelectedStatus('ALL');
                                   setSelectedFallout('ALL');
                                   setSelectedSto(sto.name);
@@ -737,13 +784,13 @@ export default function OrdersPage() {
                     <td
                       className="p-2 border border-slate-700 text-left pl-3 uppercase hover:text-yellow-300"
                       onClick={() => {
-                        setSelectedSubgroup('PI_INPROGRESS');
+                        setSelectedSubgroup(pivotSubgroupFilter);
                         setSelectedStatus('ALL');
                         setSelectedFallout('ALL');
                         setSelectedWok('ALL');
                         setSelectedSto('ALL');
                       }}
-                      title="Klik untuk filter semua data WOK & STO (PI/Inprogress)"
+                      title="Klik untuk filter semua data WOK & STO"
                     >
                       Grand Total
                     </td>
@@ -752,12 +799,12 @@ export default function OrdersPage() {
                         key={c}
                         className="p-2 border border-slate-700 hover:bg-slate-800"
                         onClick={() => {
-                          setSelectedSubgroup('PI_INPROGRESS');
+                          setSelectedSubgroup(pivotSubgroupFilter);
                           setSelectedStatus('ALL');
                           setSelectedFallout('ALL');
                           setSelectedDuration(c);
                         }}
-                        title={`Klik untuk filter durasi ${c} (PI/Inprogress)`}
+                        title={`Klik untuk filter durasi ${c}`}
                       >
                         {pivotDuration.grandColTotals[c] || 0}
                       </td>
@@ -765,14 +812,14 @@ export default function OrdersPage() {
                     <td
                       className="p-2 border border-slate-700 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
                       onClick={() => {
-                        setSelectedSubgroup('PI_INPROGRESS');
+                        setSelectedSubgroup(pivotSubgroupFilter);
                         setSelectedStatus('ALL');
                         setSelectedFallout('ALL');
                         setSelectedWok('ALL');
                         setSelectedSto('ALL');
                         setSelectedDuration('ALL');
                       }}
-                      title="Klik untuk filter total data PROVISION_ISSUED & INPROGRESS_PC"
+                      title="Klik untuk filter total data subgroup"
                     >
                       {pivotDuration.totalAll}
                     </td>
@@ -787,7 +834,7 @@ export default function OrdersPage() {
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase flex-wrap gap-1">
               <span>Count of order_id &bull; Process State</span>
               <span className="text-[9.5px] text-blue-300 font-semibold bg-white/10 px-1.5 py-0.5 rounded">
-                Subgroup: PROVISION_ISSUED & INPROGRESS_PC
+                Sinkron Subgroup
               </span>
             </div>
             <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
@@ -806,7 +853,7 @@ export default function OrdersPage() {
                         className="p-1.5 border border-slate-600 font-bold bg-[#e0f2fe] text-blue-950 cursor-pointer hover:opacity-80 min-w-[100px] max-w-[140px] whitespace-normal break-words leading-tight"
                         title={st}
                         onClick={() => {
-                          setSelectedSubgroup('PI_INPROGRESS');
+                          setSelectedSubgroup(pivotSubgroupFilter);
                           setSelectedFallout('ALL');
                           setSelectedStatus(st);
                         }}
@@ -827,7 +874,7 @@ export default function OrdersPage() {
                   {pivotStatus.sortedWoks.length === 0 ? (
                     <tr>
                       <td colSpan={pivotStatus.columns.length + 2} className="p-4 text-slate-400 font-bold text-center">
-                        Tidak ada data dengan subgroup PROVISION_ISSUED / INPROGRESS_PC pada filter ini.
+                        Tidak ada data pada subgroup yang dipilih.
                       </td>
                     </tr>
                   ) : (
@@ -847,7 +894,7 @@ export default function OrdersPage() {
                             <td
                               className="p-1.5 border border-slate-300 text-left pl-2 cursor-pointer hover:text-blue-700"
                               onClick={() => {
-                                setSelectedSubgroup('PI_INPROGRESS');
+                                setSelectedSubgroup(pivotSubgroupFilter);
                                 setSelectedFallout('ALL');
                                 setSelectedWok((prev) => (prev === wok.name ? 'ALL' : wok.name));
                               }}
@@ -859,7 +906,7 @@ export default function OrdersPage() {
                                 key={st}
                                 className="p-1.5 border border-slate-300 cursor-pointer hover:bg-blue-100 font-semibold"
                                 onClick={() => {
-                                  setSelectedSubgroup('PI_INPROGRESS');
+                                  setSelectedSubgroup(pivotSubgroupFilter);
                                   setSelectedFallout('ALL');
                                   setSelectedWok(wok.name);
                                   setSelectedStatus(st);
@@ -872,7 +919,7 @@ export default function OrdersPage() {
                             <td
                               className="p-1.5 border border-slate-300 font-extrabold bg-slate-200 cursor-pointer hover:bg-yellow-100"
                               onClick={() => {
-                                setSelectedSubgroup('PI_INPROGRESS');
+                                setSelectedSubgroup(pivotSubgroupFilter);
                                 setSelectedFallout('ALL');
                                 setSelectedWok(wok.name);
                                 setSelectedStatus('ALL');
@@ -891,7 +938,7 @@ export default function OrdersPage() {
                               <td
                                 className="p-1 border border-slate-200 text-left pl-6 font-semibold text-slate-700 cursor-pointer hover:text-blue-700"
                                 onClick={() => {
-                                  setSelectedSubgroup('PI_INPROGRESS');
+                                  setSelectedSubgroup(pivotSubgroupFilter);
                                   setSelectedFallout('ALL');
                                   setSelectedSto((prev) => (prev === sto.name ? 'ALL' : sto.name));
                                 }}
@@ -903,7 +950,7 @@ export default function OrdersPage() {
                                   key={st}
                                   className="p-1 border border-slate-200 text-slate-600 cursor-pointer hover:bg-blue-100 font-semibold"
                                   onClick={() => {
-                                    setSelectedSubgroup('PI_INPROGRESS');
+                                    setSelectedSubgroup(pivotSubgroupFilter);
                                     setSelectedFallout('ALL');
                                     setSelectedSto(sto.name);
                                     setSelectedStatus(st);
@@ -916,7 +963,7 @@ export default function OrdersPage() {
                               <td
                                 className="p-1 border border-slate-200 font-bold text-slate-800 bg-slate-50 cursor-pointer hover:bg-yellow-100"
                                 onClick={() => {
-                                  setSelectedSubgroup('PI_INPROGRESS');
+                                  setSelectedSubgroup(pivotSubgroupFilter);
                                   setSelectedFallout('ALL');
                                   setSelectedSto(sto.name);
                                   setSelectedStatus('ALL');
@@ -936,12 +983,12 @@ export default function OrdersPage() {
                     <td
                       className="p-2 border border-slate-700 text-left pl-3 uppercase hover:text-yellow-300"
                       onClick={() => {
-                        setSelectedSubgroup('PI_INPROGRESS');
+                        setSelectedSubgroup(pivotSubgroupFilter);
                         setSelectedFallout('ALL');
                         setSelectedWok('ALL');
                         setSelectedSto('ALL');
                       }}
-                      title="Klik untuk filter semua data WOK & STO (PI/Inprogress)"
+                      title="Klik untuk filter semua data WOK & STO"
                     >
                       Grand Total
                     </td>
@@ -950,11 +997,11 @@ export default function OrdersPage() {
                         key={st}
                         className="p-2 border border-slate-700 hover:bg-slate-800"
                         onClick={() => {
-                          setSelectedSubgroup('PI_INPROGRESS');
+                          setSelectedSubgroup(pivotSubgroupFilter);
                           setSelectedFallout('ALL');
                           setSelectedStatus(st);
                         }}
-                        title={`Klik untuk filter status ${st} (PI/Inprogress)`}
+                        title={`Klik untuk filter status ${st}`}
                       >
                         {pivotStatus.grandColTotals[st] || 0}
                       </td>
@@ -962,13 +1009,13 @@ export default function OrdersPage() {
                     <td
                       className="p-2 border border-slate-700 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
                       onClick={() => {
-                        setSelectedSubgroup('PI_INPROGRESS');
+                        setSelectedSubgroup(pivotSubgroupFilter);
                         setSelectedFallout('ALL');
                         setSelectedWok('ALL');
                         setSelectedSto('ALL');
                         setSelectedStatus('ALL');
                       }}
-                      title="Klik untuk filter total data PROVISION_ISSUED & INPROGRESS_PC"
+                      title="Klik untuk filter total data subgroup"
                     >
                       {pivotStatus.totalAll}
                     </td>
@@ -979,15 +1026,33 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        {/* ================= SECTION TENGAH: PIVOT FALLOUT & DURATION FALLOUT CHART ================= */}
+        {/* ================= SECTION TENGAH: PIVOT FALLOUT & DURATION FALLOUT CHART (DENGAN DROPDOWN STATUS MANDIRI) ================= */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4">
           
           {/* PIVOT 3: FALLOUT */}
           <div className="xl:col-span-1 bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
-            <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase">
+            <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase flex-wrap gap-1">
               <span>Row Labels &bull; Fallout Reason</span>
-              <span className="text-[10px] text-yellow-300">[Status: FALLOUT]</span>
+              
+              {/* Dropdown Status Mandiri Section Fallout */}
+              <div className="flex items-center gap-1">
+                <span className="text-[9px] text-slate-300 font-bold">Status:</span>
+                <select
+                  value={falloutSectionStatusFilter}
+                  onChange={(e) => setFalloutSectionStatusFilter(e.target.value)}
+                  className="bg-slate-800 text-yellow-300 border border-slate-600 rounded px-1.5 py-0.5 text-[9.5px] font-bold outline-none cursor-pointer"
+                >
+                  <option value="FALLOUT">FALLOUT (Default)</option>
+                  <option value="ALL">Semua Status ({orders.length})</option>
+                  {availableProcessStates.filter(ps => ps !== 'FALLOUT').map((ps) => (
+                    <option key={ps} value={ps}>
+                      {ps} ({orders.filter(o => (o.process_state||'').toUpperCase() === ps).length})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
+
             <div className="overflow-x-auto max-h-[340px] overflow-y-auto">
               <table className="w-full text-left border-collapse text-[10.5px]">
                 <thead className="bg-[#1e293b] text-white sticky top-0 z-10 shadow-xs select-none">
@@ -1032,7 +1097,7 @@ export default function OrdersPage() {
                             dur.name === '30 HARI' ? 'bg-blue-100 hover:bg-blue-200' : 'bg-purple-100 hover:bg-purple-200'
                           }`}
                           onClick={() => {
-                            setSelectedStatus('FALLOUT');
+                            setSelectedStatus(falloutSectionStatusFilter);
                             setSelectedSubgroup('ALL');
                             setSelectedDuration((prev) => (prev === dur.name ? 'ALL' : dur.name));
                             setSelectedFallout('ALL');
@@ -1052,12 +1117,12 @@ export default function OrdersPage() {
                             key={reason}
                             className="border-b border-slate-200 hover:bg-red-50/70 cursor-pointer transition bg-white"
                             onClick={() => {
-                              setSelectedStatus('FALLOUT');
+                              setSelectedStatus(falloutSectionStatusFilter);
                               setSelectedSubgroup('ALL');
                               setSelectedDuration(dur.name);
                               setSelectedFallout((prev) => (prev === reason ? 'ALL' : reason));
                             }}
-                            title={`Klik untuk filter fallout ${reason} (${dur.name})`}
+                            title={`Klik untuk filter ${reason} (${dur.name})`}
                           >
                             <td className="p-1 border border-slate-200 pl-6 font-semibold text-slate-700">
                               {reason}
@@ -1075,24 +1140,24 @@ export default function OrdersPage() {
                     <td
                       className="p-2 border border-slate-700 uppercase hover:text-yellow-300"
                       onClick={() => {
-                        setSelectedStatus('FALLOUT');
+                        setSelectedStatus(falloutSectionStatusFilter);
                         setSelectedSubgroup('ALL');
                         setSelectedDuration('ALL');
                         setSelectedFallout('ALL');
                       }}
-                      title="Klik untuk filter semua data status FALLOUT"
+                      title="Klik untuk filter semua data status ini"
                     >
                       Grand Total
                     </td>
                     <td
                       className="p-2 border border-slate-700 text-right pr-4 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
                       onClick={() => {
-                        setSelectedStatus('FALLOUT');
+                        setSelectedStatus(falloutSectionStatusFilter);
                         setSelectedSubgroup('ALL');
                         setSelectedDuration('ALL');
                         setSelectedFallout('ALL');
                       }}
-                      title="Klik untuk filter semua data status FALLOUT"
+                      title="Klik untuk filter semua data status ini"
                     >
                       {pivotFallout.totalAll}
                     </td>
@@ -1104,12 +1169,12 @@ export default function OrdersPage() {
 
           {/* DIAGRAM BATANG DURATION FALLOUT */}
           <div className="xl:col-span-2 bg-white border border-slate-300 shadow-xs rounded p-3">
-            <div className="flex items-center justify-between border-b pb-1.5 mb-2">
+            <div className="flex items-center justify-between border-b pb-1.5 mb-2 flex-wrap gap-1">
               <h4 className="font-extrabold text-slate-800 text-xs sm:text-sm tracking-wide uppercase">
                 DURATION FALLOUT
               </h4>
-              <span className="text-[10px] text-red-600 font-bold bg-red-50 px-2 py-0.5 rounded border border-red-200">
-                Filter: process_state = FALLOUT
+              <span className="text-[10px] text-purple-700 font-bold bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                Filter Status: {falloutSectionStatusFilter}
               </span>
             </div>
 
@@ -1126,7 +1191,7 @@ export default function OrdersPage() {
                     onClick={(e) => {
                       if (e && e.activePayload && e.activePayload.length) {
                         const payload = e.activePayload[0].payload;
-                        setSelectedStatus('FALLOUT');
+                        setSelectedStatus(falloutSectionStatusFilter);
                         setSelectedSubgroup('ALL');
                         setSelectedDuration(payload.duration);
                         setSelectedFallout((prev) => (prev === payload.reason ? 'ALL' : payload.reason));
@@ -1381,7 +1446,7 @@ export default function OrdersPage() {
                         <td
                           className="p-1.5 border border-slate-200 text-red-600 font-bold cursor-pointer hover:underline"
                           onClick={() => {
-                            setSelectedStatus('FALLOUT');
+                            setSelectedStatus(falloutSectionStatusFilter);
                             setSelectedSubgroup('ALL');
                             row.fallout_reason_clean && setSelectedFallout((p) => (p === row.fallout_reason_clean ? 'ALL' : row.fallout_reason_clean));
                           }}
