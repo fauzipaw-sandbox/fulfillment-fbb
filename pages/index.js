@@ -107,12 +107,10 @@ const CustomChartTooltip = ({ active, payload, label }) => {
   return null;
 };
 
-// Helper Ekstraksi Tikor Order Fallout (KP:lat,lon atau Fallback lat/lon)
 function extractOrderCoordinates(order) {
   if (!order) return null;
   const reason = String(order.fallout_reason || '');
 
-  // 1. Cari pola KP:lat,lon atau KP:-1.841440,115.034740
   const match = reason.match(/KP:\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)/i);
   if (match && match[1] && match[2]) {
     const lat = parseFloat(match[1]);
@@ -122,7 +120,6 @@ function extractOrderCoordinates(order) {
     }
   }
 
-  // 2. Fallback ke kolom latitude & longitude
   const lat = typeof order.latitude === 'number' ? order.latitude : parseFloat(order.latitude);
   const lon = typeof order.longitude === 'number' ? order.longitude : parseFloat(order.longitude);
   if (!isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0) {
@@ -169,7 +166,7 @@ export default function Dashboard() {
   const rowsPerPage = 50;
 
   const fullyFilteredData = useMemo(() => {
-    return data.filter((d) => {
+    return (data || []).filter((d) => {
       const matchStatus = selectedStatus === 'ALL' || d.status_final === selectedStatus;
       const matchRx = selectedRx === 'ALL' || d.rx_category === selectedRx;
       const matchKab = selectedKabupaten === 'ALL' || d.kabupaten === selectedKabupaten;
@@ -181,7 +178,6 @@ export default function Dashboard() {
     });
   }, [data, selectedStatus, selectedRx, selectedKabupaten, selectedStoFilter, selectedWokFilter, selectedPortFilter]);
 
-  // List Order Fallout untuk Dimunculkan di Peta
   const falloutMapMarkers = useMemo(() => {
     return (ordersData || [])
       .filter((o) => {
@@ -199,7 +195,7 @@ export default function Dashboard() {
   }, [ordersData, selectedStoFilter, selectedWokFilter]);
 
   const filteredOrders = useMemo(() => {
-    return ordersData.filter((o) => {
+    return (ordersData || []).filter((o) => {
       const matchSto = selectedStoFilter === 'ALL' || o.sto_co === selectedStoFilter;
       const matchWok = selectedWokFilter === 'ALL' || o.wok === selectedWokFilter;
       const s = orderTableSearch.toLowerCase();
@@ -216,7 +212,7 @@ export default function Dashboard() {
   }, [ordersData, selectedStoFilter, selectedWokFilter, orderTableSearch]);
 
   const headerCutoffText = useMemo(() => {
-    if (data.length === 0) return '*Cut Off Data until -';
+    if (!data || data.length === 0) return '*Cut Off Data until -';
     const dates = data.map((d) => d.parsed_date?.getTime()).filter((t) => t && !isNaN(t));
     if (dates.length === 0) return '*Cut Off Data';
     const latestDate = new Date(Math.max(...dates));
@@ -437,7 +433,7 @@ export default function Dashboard() {
       const parts = clean.split(',').map((p) => parseFloat(p.trim()));
       if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) return { name: clean, lat: parts[0], lon: parts[1] };
     }
-    const found = data.find((d) => d.odp_name && d.odp_name.toLowerCase() === clean.toLowerCase());
+    const found = (data || []).find((d) => d.odp_name && d.odp_name.toLowerCase() === clean.toLowerCase());
     if (found && found.latitude && found.longitude) return { name: found.odp_name, lat: found.latitude, lon: found.longitude };
     return null;
   };
@@ -580,7 +576,7 @@ export default function Dashboard() {
           {/* ================= KOLOM KIRI ================= */}
           <div className="space-y-3 sm:space-y-4">
             
-            {/* OVERVIEW ODP PROFILE */}
+            {/* 1. OVERVIEW ODP PROFILE */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
                 <span className="font-extrabold text-xs sm:text-sm tracking-wide">OVERVIEW ODP PROFILE</span>
@@ -727,7 +723,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* KUALITAS REDAMAN */}
+            {/* 2. KUALITAS REDAMAN */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#059669] via-[#0d9488] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
                 <span className="font-extrabold text-xs sm:text-sm tracking-wide">KUALITAS REDAMAN (ONT RX LEVEL)</span>
@@ -803,7 +799,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* ODP SHARE KABUPATEN LEVEL */}
+            {/* 3. ODP SHARE KABUPATEN LEVEL */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#4c1d95] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
                 <span className="font-extrabold text-xs sm:text-sm tracking-wide">ODP SHARE KABUPATEN LEVEL</span>
@@ -1358,6 +1354,9 @@ export default function Dashboard() {
                               {pState}
                             </span>
                           </td>
+                          <td className="p-1.5 border border-slate-200 font-bold text-slate-700">
+                            {row.funneling_subgroup || '-'}
+                          </td>
                           <td className="p-1.5 border border-slate-200 font-semibold">{row.name || '-'}</td>
                           <td className="p-1.5 border border-slate-200 font-mono text-[9px]">{row.no_handphone || row.no_handphone_mask || '-'}</td>
                           <td
@@ -1400,7 +1399,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Pagination */}
+          {/* Pagination Controls */}
           <div className="bg-slate-50 p-2.5 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-2 text-xs font-semibold">
             {bottomActiveTab === 'ODP' ? (
               <>
@@ -1428,7 +1427,7 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={() => setCurrentPage((p) => Math.min(totalOdpPages, p + 1))}
-                    disabled={currentPage === totalPages}
+                    disabled={currentPage === totalOdpPages}
                     className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
                   >
                     Next &rsaquo;
@@ -1436,7 +1435,7 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={() => setCurrentPage(totalOdpPages)}
-                    disabled={currentPage === totalPages}
+                    disabled={currentPage === totalOdpPages}
                     className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
                   >
                     Terakhir &raquo;
@@ -1469,7 +1468,7 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={() => setCurrentOrderPage((p) => Math.min(totalOrderPages, p + 1))}
-                    disabled={currentOrderPage === totalPages}
+                    disabled={currentOrderPage === totalOrderPages}
                     className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
                   >
                     Next &rsaquo;
@@ -1477,7 +1476,7 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={() => setCurrentOrderPage(totalOrderPages)}
-                    disabled={currentOrderPage === totalPages}
+                    disabled={currentOrderPage === totalOrderPages}
                     className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
                   >
                     Terakhir &raquo;
