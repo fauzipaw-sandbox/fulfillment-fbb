@@ -178,14 +178,13 @@ export default function Dashboard() {
     });
   }, [data, selectedStatus, selectedRx, selectedKabupaten, selectedStoFilter, selectedWokFilter, selectedPortFilter]);
 
-  const falloutMapMarkers = useMemo(() => {
+  // List Semua Order dengan Koordinat Lengkap untuk Peta (Bisa diganti-ganti di peta)
+  const allMapOrders = useMemo(() => {
     return (ordersData || [])
       .filter((o) => {
-        const fg = (o.funneling_group || o.process_state || '').trim().toUpperCase();
-        const isFallout = fg === 'FALLOUT';
         const matchSto = selectedStoFilter === 'ALL' || o.sto_co === selectedStoFilter;
         const matchWok = selectedWokFilter === 'ALL' || o.wok === selectedWokFilter;
-        return isFallout && matchSto && matchWok;
+        return matchSto && matchWok;
       })
       .map((o) => {
         const coords = extractOrderCoordinates(o);
@@ -576,7 +575,7 @@ export default function Dashboard() {
           {/* ================= KOLOM KIRI ================= */}
           <div className="space-y-3 sm:space-y-4">
             
-            {/* 1. OVERVIEW ODP PROFILE */}
+            {/* OVERVIEW ODP PROFILE */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
                 <span className="font-extrabold text-xs sm:text-sm tracking-wide">OVERVIEW ODP PROFILE</span>
@@ -850,11 +849,11 @@ export default function Dashboard() {
 
           {/* ================= KOLOM KANAN ================= */}
           <div className="space-y-3 sm:space-y-4">
-            {/* MAPS LOKASI ODP & FALLOUT ORDER */}
+            {/* MAPS LOKASI ODP & ORDERS */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm relative">
               <div className="bg-gradient-to-r from-[#1e3a8a] to-[#3a3575] text-white p-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-xs sm:text-sm">MAPS LOKASI ODP & FALLOUT</span>
+                  <span className="font-bold text-xs sm:text-sm">MAPS LOKASI ODP & ORDER</span>
                   <button
                     type="button"
                     onClick={() => setShowMeasureModal(!showMeasureModal)}
@@ -940,7 +939,7 @@ export default function Dashboard() {
               <div className="h-[280px] sm:h-[350px] p-1 bg-gray-100">
                 <MapComponent
                   data={fullyFilteredData}
-                  falloutOrders={falloutMapMarkers}
+                  ordersData={allMapOrders}
                   focusLocation={focusedOdp}
                   manualMeasureLine={manualMeasureLine}
                   manualMeasureInfo={measureResult}
