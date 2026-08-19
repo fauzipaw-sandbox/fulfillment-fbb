@@ -17,11 +17,6 @@ import {
 
 const MapComponent = dynamic(() => import('../components/Map'), { ssr: false });
 
-const VALID_KABUPATEN = [
-  'BARITO SELATAN', 'KOTA PALANGKARAYA', 'GUNUNG MAS', 'BARITO UTARA',
-  'BARITO TIMUR', 'KAPUAS', 'KATINGAN', 'PULANG PISAU', 'MURUNG RAYA',
-];
-
 const MONTH_NAMES = [
   'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
@@ -112,6 +107,31 @@ const CustomChartTooltip = ({ active, payload, label }) => {
   return null;
 };
 
+// Helper Ekstraksi Tikor Order Fallout (KP:lat,lon atau Fallback lat/lon)
+function extractOrderCoordinates(order) {
+  if (!order) return null;
+  const reason = String(order.fallout_reason || '');
+
+  // 1. Cari pola KP:lat,lon atau KP:-1.841440,115.034740
+  const match = reason.match(/KP:\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)/i);
+  if (match && match[1] && match[2]) {
+    const lat = parseFloat(match[1]);
+    const lon = parseFloat(match[2]);
+    if (!isNaN(lat) && !isNaN(lon)) {
+      return { lat, lon, coordSource: 'KP' };
+    }
+  }
+
+  // 2. Fallback ke kolom latitude & longitude
+  const lat = typeof order.latitude === 'number' ? order.latitude : parseFloat(order.latitude);
+  const lon = typeof order.longitude === 'number' ? order.longitude : parseFloat(order.longitude);
+  if (!isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0) {
+    return { lat, lon, coordSource: 'ROW' };
+  }
+
+  return null;
+}
+
 export default function Dashboard() {
   const { odpData: data, ordersData, odpLoaded, reloadOdp, reloadOrders } = useData();
   const [sortConfig, setSortConfig] = useState({ key: 'occ', direction: 'desc' });
@@ -160,6 +180,23 @@ export default function Dashboard() {
       return matchStatus && matchRx && matchKab && matchSto && matchWok && matchPort;
     });
   }, [data, selectedStatus, selectedRx, selectedKabupaten, selectedStoFilter, selectedWokFilter, selectedPortFilter]);
+
+  // List Order Fallout untuk Dimunculkan di Peta
+  const falloutMapMarkers = useMemo(() => {
+    return (ordersData || [])
+      .filter((o) => {
+        const fg = (o.funneling_group || o.process_state || '').trim().toUpperCase();
+        const isFallout = fg === 'FALLOUT';
+        const matchSto = selectedStoFilter === 'ALL' || o.sto_co === selectedStoFilter;
+        const matchWok = selectedWokFilter === 'ALL' || o.wok === selectedWokFilter;
+        return isFallout && matchSto && matchWok;
+      })
+      .map((o) => {
+        const coords = extractOrderCoordinates(o);
+        return coords ? { ...o, ...coords } : null;
+      })
+      .filter(Boolean);
+  }, [ordersData, selectedStoFilter, selectedWokFilter]);
 
   const filteredOrders = useMemo(() => {
     return ordersData.filter((o) => {
@@ -212,7 +249,11 @@ export default function Dashboard() {
 
   const statsFiltered = useMemo(() => {
     const kabMap = {}, flatStosMap = {};
-    VALID_KABUPATEN.concat(['LAINNYA']).forEach(k => {
+    const VALID_KABS = [
+      'BARITO SELATAN', 'KOTA PALANGKARAYA', 'GUNUNG MAS', 'BARITO UTARA',
+      'BARITO TIMUR', 'KAPUAS', 'KATINGAN', 'PULANG PISAU', 'MURUNG RAYA',
+    ];
+    VALID_KABS.concat(['LAINNYA']).forEach(k => {
       kabMap[k] = { name: k, rawCounts: { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 }, rawPorts: { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 }, total: 0 };
     });
 
@@ -233,7 +274,7 @@ export default function Dashboard() {
       flatStosMap[key].avai += item.avai;
     });
 
-    const chartData = Object.values(kabMap).filter(k => k.total > 0 || VALID_KABUPATEN.includes(k.name)).map(k => {
+    const chartData = Object.values(kabMap).filter(k => k.total > 0 || VALID_KABS.includes(k.name)).map(k => {
       const tot = k.total || 1;
       return {
         name: k.name,
@@ -813,11 +854,11 @@ export default function Dashboard() {
 
           {/* ================= KOLOM KANAN ================= */}
           <div className="space-y-3 sm:space-y-4">
-            {/* MAPS LOKASI ODP */}
+            {/* MAPS LOKASI ODP & FALLOUT ORDER */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm relative">
               <div className="bg-gradient-to-r from-[#1e3a8a] to-[#3a3575] text-white p-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-xs sm:text-sm">MAPS LOKASI ODP</span>
+                  <span className="font-bold text-xs sm:text-sm">MAPS LOKASI ODP & FALLOUT</span>
                   <button
                     type="button"
                     onClick={() => setShowMeasureModal(!showMeasureModal)}
@@ -903,6 +944,7 @@ export default function Dashboard() {
               <div className="h-[280px] sm:h-[350px] p-1 bg-gray-100">
                 <MapComponent
                   data={fullyFilteredData}
+                  falloutOrders={falloutMapMarkers}
                   focusLocation={focusedOdp}
                   manualMeasureLine={manualMeasureLine}
                   manualMeasureInfo={measureResult}
@@ -1017,7 +1059,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* BOTTOM RAW DATA TABLE */}
+        {/* ================= SECTION BAWAH: TABEL DETAIL RAW DATA ================= */}
         <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden mt-4">
           <div className="bg-gradient-to-r from-[#0f172a] via-[#1e293b] to-[#334155] text-white p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <div className="flex items-center gap-2">
@@ -1235,8 +1277,11 @@ export default function Dashboard() {
                     <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('order_id')}>
                       Order ID {orderTableSort.key === 'order_id' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('order_status_clean')}>
-                      Order Status {orderTableSort.key === 'order_status_clean' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('process_state')}>
+                      Process State {orderTableSort.key === 'process_state' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('funneling_subgroup')}>
+                      Subgroup {orderTableSort.key === 'funneling_subgroup' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
                     <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('name')}>
                       Nama Pelanggan {orderTableSort.key === 'name' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
@@ -1282,18 +1327,37 @@ export default function Dashboard() {
                 <tbody>
                   {paginatedOrderData.length === 0 ? (
                     <tr>
-                      <td colSpan={18} className="p-4 text-center text-slate-400 font-bold">
+                      <td colSpan={19} className="p-4 text-center text-slate-400 font-bold">
                         Belum ada data Order yang diunggah atau tidak sesuai filter.
                       </td>
                     </tr>
                   ) : (
                     paginatedOrderData.map((row, idx) => {
                       const rowNumber = (currentOrderPage - 1) * rowsPerPage + idx + 1;
+                      const pState = (row.process_state || 'UNKNOWN').trim().toUpperCase();
+
                       return (
-                        <tr key={`${row.order_id}-${idx}`} className="border-b border-slate-200 hover:bg-purple-50/60 transition">
+                        <tr
+                          key={`${row.order_id}-${idx}`}
+                          className="border-b border-slate-200 hover:bg-purple-50/60 transition"
+                        >
                           <td className="p-1.5 border border-slate-200 text-center font-bold text-slate-500">{rowNumber}</td>
                           <td className="p-1.5 border border-slate-200 font-black text-purple-900">{row.order_id}</td>
-                          <td className="p-1.5 border border-slate-200 font-bold text-slate-800">{row.order_status_desc || row.process_state || '-'}</td>
+                          <td
+                            className="p-1.5 border border-slate-200 font-bold text-slate-800 cursor-pointer hover:text-blue-700 hover:underline"
+                            onClick={() => setSelectedStatus((p) => (p === pState ? 'ALL' : pState))}
+                            title="Klik untuk filter Process State ini"
+                          >
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
+                                pState === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' :
+                                pState === 'FALLOUT' ? 'bg-red-100 text-red-800' :
+                                pState.includes('CANCEL') ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-700'
+                              }`}
+                            >
+                              {pState}
+                            </span>
+                          </td>
                           <td className="p-1.5 border border-slate-200 font-semibold">{row.name || '-'}</td>
                           <td className="p-1.5 border border-slate-200 font-mono text-[9px]">{row.no_handphone || row.no_handphone_mask || '-'}</td>
                           <td
@@ -1320,7 +1384,6 @@ export default function Dashboard() {
                               </span>
                             ) : '-'}
                           </td>
-                          <td className="p-1.5 border border-slate-200 text-slate-500 max-w-[200px] truncate" title={row.fallout_reason}>{row.fallout_reason || '-'}</td>
                           <td className="p-1.5 border border-slate-200 text-right">{row.price_package ? Number(row.price_package).toLocaleString() : '-'}</td>
                           <td className="p-1.5 border border-slate-200">{row.order_ts || '-'}</td>
                           <td className="p-1.5 border border-slate-200">{row.ps_ts || '-'}</td>
@@ -1365,7 +1428,7 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={() => setCurrentPage((p) => Math.min(totalOdpPages, p + 1))}
-                    disabled={currentPage === totalOdpPages}
+                    disabled={currentPage === totalPages}
                     className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
                   >
                     Next &rsaquo;
@@ -1373,7 +1436,7 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={() => setCurrentPage(totalOdpPages)}
-                    disabled={currentPage === totalOdpPages}
+                    disabled={currentPage === totalPages}
                     className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
                   >
                     Terakhir &raquo;
@@ -1406,7 +1469,7 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={() => setCurrentOrderPage((p) => Math.min(totalOrderPages, p + 1))}
-                    disabled={currentOrderPage === totalOrderPages}
+                    disabled={currentOrderPage === totalPages}
                     className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
                   >
                     Next &rsaquo;
@@ -1414,7 +1477,7 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={() => setCurrentOrderPage(totalOrderPages)}
-                    disabled={currentOrderPage === totalOrderPages}
+                    disabled={currentOrderPage === totalPages}
                     className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
                   >
                     Terakhir &raquo;
