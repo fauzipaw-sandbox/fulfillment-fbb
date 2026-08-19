@@ -20,12 +20,12 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-// Custom Icon Segitiga Lebih Kecil & Elegan (14px)
+// Custom Icon Segitiga Order (14px)
 const createTriangleIcon = (color = '#e11d48') => {
   return L.divIcon({
     className: 'custom-triangle-marker',
     html: `
-      <div style="filter: drop-shadow(0 1.5px 2.5px rgba(0,0,0,0.5)); display: flex; align-items: center; justify-content: center;">
+      <div style="filter: drop-shadow(0 1.5px 2.5px rgba(0,0,0,0.5)); display: flex; align-items: center; justify-content: center; cursor: pointer;">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="${color}" stroke="#ffffff" stroke-width="2">
           <path d="M12 2L1 21h22L12 2z" />
           <circle cx="12" cy="14" r="1.5" fill="#ffffff"/>
@@ -34,7 +34,7 @@ const createTriangleIcon = (color = '#e11d48') => {
     `,
     iconSize: [14, 14],
     iconAnchor: [7, 7],
-    popupAnchor: [0, -7],
+    tooltipAnchor: [0, -8],
   });
 };
 
@@ -55,11 +55,11 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 function MapController({ data, focusLocation, markerRefs, roadRouteCoordinates, manualMeasureLine, isFullscreen }) {
   const map = useMap();
 
-  // Invalidate size saat toggle fullscreen agar render Leaflet tidak patah
   useEffect(() => {
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       map.invalidateSize();
-    }, 200);
+    }, 250);
+    return () => clearTimeout(timer);
   }, [isFullscreen, map]);
 
   useEffect(() => {
@@ -106,16 +106,69 @@ export default function Map({
   roadRouteCoordinates,
 }) {
   const defaultCenter = [-1.7, 114.8];
+  const containerRef = useRef(null);
   const markerRefs = useRef({});
   const [clickPoints, setClickPoints] = useState([]);
   const [measureActive, setMeasureActive] = useState(false);
   const [mapType, setMapType] = useState('street');
   const [isFullscreen, setIsFullscreen] = useState(false);
-  
-  // State Filter Process State Order (Default: FALLOUT)
   const [selectedOrderState, setSelectedOrderState] = useState('FALLOUT');
 
-  // List Unik Process State dari Orders
+  // Listen to Browser Fullscreen changes (e.g. Esc key pressed)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isCurrentlyFs = !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement ||
+        document.msFullscreenElement
+      );
+      setIsFullscreen(isCurrentlyFs);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+    };
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!containerRef.current) return;
+
+    if (!isFullscreen) {
+      if (containerRef.current.requestFullscreen) {
+        containerRef.current.requestFullscreen().catch(() => setIsFullscreen(true));
+      } else if (containerRef.current.webkitRequestFullscreen) {
+        containerRef.current.webkitRequestFullscreen();
+      } else if (containerRef.current.mozRequestFullScreen) {
+        containerRef.current.mozRequestFullScreen();
+      } else if (containerRef.current.msRequestFullscreen) {
+        containerRef.current.msRequestFullscreen();
+      } else {
+        setIsFullscreen(true);
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch(() => setIsFullscreen(false));
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      } else if (document.mozCancelFullScreen) {
+        document.mozCancelFullScreen();
+      } else if (document.msExitFullscreen) {
+        document.msExitFullscreen();
+      } else {
+        setIsFullscreen(false);
+      }
+    }
+  };
+
   const availableProcessStates = useMemo(() => {
     const set = new Set();
     (ordersData || []).forEach((o) => {
@@ -125,7 +178,6 @@ export default function Map({
     return Array.from(set).sort();
   }, [ordersData]);
 
-  // Order yang Sesuai Pilihan Filter Process State
   const visibleOrders = useMemo(() => {
     if (selectedOrderState === 'NONE') return [];
     return (ordersData || []).filter((o) => {
@@ -187,13 +239,15 @@ export default function Map({
   };
 
   return (
-    <div className={`relative w-full h-full transition-all duration-300 ${
-      isFullscreen ? 'fixed inset-0 z-[99999] bg-slate-900' : 'rounded'
-    }`}>
+    <div
+      ref={containerRef}
+      className={`relative w-full h-full transition-all duration-200 ${
+        isFullscreen ? 'fixed inset-0 z-[99999] w-screen h-screen bg-slate-900' : 'rounded'
+      }`}
+    >
       {/* Map Control Buttons Top Right */}
       <div className="absolute top-2.5 right-2.5 z-[1000] flex items-center gap-1.5 flex-wrap justify-end">
-        
-        {/* Dropdown Filter Process State Order (By Default: FALLOUT) */}
+        {/* Dropdown Filter Process State Order */}
         <div className="bg-white/95 backdrop-blur px-2 py-1 rounded shadow border border-slate-300 flex items-center gap-1.5 text-[10.5px]">
           <span className="font-bold text-slate-700 flex items-center gap-1">
             <span className="inline-block w-2.5 h-2.5 bg-rose-600 rounded-xs"></span>
@@ -252,11 +306,11 @@ export default function Map({
           {measureActive ? '✕ Tutup' : '📏 Ukur'}
         </button>
 
-        {/* Tombol Fullscreen Maps (Presentasi) */}
+        {/* Tombol Fullscreen Maps */}
         <button
           type="button"
-          onClick={() => setIsFullscreen(!isFullscreen)}
-          className="px-2.5 py-1 text-[10px] font-black rounded shadow border bg-[#0f172a] text-white hover:bg-slate-800 transition flex items-center gap-1"
+          onClick={toggleFullscreen}
+          className="px-2.5 py-1 text-[10px] font-black rounded shadow border bg-[#0f172a] text-white hover:bg-slate-800 transition flex items-center gap-1 cursor-pointer"
           title={isFullscreen ? 'Keluar Layar Penuh' : 'Layar Penuh (Mode Presentasi)'}
         >
           <span>{isFullscreen ? '🗗' : '⛶'}</span>
@@ -379,7 +433,7 @@ export default function Map({
                 opacity={1}
                 className="compact-custom-tooltip"
               >
-                <div className="text-[10px] font-sans bg-white p-2 rounded shadow-lg text-slate-800 min-w-[190px]">
+                <div className="text-[10px] font-sans bg-white p-2 rounded shadow-lg text-slate-800 min-w-[190px] max-w-[240px]">
                   <div className="border-b border-slate-200 pb-1 mb-1 flex items-center justify-between gap-1">
                     <p className="font-extrabold text-blue-900 truncate max-w-[130px]" title={odp.odp_name}>
                       {odp.odp_name}
@@ -438,7 +492,7 @@ export default function Map({
           );
         })}
 
-        {/* ================= 2. MARKER SEGITIGA ORDER SESUAI PROCESS_STATE ================= */}
+        {/* ================= 2. MARKER SEGITIGA ORDER (HOVER TOOLTIP LENGKAP & RESPONSIF) ================= */}
         {visibleOrders.map((fo, fIdx) => {
           if (!fo.lat || !fo.lon) return null;
           const nearestOdp = findNearestOdp(fo.lat, fo.lon);
@@ -457,46 +511,95 @@ export default function Map({
               position={[fo.lat, fo.lon]}
               icon={icon}
             >
-              <Popup>
-                <div className="text-[10px] font-sans p-1 min-w-[210px] space-y-1.5">
-                  <div className="border-b border-slate-200 pb-1 flex items-center justify-between gap-1">
-                    <span className="font-black text-[11px]" style={{ color: markerColor }}>
-                      🔺 {pState}
+              <LeafletTooltip
+                direction="top"
+                offset={[0, -5]}
+                opacity={1}
+                className="compact-custom-tooltip"
+              >
+                <div className="text-[10px] font-sans bg-white p-2.5 rounded-lg shadow-xl text-slate-800 min-w-[210px] max-w-[260px] space-y-1.5">
+                  {/* Header Badge */}
+                  <div className="border-b border-slate-200 pb-1 flex items-center justify-between gap-1.5">
+                    <span className="font-black text-[11px] truncate flex items-center gap-1" style={{ color: markerColor }}>
+                      <span>🔺</span> {pState}
                     </span>
-                    <span className="bg-slate-100 text-slate-800 font-bold px-1.5 py-0.2 rounded text-[8px]">
+                    <span className="bg-slate-100 text-slate-700 font-bold px-1.5 py-0.5 rounded text-[8.5px] whitespace-nowrap">
                       {fo.order_duration_cat || '3 HARI'}
                     </span>
                   </div>
 
-                  <div className="space-y-0.5 text-slate-700">
-                    <p>
-                      <strong className="text-slate-900 font-black">ID:</strong> {fo.order_id}
-                    </p>
-                    <p>
-                      <strong className="text-slate-900">Pelanggan:</strong> {fo.name || '-'} ({fo.no_handphone || '-'})
-                    </p>
-                    <p>
-                      <strong className="text-slate-900">STO:</strong> {fo.sto_co} | <strong className="text-slate-900">WOK:</strong> {fo.wok}
-                    </p>
-                    {fo.fallout_reason && (
-                      <p className="text-[9.5px] text-red-600 font-bold leading-tight mt-0.5 bg-red-50 p-1 rounded border border-red-100">
-                        Reason: {fo.fallout_reason_clean || fo.fallout_reason}
-                      </p>
+                  {/* Order Details Grid */}
+                  <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[9.5px]">
+                    <div className="col-span-2">
+                      <span className="text-slate-400 block text-[7.5px] uppercase font-bold">ORDER ID</span>
+                      <span className="font-mono font-black text-purple-900 block truncate" title={fo.order_id}>
+                        {fo.order_id}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-slate-400 block text-[7.5px] uppercase font-bold">PELANGGAN</span>
+                      <span className="font-bold text-slate-800 block truncate" title={fo.name}>
+                        {fo.name || '-'}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-slate-400 block text-[7.5px] uppercase font-bold">NO HP</span>
+                      <span className="font-mono text-slate-700 block truncate">
+                        {fo.no_handphone || fo.no_handphone_mask || '-'}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-slate-400 block text-[7.5px] uppercase font-bold">STO</span>
+                      <span className="font-bold text-slate-700 block truncate">{fo.sto_co || '-'}</span>
+                    </div>
+
+                    <div>
+                      <span className="text-slate-400 block text-[7.5px] uppercase font-bold">WOK</span>
+                      <span className="font-bold text-slate-700 block truncate">{fo.wok || '-'}</span>
+                    </div>
+
+                    {fo.address && fo.address !== '-' && (
+                      <div className="col-span-2">
+                        <span className="text-slate-400 block text-[7.5px] uppercase font-bold">ALAMAT</span>
+                        <span className="text-slate-600 block text-[8.5px] leading-tight line-clamp-2" title={fo.address}>
+                          {fo.address}
+                        </span>
+                      </div>
                     )}
                   </div>
 
-                  {/* Analisis ODP Terdekat */}
+                  {/* Remarks / Fallout Reason Box */}
+                  {(fo.fallout_reason || fo.fallout_reason_clean) && (
+                    <div className="bg-red-50/90 p-1.5 rounded border border-red-200 text-[9px] text-red-900 space-y-0.5">
+                      <span className="text-red-600 font-black block text-[8px] uppercase tracking-wide">
+                        REMARKS / FALLOUT REASON:
+                      </span>
+                      <p className="font-bold text-red-700 leading-tight">
+                        {fo.fallout_reason_clean || 'LAINNYA'}
+                      </p>
+                      {fo.fallout_reason && (
+                        <p className="text-[8px] text-slate-600 leading-tight break-words max-h-12 overflow-y-auto pt-0.5">
+                          {fo.fallout_reason}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Nearest ODP Analysis */}
                   {nearestOdp ? (
                     <div className="bg-slate-50 p-1.5 rounded border border-slate-200 text-[9px] space-y-0.5">
-                      <p className="font-black text-slate-900 flex justify-between items-center border-b border-slate-200 pb-0.5">
-                        <span>📍 ODP TERDEKAT:</span>
-                        <span className="text-blue-700">
+                      <div className="flex justify-between items-center border-b border-slate-200 pb-0.5">
+                        <span className="font-black text-slate-700 text-[8px] uppercase">📍 ODP TERDEKAT</span>
+                        <span className="font-bold text-blue-700 text-[8.5px]">
                           {nearestOdp.distanceKm >= 1
                             ? `${nearestOdp.distanceKm.toFixed(2)} km`
                             : `${Math.round(nearestOdp.distanceKm * 1000)} m`}
                         </span>
-                      </p>
-                      <p className="font-extrabold text-blue-900 truncate">
+                      </div>
+                      <p className="font-extrabold text-blue-900 truncate" title={nearestOdp.odp_name}>
                         {nearestOdp.odp_name}
                       </p>
                       <div className="flex items-center justify-between pt-0.5">
@@ -504,7 +607,7 @@ export default function Map({
                           Port: <strong>{nearestOdp.used}/{nearestOdp.is_total}</strong> ({nearestOcc}%)
                         </span>
                         <span
-                          className="text-white px-1.5 py-0.2 rounded text-[8px] font-black uppercase"
+                          className="text-white px-1.5 py-0.2 rounded text-[7.5px] font-black uppercase"
                           style={{ backgroundColor: nearestColor }}
                         >
                           {nearestOdp.status_final}
@@ -512,14 +615,16 @@ export default function Map({
                       </div>
                     </div>
                   ) : (
-                    <p className="text-slate-400 italic text-[9px]">Tidak ada ODP terdekat terdeteksi</p>
+                    <p className="text-slate-400 italic text-[8.5px]">Tidak ada ODP terdekat terdeteksi</p>
                   )}
 
-                  <div className="text-[8px] text-slate-400 font-mono text-right">
-                    Tikor ({fo.coordSource}): {fo.lat.toFixed(5)}, {fo.lon.toFixed(5)}
+                  {/* Coordinate Footer */}
+                  <div className="text-[8px] text-slate-400 font-mono pt-1 border-t border-slate-100 flex justify-between">
+                    <span>Sumber: {fo.coordSource || 'ROW'}</span>
+                    <span>{fo.lat?.toFixed(4)}, {fo.lon?.toFixed(4)}</span>
                   </div>
                 </div>
-              </Popup>
+              </LeafletTooltip>
             </Marker>
           );
         })}
