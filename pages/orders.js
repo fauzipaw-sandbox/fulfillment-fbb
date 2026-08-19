@@ -80,7 +80,6 @@ function normalizeFalloutReason(rawVal) {
   return 'LAINNYA';
 }
 
-// Komponen Reusable Multiselect Dropdown dengan Checkbox
 function MultiSelectDropdown({ options = [], selected = [], onChange, badgeColor = 'bg-slate-800 text-emerald-300' }) {
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -196,13 +195,11 @@ export default function OrdersPage() {
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [selectedFallout, setSelectedFallout] = useState('ALL');
 
-  // Filter Multiselect Dropdown Subgroup Pivot 1 & 2 (Default: PROVISION_ISSUED dan INPROGRESS_PC terpisah & terpilih)
+  // Multiselect Filters
   const [selectedPivotSubgroups, setSelectedPivotSubgroups] = useState([
     'PROVISION_ISSUED',
     'INPROGRESS_PC'
   ]);
-
-  // Filter Multiselect Dropdown Status Section Fallout (Default: FALLOUT terpilih)
   const [selectedFalloutStates, setSelectedFalloutStates] = useState(['FALLOUT']);
 
   // Pivot Sorting States
@@ -216,7 +213,6 @@ export default function OrdersPage() {
   const [sortConfig, setSortConfig] = useState({ key: 'order_ts', direction: 'desc' });
   const rowsPerPage = 50;
 
-  // List Unik Subgroup Lengkap dengan Jumlah
   const availableSubgroupOptions = useMemo(() => {
     const map = {};
     orders.forEach((o) => {
@@ -230,7 +226,6 @@ export default function OrdersPage() {
       .map((k) => ({ value: k, count: map[k] }));
   }, [orders]);
 
-  // List Unik Process State Lengkap dengan Jumlah
   const availableProcessStateOptions = useMemo(() => {
     const map = {};
     orders.forEach((o) => {
@@ -244,7 +239,6 @@ export default function OrdersPage() {
       .map((k) => ({ value: k, count: map[k] }));
   }, [orders]);
 
-  // List Bulan Dinamis
   const availableMonths = useMemo(() => {
     const set = new Set();
     orders.forEach((o) => {
@@ -262,7 +256,6 @@ export default function OrdersPage() {
       .sort((a, b) => b.key.localeCompare(a.key));
   }, [orders]);
 
-  // Header Cut-Off Date Range
   const headerCutoffText = useMemo(() => {
     if (!orders || orders.length === 0) return '*Cut Off Data -';
     const dates = orders
@@ -276,7 +269,6 @@ export default function OrdersPage() {
     return `*Cut Off Data (${formatFullDateTime(earliest)} - ${formatFullDateTime(latest)})`;
   }, [orders]);
 
-  // Filter Sinkron Seluruh Komponen
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
       if (!o) return false;
@@ -312,7 +304,6 @@ export default function OrdersPage() {
     });
   }, [orders, selectedMonth, selectedWok, selectedSto, selectedDuration, selectedStatus, selectedPivotSubgroups, selectedFallout]);
 
-  // Data Basis Khusus Pivot 1 & Pivot 2 (Mengikuti Multiselect Subgroups)
   const pivotBaseOrders = useMemo(() => {
     return orders.filter((o) => {
       if (!o) return false;
@@ -335,7 +326,6 @@ export default function OrdersPage() {
     });
   }, [orders, selectedMonth, selectedWok, selectedSto, selectedPivotSubgroups]);
 
-  // Pivot 1: WOK & STO vs Duration
   const pivotDuration = useMemo(() => {
     const durColumnsSet = new Set();
     const map = {};
@@ -380,7 +370,6 @@ export default function OrdersPage() {
     return { sortedWoks, columns, grandColTotals, totalAll };
   }, [pivotBaseOrders, pivot1Sort]);
 
-  // Pivot 2: WOK & STO vs Process State
   const pivotStatus = useMemo(() => {
     const statusSet = new Set();
     const map = {};
@@ -425,7 +414,6 @@ export default function OrdersPage() {
     return { sortedWoks, columns, grandColTotals, totalAll };
   }, [pivotBaseOrders, pivot2Sort]);
 
-  // Pivot 3: Duration vs Fallout (Mengikuti Multiselect Status pada Section Fallout)
   const pivotFallout = useMemo(() => {
     const tree = {};
     let totalAll = 0;
@@ -460,7 +448,6 @@ export default function OrdersPage() {
     return { tree, totalAll };
   }, [orders, selectedMonth, selectedWok, selectedSto, selectedFalloutStates]);
 
-  // Chart Data (Duration Fallout)
   const { chartData, dividerIndices } = useMemo(() => {
     const list = [];
     const dividers = [];
@@ -496,7 +483,6 @@ export default function OrdersPage() {
     return { chartData: list, dividerIndices: dividers };
   }, [pivotFallout, selectedDuration]);
 
-  // Sorting Handlers
   const handlePivot1Sort = (key) => {
     let direction = 'desc';
     if (pivot1Sort.key === key && pivot1Sort.direction === 'desc') direction = 'asc';
@@ -556,14 +542,29 @@ export default function OrdersPage() {
     return sortedBottomTableData.slice(start, start + rowsPerPage);
   }, [sortedBottomTableData, currentPage]);
 
-  const handleExportCSV = () => {
-    if (filteredOrders.length === 0) return alert('Tidak ada data untuk di-download.');
+  // Fungsi Download Data Terfilter
+  const handleExportFilteredCSV = () => {
+    if (filteredOrders.length === 0) return alert('Tidak ada data terfilter untuk di-download.');
     const csv = Papa.unparse(filteredOrders);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `orders_fallout_export_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `orders_filtered_${filteredOrders.length}_rows_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Fungsi Download Semua Data (All Raw Orders)
+  const handleExportAllCSV = () => {
+    if (orders.length === 0) return alert('Database order kosong.');
+    const csv = Papa.unparse(orders);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `orders_all_${orders.length}_rows_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -698,7 +699,7 @@ export default function OrdersPage() {
           </div>
         )}
 
-        {/* ================= SECTION ATAS: 2 PIVOT TABLE (DENGAN MULTISELECT SUBGROUP) ================= */}
+        {/* ================= SECTION ATAS: 2 PIVOT TABLE ================= */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
           
           {/* PIVOT 1: DURATION */}
@@ -1098,10 +1099,10 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        {/* ================= SECTION TENGAH: PIVOT FALLOUT & DURATION FALLOUT CHART (DENGAN MULTISELECT STATUS) ================= */}
+        {/* ================= SECTION TENGAH: PIVOT FALLOUT & DURATION FALLOUT CHART ================= */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4">
           
-          {/* PIVOT 3: FALLOUT */}
+          {/* PIVOT 3: FALLOUT (JUDUL GANTI JADI "Fallout") */}
           <div className="xl:col-span-1 bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase flex-wrap gap-1">
               <span>Fallout</span>
@@ -1358,7 +1359,7 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        {/* BOTTOM RAW DATA TABLE */}
+        {/* ================= BOTTOM RAW DATA TABLE DENGAN DUA TOMBOL DOWNLOAD ================= */}
         <div className="bg-white border border-slate-300 shadow-xs rounded overflow-hidden mt-4">
           <div className="bg-gradient-to-r from-[#0f172a] via-[#1e293b] to-[#334155] text-white p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <div>
@@ -1380,14 +1381,27 @@ export default function OrdersPage() {
                   setSearchTerm(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="px-2.5 py-1 text-black rounded text-xs outline-none w-full sm:w-56"
+                className="px-2.5 py-1 text-black rounded text-xs outline-none w-full sm:w-52"
               />
+              
+              {/* Tombol Download Terfilter */}
               <button
                 type="button"
-                onClick={handleExportCSV}
-                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold shadow flex items-center gap-1 whitespace-nowrap transition cursor-pointer"
+                onClick={handleExportFilteredCSV}
+                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold shadow flex items-center gap-1 whitespace-nowrap transition cursor-pointer"
+                title="Download data yang saat ini terfilter"
               >
-                <span>📥</span> Download CSV ({filteredOrders.length.toLocaleString()})
+                <span>📥</span> Terfilter ({filteredOrders.length.toLocaleString()})
+              </button>
+
+              {/* Tombol Download Semua Data */}
+              <button
+                type="button"
+                onClick={handleExportAllCSV}
+                className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[11px] font-bold shadow flex items-center gap-1 whitespace-nowrap transition cursor-pointer"
+                title="Download seluruh data order di database"
+              >
+                <span>📥</span> Semua ({orders.length.toLocaleString()})
               </button>
             </div>
           </div>
@@ -1567,7 +1581,7 @@ export default function OrdersPage() {
                 <span className="px-2 font-bold text-slate-700">{currentPage} / {totalPages}</span>
                 <button
                   type="button"
-                  onClick={() => setCurrentPage((p) => Math.min(totalOdpPages, p + 1))}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
                   className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                 >
