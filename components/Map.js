@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import {
   MapContainer,
   TileLayer,
@@ -19,6 +19,24 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
+
+// Custom Icon Segitiga untuk Order Fallout
+const createTriangleIcon = () => {
+  return L.divIcon({
+    className: 'custom-triangle-marker',
+    html: `
+      <div style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="#e11d48" stroke="#ffffff" stroke-width="2.5">
+          <path d="M12 2L1 21h22L12 2z" />
+          <circle cx="12" cy="14" r="2" fill="#ffffff"/>
+        </svg>
+      </div>
+    `,
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+    popupAnchor: [0, -10],
+  });
+};
 
 function calculateDistance(lat1, lon1, lat2, lon2) {
   const R = 6371;
@@ -73,7 +91,8 @@ function MapClickHandler({ measureMode, onMapClick }) {
 }
 
 export default function Map({
-  data,
+  data = [],
+  falloutOrders = [],
   focusLocation,
   manualMeasureLine,
   manualMeasureInfo,
@@ -84,6 +103,9 @@ export default function Map({
   const [clickPoints, setClickPoints] = useState([]);
   const [measureActive, setMeasureActive] = useState(false);
   const [mapType, setMapType] = useState('street');
+  const [showFalloutMarkers, setShowFalloutMarkers] = useState(true);
+
+  const triangleIcon = useMemo(() => createTriangleIcon(), []);
 
   const getColor = (status) => {
     const s = (status || '').toUpperCase();
@@ -97,8 +119,8 @@ export default function Map({
   const getRxColor = (rxVal) => {
     if (rxVal === null || rxVal === undefined) return '#64748b';
     if (rxVal > -18) return '#16a34a';
-    if (rxVal >= -21) return '#ca8a04';
-    if (rxVal >= -25) return '#ea580c';
+    if (rxVal >= -21 && rxVal <= -18) return '#ca8a04';
+    if (rxVal >= -25 && rxVal < -21) return '#ea580c';
     return '#dc2626';
   };
 
@@ -117,9 +139,45 @@ export default function Map({
     return acc + calculateDistance(prev[0], prev[1], curr[0], curr[1]);
   }, 0);
 
+  // Helper untuk mencari ODP terdekat dari titik Fallout Order
+  const findNearestOdp = (lat, lon) => {
+    if (!lat || !lon || !data || data.length === 0) return null;
+    let minDistance = Infinity;
+    let nearest = null;
+
+    data.forEach((odp) => {
+      if (odp.latitude && odp.longitude) {
+        const dist = calculateDistance(lat, lon, odp.latitude, odp.longitude);
+        if (dist < minDistance) {
+          minDistance = dist;
+          nearest = odp;
+        }
+      }
+    });
+
+    return nearest ? { ...nearest, distanceKm: minDistance } : null;
+  };
+
   return (
     <div className="relative w-full h-full">
-      <div className="absolute top-2 right-2 z-[1000] flex items-center gap-1.5">
+      {/* Map Control Buttons */}
+      <div className="absolute top-2 right-2 z-[1000] flex items-center gap-1.5 flex-wrap justify-end">
+        {/* Toggle Layer Fallout Order */}
+        {falloutOrders && falloutOrders.length > 0 && (
+          <label className="bg-white/95 backdrop-blur px-2 py-1 rounded shadow border border-rose-300 text-[10px] font-extrabold text-rose-900 flex items-center gap-1.5 cursor-pointer hover:bg-rose-50 transition">
+            <input
+              type="checkbox"
+              checked={showFalloutMarkers}
+              onChange={(e) => setShowFalloutMarkers(e.target.checked)}
+              className="accent-rose-600 rounded"
+            />
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-2.5 h-2.5 bg-rose-600 rounded-xs"></span>
+              Fallout ({falloutOrders.length})
+            </span>
+          </label>
+        )}
+
         <div className="bg-white rounded shadow border border-slate-300 overflow-hidden flex text-[10px] font-bold">
           <button
             type="button"
@@ -238,6 +296,7 @@ export default function Map({
           />
         ))}
 
+        {/* ================= 1. MARKER LINGKARAN ODP ================= */}
         {data.map((odp, idx) => {
           if (!odp.latitude || !odp.longitude) return null;
           const color = getColor(odp.status_final);
@@ -260,7 +319,6 @@ export default function Map({
                 weight: 1,
               }}
             >
-              {/* Poin 3: Hover Only Popup (Muncul saat cursor diarahkan & Langsung Hilang saat cursor menjauh) */}
               <LeafletTooltip
                 direction="top"
                 offset={[0, -5]}
@@ -325,6 +383,89 @@ export default function Map({
             </CircleMarker>
           );
         })}
+
+        {/* ================= 2. MARKER SEGITIGA ORDER FALLOUT ================= */}
+        {showFalloutMarkers &&
+          falloutOrders.map((fo, fIdx) => {
+            if (!fo.lat || !fo.lon) return null;
+            const nearestOdp = findNearestOdp(fo.lat, fo.lon);
+            const nearestColor = nearestOdp ? getColor(nearestOdp.status_final) : '#64748b';
+            const nearestOcc = nearestOdp && nearestOdp.is_total > 0
+              ? Math.round((nearestOdp.used / nearestOdp.is_total) * 100)
+              : 0;
+
+            return (
+              <Marker
+                key={`fallout-${fo.order_id}-${fIdx}`}
+                position={[fo.lat, fo.lon]}
+                icon={triangleIcon}
+              >
+                <Popup>
+                  <div className="text-[10px] font-sans p-1 min-w-[210px] space-y-1.5">
+                    {/* Header Order Fallout */}
+                    <div className="border-b border-rose-200 pb-1 flex items-center justify-between gap-1">
+                      <span className="font-black text-rose-700 text-[11px]">
+                        🔺 ORDER FALLOUT
+                      </span>
+                      <span className="bg-rose-100 text-rose-900 font-bold px-1.5 py-0.2 rounded text-[8px]">
+                        {fo.order_duration_cat || '3 HARI'}
+                      </span>
+                    </div>
+
+                    {/* Detail Order */}
+                    <div className="space-y-0.5 text-slate-700">
+                      <p>
+                        <strong className="text-slate-900 font-black">ID:</strong> {fo.order_id}
+                      </p>
+                      <p>
+                        <strong className="text-slate-900">Pelanggan:</strong> {fo.name || '-'} ({fo.no_handphone || '-'})
+                      </p>
+                      <p>
+                        <strong className="text-slate-900">STO:</strong> {fo.sto_co} | <strong className="text-slate-900">WOK:</strong> {fo.wok}
+                      </p>
+                      <p className="text-[9.5px] text-red-600 font-bold leading-tight mt-0.5 bg-red-50 p-1 rounded border border-red-100">
+                        Reason: {fo.fallout_reason_clean || fo.fallout_reason || '-'}
+                      </p>
+                    </div>
+
+                    {/* Analisis ODP Terdekat */}
+                    {nearestOdp ? (
+                      <div className="bg-slate-50 p-1.5 rounded border border-slate-200 text-[9px] space-y-0.5">
+                        <p className="font-black text-slate-900 flex justify-between items-center border-b border-slate-200 pb-0.5">
+                          <span>📍 ODP TERDEKAT:</span>
+                          <span className="text-blue-700">
+                            {nearestOdp.distanceKm >= 1
+                              ? `${nearestOdp.distanceKm.toFixed(2)} km`
+                              : `${Math.round(nearestOdp.distanceKm * 1000)} m`}
+                          </span>
+                        </p>
+                        <p className="font-extrabold text-blue-900 truncate">
+                          {nearestOdp.odp_name}
+                        </p>
+                        <div className="flex items-center justify-between pt-0.5">
+                          <span>
+                            Port: <strong>{nearestOdp.used}/{nearestOdp.is_total}</strong> ({nearestOcc}%)
+                          </span>
+                          <span
+                            className="text-white px-1.5 py-0.2 rounded text-[8px] font-black uppercase"
+                            style={{ backgroundColor: nearestColor }}
+                          >
+                            {nearestOdp.status_final}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-slate-400 italic text-[9px]">Tidak ada ODP terdekat terdeteksi</p>
+                    )}
+
+                    <div className="text-[8px] text-slate-400 font-mono text-right">
+                      Tikor ({fo.coordSource}): {fo.lat.toFixed(5)}, {fo.lon.toFixed(5)}
+                    </div>
+                  </div>
+                </Popup>
+              </Marker>
+            );
+          })}
       </MapContainer>
     </div>
   );
