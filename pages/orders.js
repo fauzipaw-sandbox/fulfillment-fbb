@@ -187,19 +187,24 @@ export default function OrdersPage() {
 
   const [showUploader, setShowUploader] = useState(false);
 
-  // Filter Global Bar States
+  // Global Filter Bar States
   const [selectedMonth, setSelectedMonth] = useState('ALL');
   const [selectedWok, setSelectedWok] = useState('ALL');
   const [selectedSto, setSelectedSto] = useState('ALL');
   const [selectedDuration, setSelectedDuration] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [selectedFallout, setSelectedFallout] = useState('ALL');
+  
+  // Scope interaktif untuk tabel bawah ('ALL' by default agar tabel bawah menampilkan SEMUA DATA)
+  const [activeSubgroupScope, setActiveSubgroupScope] = useState('ALL');
 
-  // Multiselect Filters
+  // Multiselect Filters untuk Card Pivot Atas (Default: PROVISION_ISSUED & INPROGRESS_PC)
   const [selectedPivotSubgroups, setSelectedPivotSubgroups] = useState([
     'PROVISION_ISSUED',
     'INPROGRESS_PC'
   ]);
+
+  // Multiselect Filters untuk Card Fallout Bawah (Default: FALLOUT)
   const [selectedFalloutStates, setSelectedFalloutStates] = useState(['FALLOUT']);
 
   // Pivot Sorting States
@@ -217,9 +222,7 @@ export default function OrdersPage() {
     const map = {};
     orders.forEach((o) => {
       const sub = (o.funneling_subgroup || '').trim().toUpperCase();
-      if (sub) {
-        map[sub] = (map[sub] || 0) + 1;
-      }
+      if (sub) map[sub] = (map[sub] || 0) + 1;
     });
     return Object.keys(map)
       .sort()
@@ -230,9 +233,7 @@ export default function OrdersPage() {
     const map = {};
     orders.forEach((o) => {
       const ps = (o.process_state || '').trim().toUpperCase();
-      if (ps) {
-        map[ps] = (map[ps] || 0) + 1;
-      }
+      if (ps) map[ps] = (map[ps] || 0) + 1;
     });
     return Object.keys(map)
       .sort()
@@ -269,6 +270,7 @@ export default function OrdersPage() {
     return `*Cut Off Data (${formatFullDateTime(earliest)} - ${formatFullDateTime(latest)})`;
   }, [orders]);
 
+  // Data Tabel Bawah (By Default Tampilkan SEMUA DATA, hanya terfilter jika ada filter aktif atau sel pivot diklik)
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
       if (!o) return false;
@@ -296,14 +298,19 @@ export default function OrdersPage() {
       const matchStat = selectedStatus === 'ALL' || processState === selectedStatus;
 
       const subGroup = (o.funneling_subgroup || '').trim().toUpperCase();
-      const matchSubgroup =
-        selectedPivotSubgroups.length === 0 || selectedPivotSubgroups.includes(subGroup);
+      let matchSubgroup = true;
+      if (Array.isArray(activeSubgroupScope)) {
+        matchSubgroup = activeSubgroupScope.includes(subGroup);
+      } else if (activeSubgroupScope !== 'ALL') {
+        matchSubgroup = subGroup === activeSubgroupScope;
+      }
       
       const matchFallout = selectedFallout === 'ALL' || o.fallout_reason_clean === selectedFallout;
       return matchMonth && matchWok && matchSto && matchDur && matchStat && matchSubgroup && matchFallout;
     });
-  }, [orders, selectedMonth, selectedWok, selectedSto, selectedDuration, selectedStatus, selectedPivotSubgroups, selectedFallout]);
+  }, [orders, selectedMonth, selectedWok, selectedSto, selectedDuration, selectedStatus, activeSubgroupScope, selectedFallout]);
 
+  // Data Basis Khusus Pivot 1 & Pivot 2 (Mengikuti Multiselect Subgroups di Card Atas)
   const pivotBaseOrders = useMemo(() => {
     return orders.filter((o) => {
       if (!o) return false;
@@ -326,6 +333,7 @@ export default function OrdersPage() {
     });
   }, [orders, selectedMonth, selectedWok, selectedSto, selectedPivotSubgroups]);
 
+  // Pivot 1: WOK & STO vs Duration
   const pivotDuration = useMemo(() => {
     const durColumnsSet = new Set();
     const map = {};
@@ -370,6 +378,7 @@ export default function OrdersPage() {
     return { sortedWoks, columns, grandColTotals, totalAll };
   }, [pivotBaseOrders, pivot1Sort]);
 
+  // Pivot 2: WOK & STO vs Process State
   const pivotStatus = useMemo(() => {
     const statusSet = new Set();
     const map = {};
@@ -414,6 +423,7 @@ export default function OrdersPage() {
     return { sortedWoks, columns, grandColTotals, totalAll };
   }, [pivotBaseOrders, pivot2Sort]);
 
+  // Pivot 3: Duration vs Fallout (Mengikuti Multiselect Status pada Section Fallout)
   const pivotFallout = useMemo(() => {
     const tree = {};
     let totalAll = 0;
@@ -483,6 +493,7 @@ export default function OrdersPage() {
     return { chartData: list, dividerIndices: dividers };
   }, [pivotFallout, selectedDuration]);
 
+  // Sorting Handlers
   const handlePivot1Sort = (key) => {
     let direction = 'desc';
     if (pivot1Sort.key === key && pivot1Sort.direction === 'desc') direction = 'asc';
@@ -542,7 +553,6 @@ export default function OrdersPage() {
     return sortedBottomTableData.slice(start, start + rowsPerPage);
   }, [sortedBottomTableData, currentPage]);
 
-  // Fungsi Download Data Terfilter
   const handleExportFilteredCSV = () => {
     if (filteredOrders.length === 0) return alert('Tidak ada data terfilter untuk di-download.');
     const csv = Papa.unparse(filteredOrders);
@@ -556,7 +566,6 @@ export default function OrdersPage() {
     document.body.removeChild(link);
   };
 
-  // Fungsi Download Semua Data (All Raw Orders)
   const handleExportAllCSV = () => {
     if (orders.length === 0) return alert('Database order kosong.');
     const csv = Papa.unparse(orders);
@@ -577,9 +586,19 @@ export default function OrdersPage() {
     setSelectedDuration('ALL');
     setSelectedStatus('ALL');
     setSelectedFallout('ALL');
+    setActiveSubgroupScope('ALL');
     setSelectedPivotSubgroups(['PROVISION_ISSUED', 'INPROGRESS_PC']);
     setSelectedFalloutStates(['FALLOUT']);
   };
+
+  const isAnyFilterActive =
+    selectedMonth !== 'ALL' ||
+    selectedWok !== 'ALL' ||
+    selectedSto !== 'ALL' ||
+    selectedDuration !== 'ALL' ||
+    selectedStatus !== 'ALL' ||
+    selectedFallout !== 'ALL' ||
+    activeSubgroupScope !== 'ALL';
 
   return (
     <Sidebar>
@@ -679,13 +698,13 @@ export default function OrdersPage() {
             </select>
           </div>
 
-          {(selectedMonth !== 'ALL' || selectedWok !== 'ALL' || selectedSto !== 'ALL' || selectedDuration !== 'ALL' || selectedStatus !== 'ALL' || selectedFallout !== 'ALL') && (
+          {isAnyFilterActive && (
             <button
               type="button"
               onClick={resetFilters}
               className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded font-bold text-[10px] shadow cursor-pointer"
             >
-              ✕ Reset Semua Filter
+              ✕ Reset Filter (Tampilkan Semua)
             </button>
           )}
         </div>
@@ -739,6 +758,7 @@ export default function OrdersPage() {
                           c === '3 BULAN' ? 'bg-[#e9d5ff] text-purple-950 font-black' : 'bg-slate-700'
                         }`}
                         onClick={() => {
+                          setActiveSubgroupScope(selectedPivotSubgroups);
                           setSelectedStatus('ALL');
                           setSelectedFallout('ALL');
                           setSelectedDuration(c);
@@ -781,6 +801,7 @@ export default function OrdersPage() {
                             <td
                               className="p-1.5 border border-slate-300 text-left pl-2 cursor-pointer hover:text-blue-700"
                               onClick={() => {
+                                setActiveSubgroupScope(selectedPivotSubgroups);
                                 setSelectedStatus('ALL');
                                 setSelectedFallout('ALL');
                                 setSelectedWok((prev) => (prev === wok.name ? 'ALL' : wok.name));
@@ -793,6 +814,7 @@ export default function OrdersPage() {
                                 key={c}
                                 className="p-1.5 border border-slate-300 cursor-pointer hover:bg-emerald-100 font-semibold"
                                 onClick={() => {
+                                  setActiveSubgroupScope(selectedPivotSubgroups);
                                   setSelectedStatus('ALL');
                                   setSelectedFallout('ALL');
                                   setSelectedWok(wok.name);
@@ -806,6 +828,7 @@ export default function OrdersPage() {
                             <td
                               className="p-1.5 border border-slate-300 font-extrabold bg-slate-200 cursor-pointer hover:bg-yellow-100"
                               onClick={() => {
+                                setActiveSubgroupScope(selectedPivotSubgroups);
                                 setSelectedStatus('ALL');
                                 setSelectedFallout('ALL');
                                 setSelectedWok(wok.name);
@@ -825,6 +848,7 @@ export default function OrdersPage() {
                               <td
                                 className="p-1 border border-slate-200 text-left pl-6 font-semibold text-slate-700 cursor-pointer hover:text-blue-700"
                                 onClick={() => {
+                                  setActiveSubgroupScope(selectedPivotSubgroups);
                                   setSelectedStatus('ALL');
                                   setSelectedFallout('ALL');
                                   setSelectedSto((prev) => (prev === sto.name ? 'ALL' : sto.name));
@@ -837,6 +861,7 @@ export default function OrdersPage() {
                                   key={c}
                                   className="p-1 border border-slate-200 text-slate-600 cursor-pointer hover:bg-blue-100 font-semibold"
                                   onClick={() => {
+                                    setActiveSubgroupScope(selectedPivotSubgroups);
                                     setSelectedStatus('ALL');
                                     setSelectedFallout('ALL');
                                     setSelectedSto(sto.name);
@@ -850,6 +875,7 @@ export default function OrdersPage() {
                               <td
                                 className="p-1 border border-slate-200 font-bold text-slate-800 bg-slate-50 cursor-pointer hover:bg-yellow-100"
                                 onClick={() => {
+                                  setActiveSubgroupScope(selectedPivotSubgroups);
                                   setSelectedStatus('ALL');
                                   setSelectedFallout('ALL');
                                   setSelectedSto(sto.name);
@@ -870,6 +896,7 @@ export default function OrdersPage() {
                     <td
                       className="p-2 border border-slate-700 text-left pl-3 uppercase hover:text-yellow-300"
                       onClick={() => {
+                        setActiveSubgroupScope(selectedPivotSubgroups);
                         setSelectedStatus('ALL');
                         setSelectedFallout('ALL');
                         setSelectedWok('ALL');
@@ -884,6 +911,7 @@ export default function OrdersPage() {
                         key={c}
                         className="p-2 border border-slate-700 hover:bg-slate-800"
                         onClick={() => {
+                          setActiveSubgroupScope(selectedPivotSubgroups);
                           setSelectedStatus('ALL');
                           setSelectedFallout('ALL');
                           setSelectedDuration(c);
@@ -896,6 +924,7 @@ export default function OrdersPage() {
                     <td
                       className="p-2 border border-slate-700 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
                       onClick={() => {
+                        setActiveSubgroupScope(selectedPivotSubgroups);
                         setSelectedStatus('ALL');
                         setSelectedFallout('ALL');
                         setSelectedWok('ALL');
@@ -936,6 +965,7 @@ export default function OrdersPage() {
                         className="p-1.5 border border-slate-600 font-bold bg-[#e0f2fe] text-blue-950 cursor-pointer hover:opacity-80 min-w-[100px] max-w-[140px] whitespace-normal break-words leading-tight"
                         title={st}
                         onClick={() => {
+                          setActiveSubgroupScope(selectedPivotSubgroups);
                           setSelectedFallout('ALL');
                           setSelectedStatus(st);
                         }}
@@ -976,6 +1006,7 @@ export default function OrdersPage() {
                             <td
                               className="p-1.5 border border-slate-300 text-left pl-2 cursor-pointer hover:text-blue-700"
                               onClick={() => {
+                                setActiveSubgroupScope(selectedPivotSubgroups);
                                 setSelectedFallout('ALL');
                                 setSelectedWok((prev) => (prev === wok.name ? 'ALL' : wok.name));
                               }}
@@ -987,6 +1018,7 @@ export default function OrdersPage() {
                                 key={st}
                                 className="p-1.5 border border-slate-300 cursor-pointer hover:bg-blue-100 font-semibold"
                                 onClick={() => {
+                                  setActiveSubgroupScope(selectedPivotSubgroups);
                                   setSelectedFallout('ALL');
                                   setSelectedWok(wok.name);
                                   setSelectedStatus(st);
@@ -999,6 +1031,7 @@ export default function OrdersPage() {
                             <td
                               className="p-1.5 border border-slate-300 font-extrabold bg-slate-200 cursor-pointer hover:bg-yellow-100"
                               onClick={() => {
+                                setActiveSubgroupScope(selectedPivotSubgroups);
                                 setSelectedFallout('ALL');
                                 setSelectedWok(wok.name);
                                 setSelectedStatus('ALL');
@@ -1017,6 +1050,7 @@ export default function OrdersPage() {
                               <td
                                 className="p-1 border border-slate-200 text-left pl-6 font-semibold text-slate-700 cursor-pointer hover:text-blue-700"
                                 onClick={() => {
+                                  setActiveSubgroupScope(selectedPivotSubgroups);
                                   setSelectedFallout('ALL');
                                   setSelectedSto((prev) => (prev === sto.name ? 'ALL' : sto.name));
                                 }}
@@ -1028,6 +1062,7 @@ export default function OrdersPage() {
                                   key={st}
                                   className="p-1 border border-slate-200 text-slate-600 cursor-pointer hover:bg-blue-100 font-semibold"
                                   onClick={() => {
+                                    setActiveSubgroupScope(selectedPivotSubgroups);
                                     setSelectedFallout('ALL');
                                     setSelectedSto(sto.name);
                                     setSelectedStatus(st);
@@ -1040,6 +1075,7 @@ export default function OrdersPage() {
                               <td
                                 className="p-1 border border-slate-200 font-bold text-slate-800 bg-slate-50 cursor-pointer hover:bg-yellow-100"
                                 onClick={() => {
+                                  setActiveSubgroupScope(selectedPivotSubgroups);
                                   setSelectedFallout('ALL');
                                   setSelectedSto(sto.name);
                                   setSelectedStatus('ALL');
@@ -1059,6 +1095,7 @@ export default function OrdersPage() {
                     <td
                       className="p-2 border border-slate-700 text-left pl-3 uppercase hover:text-yellow-300"
                       onClick={() => {
+                        setActiveSubgroupScope(selectedPivotSubgroups);
                         setSelectedFallout('ALL');
                         setSelectedWok('ALL');
                         setSelectedSto('ALL');
@@ -1072,6 +1109,7 @@ export default function OrdersPage() {
                         key={st}
                         className="p-2 border border-slate-700 hover:bg-slate-800"
                         onClick={() => {
+                          setActiveSubgroupScope(selectedPivotSubgroups);
                           setSelectedFallout('ALL');
                           setSelectedStatus(st);
                         }}
@@ -1083,6 +1121,7 @@ export default function OrdersPage() {
                     <td
                       className="p-2 border border-slate-700 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
                       onClick={() => {
+                        setActiveSubgroupScope(selectedPivotSubgroups);
                         setSelectedFallout('ALL');
                         setSelectedWok('ALL');
                         setSelectedSto('ALL');
@@ -1102,7 +1141,7 @@ export default function OrdersPage() {
         {/* ================= SECTION TENGAH: PIVOT FALLOUT & DURATION FALLOUT CHART ================= */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4">
           
-          {/* PIVOT 3: FALLOUT (JUDUL GANTI JADI "Fallout") */}
+          {/* PIVOT 3: FALLOUT */}
           <div className="xl:col-span-1 bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase flex-wrap gap-1">
               <span>Fallout</span>
@@ -1163,6 +1202,7 @@ export default function OrdersPage() {
                             dur.name === '30 HARI' ? 'bg-blue-100 hover:bg-blue-200' : 'bg-purple-100 hover:bg-purple-200'
                           }`}
                           onClick={() => {
+                            setActiveSubgroupScope('ALL');
                             if (selectedFalloutStates.length === 1) {
                               setSelectedStatus(selectedFalloutStates[0]);
                             }
@@ -1184,6 +1224,7 @@ export default function OrdersPage() {
                             key={reason}
                             className="border-b border-slate-200 hover:bg-red-50/70 cursor-pointer transition bg-white"
                             onClick={() => {
+                              setActiveSubgroupScope('ALL');
                               if (selectedFalloutStates.length === 1) {
                                 setSelectedStatus(selectedFalloutStates[0]);
                               }
@@ -1208,6 +1249,7 @@ export default function OrdersPage() {
                     <td
                       className="p-2 border border-slate-700 uppercase hover:text-yellow-300"
                       onClick={() => {
+                        setActiveSubgroupScope('ALL');
                         if (selectedFalloutStates.length === 1) {
                           setSelectedStatus(selectedFalloutStates[0]);
                         }
@@ -1221,6 +1263,7 @@ export default function OrdersPage() {
                     <td
                       className="p-2 border border-slate-700 text-right pr-4 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
                       onClick={() => {
+                        setActiveSubgroupScope('ALL');
                         if (selectedFalloutStates.length === 1) {
                           setSelectedStatus(selectedFalloutStates[0]);
                         }
@@ -1261,6 +1304,7 @@ export default function OrdersPage() {
                     onClick={(e) => {
                       if (e && e.activePayload && e.activePayload.length) {
                         const payload = e.activePayload[0].payload;
+                        setActiveSubgroupScope('ALL');
                         if (selectedFalloutStates.length === 1) {
                           setSelectedStatus(selectedFalloutStates[0]);
                         }
@@ -1359,7 +1403,7 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        {/* ================= BOTTOM RAW DATA TABLE DENGAN DUA TOMBOL DOWNLOAD ================= */}
+        {/* ================= BOTTOM RAW DATA TABLE DENGAN OPSI DEFAULT ALL DATA & SYNC PADA KLIK ================= */}
         <div className="bg-white border border-slate-300 shadow-xs rounded overflow-hidden mt-4">
           <div className="bg-gradient-to-r from-[#0f172a] via-[#1e293b] to-[#334155] text-white p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <div>
@@ -1495,7 +1539,11 @@ export default function OrdersPage() {
                             {pState}
                           </span>
                         </td>
-                        <td className="p-1.5 border border-slate-200 font-bold text-slate-700">
+                        <td
+                          className="p-1.5 border border-slate-200 font-bold text-slate-700 cursor-pointer hover:text-blue-700 hover:underline"
+                          onClick={() => setActiveSubgroupScope((p) => (p === row.funneling_subgroup ? 'ALL' : row.funneling_subgroup))}
+                          title="Klik untuk filter Subgroup ini"
+                        >
                           {row.funneling_subgroup || '-'}
                         </td>
                         <td className="p-1.5 border border-slate-200 font-semibold">{row.name || '-'}</td>
@@ -1526,6 +1574,7 @@ export default function OrdersPage() {
                         <td
                           className="p-1.5 border border-slate-200 text-red-600 font-bold cursor-pointer hover:underline"
                           onClick={() => {
+                            setActiveSubgroupScope('ALL');
                             if (selectedFalloutStates.length === 1) {
                               setSelectedStatus(selectedFalloutStates[0]);
                             }
