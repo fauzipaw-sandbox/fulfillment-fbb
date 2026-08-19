@@ -34,7 +34,7 @@ const createTriangleIcon = (color = '#e11d48') => {
     `,
     iconSize: [15, 15],
     iconAnchor: [7.5, 7.5],
-    popupAnchor: [0, -10],
+    tooltipAnchor: [0, -8],
   });
 };
 
@@ -480,7 +480,7 @@ export default function Map({
           );
         })}
 
-        {/* ================= 2. MARKER SEGITIGA ORDER (LEAFLET POPUP ATTACHED ON PIN) ================= */}
+        {/* ================= 2. MARKER SEGITIGA ORDER (HOVER TOOLTIP DENGAN REMARKS FULL TANPA SCROLL) ================= */}
         {visibleOrders.map((fo, fIdx) => {
           if (!fo.lat || !fo.lon) return null;
           const nearestOdp = findNearestOdp(fo.lat, fo.lon);
@@ -498,21 +498,17 @@ export default function Map({
               key={`order-${fo.order_id}-${fIdx}`}
               position={[fo.lat, fo.lon]}
               icon={icon}
-              eventHandlers={{
-                mouseover: (e) => {
-                  e.target.openPopup();
-                },
-              }}
             >
-              <Popup
-                autoPan={true}
-                className="custom-order-leaflet-popup"
-                minWidth={240}
-                maxWidth={280}
+              <LeafletTooltip
+                direction="top"
+                offset={[0, -2]}
+                opacity={1}
+                interactive={false}
+                className="compact-custom-tooltip"
               >
-                <div className="bg-white p-2.5 rounded-lg text-slate-800 space-y-1.5 font-sans">
+                <div className="text-[10px] font-sans bg-white p-2.5 rounded-lg shadow-2xl text-slate-800 min-w-[220px] max-w-[290px] space-y-1.5 border border-slate-200">
                   {/* Header Badge */}
-                  <div className="border-b border-slate-200 pb-1 flex items-center justify-between gap-1">
+                  <div className="border-b border-slate-200 pb-1 flex items-center justify-between gap-1.5">
                     <span className="font-black text-[11px] truncate flex items-center gap-1" style={{ color: markerColor }}>
                       <span>🔺</span> {pState}
                     </span>
@@ -564,7 +560,7 @@ export default function Map({
                     )}
                   </div>
 
-                  {/* Remarks / Fallout Reason Box (Scrollable & Text Selectable) */}
+                  {/* Remarks / Fallout Reason Box (Tampil Full Tanpa Scroll) */}
                   {(fo.fallout_reason || fo.fallout_reason_clean) && (
                     <div className="bg-red-50 p-1.5 rounded border border-red-200 text-[9px] text-red-900 space-y-0.5">
                       <span className="text-red-700 font-black block text-[8px] uppercase tracking-wide">
@@ -574,7 +570,7 @@ export default function Map({
                         {fo.fallout_reason_clean || 'LAINNYA'}
                       </p>
                       {fo.fallout_reason && (
-                        <div className="text-[8.5px] text-slate-700 leading-snug break-words max-h-24 overflow-y-auto pr-1 pt-1 border-t border-red-200 font-mono bg-white p-1 rounded">
+                        <div className="text-[8.5px] text-slate-700 leading-snug break-words pt-1 border-t border-red-200 font-mono bg-white p-1 rounded">
                           {fo.fallout_reason}
                         </div>
                       )}
@@ -617,7 +613,7 @@ export default function Map({
                     <span>{fo.lat?.toFixed(4)}, {fo.lon?.toFixed(4)}</span>
                   </div>
                 </div>
-              </Popup>
+              </LeafletTooltip>
             </Marker>
           );
         })}
