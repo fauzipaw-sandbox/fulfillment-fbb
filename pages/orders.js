@@ -56,6 +56,30 @@ function formatFullDateTime(d) {
   return `${day} ${month} ${year} ${hours}:${mins}`;
 }
 
+const FALLOUT_KEYWORDS = [
+  'ODP BELUM GO LIVE', 'ODP FULL', 'ODP JAUH', 'ODP LOSS', 'ODP RETI', 'ODP RUSAK', 'TIDAK ADA ODP',
+  'KENDALA JALUR/RUTE TARIKAN', 'KENDALA IKR/IKG', 'KENDALA IZIN', 'KENDALA MATERIAL/NTE', 'KENDALA PERANGKAT',
+  'ALAMAT TIDAK DITEMUKAN', 'INDIKASI CABUT PASANG', 'PELANGGAN MASIH RAGU', 'PELANGGAN TIDAK MERASA PASANG',
+  'RUMAH KOSONG', 'CROSS JALAN', 'DOUBLE INPUT', 'GANTI PAKET', 'LIMITASI ONU', 'TIANG', 'BATAL',
+  'PENDING', 'SYSTEM', 'ACTIVATION', 'DATA', 'RNA', 'ODP', 'LAINNYA',
+];
+
+function normalizeFalloutReason(rawVal) {
+  if (!rawVal || String(rawVal).trim() === '' || String(rawVal).toLowerCase() === 'nan' || String(rawVal).toLowerCase() === 'null') {
+    return null;
+  }
+  const cleanStr = String(rawVal).toUpperCase().replace(/_/g, ' ');
+  for (const kw of FALLOUT_KEYWORDS) {
+    const kwClean = kw.toUpperCase().replace(/_/g, ' ');
+    const escaped = kwClean.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const regex = new RegExp(`(?<![A-Z0-9])${escaped}(?![A-Z0-9])`, 'i');
+    if (regex.test(cleanStr)) {
+      return kwClean;
+    }
+  }
+  return 'LAINNYA';
+}
+
 export default function OrdersPage() {
   const dataContext = useData() || {};
   const orders = dataContext.ordersData || [];
@@ -66,13 +90,14 @@ export default function OrdersPage() {
   const [showUploader, setShowUploader] = useState(false);
 
   // Filter States
+  const [selectedMonth, setSelectedMonth] = useState('ALL');
   const [selectedWok, setSelectedWok] = useState('ALL');
   const [selectedSto, setSelectedSto] = useState('ALL');
   const [selectedDuration, setSelectedDuration] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [selectedFallout, setSelectedFallout] = useState('ALL');
 
-  // Pivot Sorting States (Default Sort by Grand Total / Count Descending)
+  // Pivot Sorting States
   const [pivot1Sort, setPivot1Sort] = useState({ key: 'total', direction: 'desc' });
   const [pivot2Sort, setPivot2Sort] = useState({ key: 'total', direction: 'desc' });
   const [pivotFalloutSort, setPivotFalloutSort] = useState({ key: 'count', direction: 'desc' });
@@ -82,6 +107,24 @@ export default function OrdersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [sortConfig, setSortConfig] = useState({ key: 'order_ts', direction: 'desc' });
   const rowsPerPage = 50;
+
+  // List Bulan Dinamis Berdasarkan order_ts
+  const availableMonths = useMemo(() => {
+    const set = new Set();
+    orders.forEach((o) => {
+      if (o && o.order_ts) {
+        const d = new Date(o.order_ts);
+        if (!isNaN(d.getTime())) {
+          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          const label = `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+          set.add(JSON.stringify({ key, label }));
+        }
+      }
+    });
+    return Array.from(set)
+      .map((str) => JSON.parse(str))
+      .sort((a, b) => b.key.localeCompare(a.key));
+  }, [orders]);
 
   // Header Cut-Off Date Range
   const headerCutoffText = useMemo(() => {
@@ -97,18 +140,39 @@ export default function OrdersPage() {
     return `*Cut Off Data (${formatFullDateTime(earliest)} - ${formatFullDateTime(latest)})`;
   }, [orders]);
 
-  // Filter Sinkron
+  // Filter Sinkron Seluruh Komponen
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
       if (!o) return false;
+
+      // Filter Bulan
+      let matchMonth = true;
+      if (selectedMonth !== 'ALL') {
+        if (!o.order_ts) {
+          matchMonth = false;
+        } else {
+          const d = new Date(o.order_ts);
+          if (isNaN(d.getTime())) {
+            matchMonth = false;
+          } else {
+            const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            matchMonth = mKey === selectedMonth;
+          }
+        }
+      }
+
       const matchWok = selectedWok === 'ALL' || o.wok === selectedWok;
       const matchSto = selectedSto === 'ALL' || o.sto_co === selectedSto;
       const matchDur = selectedDuration === 'ALL' || o.order_duration_cat === selectedDuration;
-      const matchStat = selectedStatus === 'ALL' || o.order_status_clean === selectedStatus;
+      
+      // Status sekarang murni dari process_state
+      const processState = (o.process_state || 'UNKNOWN').trim().toUpperCase();
+      const matchStat = selectedStatus === 'ALL' || processState === selectedStatus;
+      
       const matchFallout = selectedFallout === 'ALL' || o.fallout_reason_clean === selectedFallout;
-      return matchWok && matchSto && matchDur && matchStat && matchFallout;
+      return matchMonth && matchWok && matchSto && matchDur && matchStat && matchFallout;
     });
-  }, [orders, selectedWok, selectedSto, selectedDuration, selectedStatus, selectedFallout]);
+  }, [orders, selectedMonth, selectedWok, selectedSto, selectedDuration, selectedStatus, selectedFallout]);
 
   // Pivot 1: WOK & STO vs Duration
   const pivotDuration = useMemo(() => {
@@ -155,7 +219,7 @@ export default function OrdersPage() {
     return { sortedWoks, columns, grandColTotals, totalAll };
   }, [filteredOrders, pivot1Sort]);
 
-  // Pivot 2: WOK & STO vs Status
+  // Pivot 2: WOK & STO vs process_state
   const pivotStatus = useMemo(() => {
     const statusSet = new Set();
     const map = {};
@@ -163,7 +227,7 @@ export default function OrdersPage() {
     filteredOrders.forEach((o) => {
       const wok = o.wok || 'PALANGKARAYA';
       const sto = o.sto_co || 'UNKNOWN';
-      const st = o.order_status_clean || 'UNKNOWN';
+      const st = (o.process_state || 'UNKNOWN').trim().toUpperCase();
       statusSet.add(st);
 
       if (!map[wok]) map[wok] = { name: wok, total: 0, stos: {}, colCounts: {} };
@@ -200,15 +264,20 @@ export default function OrdersPage() {
     return { sortedWoks, columns, grandColTotals, totalAll };
   }, [filteredOrders, pivot2Sort]);
 
-  // Pivot 3: Duration vs Fallout
+  // Pivot 3: Duration vs Fallout (HANYA UNTUK PROCESS_STATE === 'FALLOUT')
   const pivotFallout = useMemo(() => {
     const tree = {};
     let totalAll = 0;
 
-    filteredOrders.forEach((o) => {
-      if (!o.fallout_reason_clean) return;
+    // Filter khusus process_state === 'FALLOUT'
+    const falloutOnlyOrders = filteredOrders.filter((o) => {
+      const pState = (o.process_state || '').trim().toUpperCase();
+      return pState === 'FALLOUT';
+    });
+
+    falloutOnlyOrders.forEach((o) => {
       const dur = o.order_duration_cat || 'LAINNYA';
-      const r = o.fallout_reason_clean;
+      const r = o.fallout_reason_clean || 'LAINNYA';
 
       if (!tree[dur]) tree[dur] = { name: dur, total: 0, reasons: {} };
       tree[dur].total++;
@@ -219,7 +288,7 @@ export default function OrdersPage() {
     return { tree, totalAll };
   }, [filteredOrders]);
 
-  // Chart Data (Duration Fallout: Ascending within Group)
+  // Chart Data (Duration Fallout: Khusus process_state === 'FALLOUT', Urut Ascending per Kelompok)
   const { chartData, dividerIndices } = useMemo(() => {
     const list = [];
     const dividers = [];
@@ -250,7 +319,7 @@ export default function OrdersPage() {
     return { chartData: list, dividerIndices: dividers };
   }, [pivotFallout]);
 
-  // Sorting Handlers
+  // Sorting Handlers Pivot
   const handlePivot1Sort = (key) => {
     let direction = 'desc';
     if (pivot1Sort.key === key && pivot1Sort.direction === 'desc') direction = 'asc';
@@ -269,6 +338,7 @@ export default function OrdersPage() {
     setPivotFalloutSort({ key, direction });
   };
 
+  // Sorting Handler Bottom Table
   const requestSort = (key) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
@@ -285,6 +355,7 @@ export default function OrdersPage() {
           (o.name && o.name.toLowerCase().includes(s)) ||
           (o.odp_name && o.odp_name.toLowerCase().includes(s)) ||
           (o.sto_co && o.sto_co.toLowerCase().includes(s)) ||
+          (o.process_state && o.process_state.toLowerCase().includes(s)) ||
           (o.fallout_reason_clean && o.fallout_reason_clean.toLowerCase().includes(s))
       );
     }
@@ -322,6 +393,7 @@ export default function OrdersPage() {
   };
 
   const resetFilters = () => {
+    setSelectedMonth('ALL');
     setSelectedWok('ALL');
     setSelectedSto('ALL');
     setSelectedDuration('ALL');
@@ -365,11 +437,26 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        {/* Filter Bar */}
+        {/* Filter Bar Lengkap dengan Filter Bulan */}
         <div className="bg-white p-2.5 rounded shadow-xs border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-bold text-slate-600 text-[11px]">Filter:</span>
 
+            {/* Filter Bulan */}
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="p-1 border rounded font-semibold text-slate-700 bg-slate-50 text-[11px]"
+            >
+              <option value="ALL">Semua Bulan</option>
+              {availableMonths.map((m) => (
+                <option key={m.key} value={m.key}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+
+            {/* Filter WOK */}
             <select
               value={selectedWok}
               onChange={(e) => setSelectedWok(e.target.value)}
@@ -380,6 +467,7 @@ export default function OrdersPage() {
               <option value="PALANGKARAYA">PALANGKARAYA</option>
             </select>
 
+            {/* Filter STO */}
             <select
               value={selectedSto}
               onChange={(e) => setSelectedSto(e.target.value)}
@@ -391,6 +479,7 @@ export default function OrdersPage() {
               ))}
             </select>
 
+            {/* Filter Durasi */}
             <select
               value={selectedDuration}
               onChange={(e) => setSelectedDuration(e.target.value)}
@@ -402,19 +491,20 @@ export default function OrdersPage() {
               ))}
             </select>
 
+            {/* Filter Status (process_state) */}
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
               className="p-1 border rounded font-semibold text-slate-700 bg-slate-50 text-[11px]"
             >
-              <option value="ALL">Semua Status</option>
+              <option value="ALL">Semua Status (Process State)</option>
               {pivotStatus.columns.map((st) => (
                 <option key={st} value={st}>{st}</option>
               ))}
             </select>
           </div>
 
-          {(selectedWok !== 'ALL' || selectedSto !== 'ALL' || selectedDuration !== 'ALL' || selectedStatus !== 'ALL' || selectedFallout !== 'ALL') && (
+          {(selectedMonth !== 'ALL' || selectedWok !== 'ALL' || selectedSto !== 'ALL' || selectedDuration !== 'ALL' || selectedStatus !== 'ALL' || selectedFallout !== 'ALL') && (
             <button
               type="button"
               onClick={resetFilters}
@@ -434,7 +524,7 @@ export default function OrdersPage() {
           </div>
         )}
 
-        {/* PIVOT SECTION */}
+        {/* ================= SECTION ATAS: 2 PIVOT TABLE ================= */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
           
           {/* PIVOT 1: DURATION */}
@@ -594,10 +684,10 @@ export default function OrdersPage() {
             </div>
           </div>
 
-          {/* PIVOT 2: STATUS (DENGAN WRAP KOLOM HEADER RAPI) */}
+          {/* PIVOT 2: PROCESS_STATE (DENGAN WRAP HEADER RAPI) */}
           <div className="bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase">
-              <span>Count of order_id &bull; Order Status</span>
+              <span>Count of order_id &bull; Process State</span>
               <span className="text-[10px] text-blue-400 font-semibold">(Klik header untuk sort / sel untuk filter)</span>
             </div>
             <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
@@ -747,14 +837,14 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        {/* SECTION FALLOUT & CHART */}
+        {/* ================= SECTION TENGAH: PIVOT FALLOUT & DURATION FALLOUT CHART (KHUSUS PROCESS_STATE === 'FALLOUT') ================= */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4">
           
           {/* PIVOT 3: FALLOUT (SORTABLE & DEFAULT DESCENDING BY COUNT) */}
           <div className="xl:col-span-1 bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase">
               <span>Row Labels &bull; Fallout Reason</span>
-              <span className="text-[10px] text-yellow-300">(Klik header untuk sort)</span>
+              <span className="text-[10px] text-yellow-300">[Status: FALLOUT]</span>
             </div>
             <div className="overflow-x-auto max-h-[340px] overflow-y-auto">
               <table className="w-full text-left border-collapse text-[10.5px]">
@@ -778,7 +868,6 @@ export default function OrdersPage() {
                   {sortDurationColumns(Object.keys(pivotFallout.tree)).map((durKey, durIdx) => {
                     const dur = pivotFallout.tree[durKey];
                     
-                    // Sort items inside duration category by key (default count desc)
                     const sortedReasons = Object.entries(dur.reasons).sort((a, b) => {
                       if (pivotFalloutSort.key === 'reason') {
                         return pivotFalloutSort.direction === 'asc'
@@ -855,12 +944,15 @@ export default function OrdersPage() {
             </div>
           </div>
 
-          {/* DIAGRAM BATANG DURATION FALLOUT (CLEAN HEADER) */}
+          {/* DIAGRAM BATANG DURATION FALLOUT (KHUSUS STATUS FALLOUT) */}
           <div className="xl:col-span-2 bg-white border border-slate-300 shadow-xs rounded p-3">
             <div className="flex items-center justify-between border-b pb-1.5 mb-2">
               <h4 className="font-extrabold text-slate-800 text-xs sm:text-sm tracking-wide uppercase">
                 DURATION FALLOUT
               </h4>
+              <span className="text-[10px] text-red-600 font-bold bg-red-50 px-2 py-0.5 rounded border border-red-200">
+                Filter: process_state = FALLOUT
+              </span>
             </div>
 
             <div className="h-72 w-full">
@@ -1013,8 +1105,8 @@ export default function OrdersPage() {
                   <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('order_id')}>
                     Order ID {sortConfig.key === 'order_id' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('order_status_clean')}>
-                    Order Status {sortConfig.key === 'order_status_clean' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                  <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('process_state')}>
+                    Process State {sortConfig.key === 'process_state' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
                   <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('name')}>
                     Nama Pelanggan {sortConfig.key === 'name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
@@ -1067,6 +1159,8 @@ export default function OrdersPage() {
                 ) : (
                   paginatedData.map((row, idx) => {
                     const rowNumber = (currentPage - 1) * rowsPerPage + idx + 1;
+                    const pState = (row.process_state || 'UNKNOWN').trim().toUpperCase();
+
                     return (
                       <tr
                         key={`${row.order_id}-${idx}`}
@@ -1076,10 +1170,18 @@ export default function OrdersPage() {
                         <td className="p-1.5 border border-slate-200 font-black text-purple-900">{row.order_id}</td>
                         <td
                           className="p-1.5 border border-slate-200 font-bold text-slate-800 cursor-pointer hover:text-blue-700 hover:underline"
-                          onClick={() => setSelectedStatus((p) => (p === row.order_status_clean ? 'ALL' : row.order_status_clean))}
-                          title="Klik untuk filter status ini"
+                          onClick={() => setSelectedStatus((p) => (p === pState ? 'ALL' : pState))}
+                          title="Klik untuk filter Process State ini"
                         >
-                          {row.order_status_clean}
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
+                              pState === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' :
+                              pState === 'FALLOUT' ? 'bg-red-100 text-red-800' :
+                              pState.includes('CANCEL') ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            {pState}
+                          </span>
                         </td>
                         <td className="p-1.5 border border-slate-200 font-semibold">{row.name || '-'}</td>
                         <td className="p-1.5 border border-slate-200 font-mono text-[9px]">{row.no_handphone || row.no_handphone_mask || '-'}</td>
