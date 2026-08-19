@@ -34,7 +34,7 @@ const createTriangleIcon = (color = '#e11d48') => {
     `,
     iconSize: [15, 15],
     iconAnchor: [7.5, 7.5],
-    tooltipAnchor: [0, -8],
+    popupAnchor: [0, -10],
   });
 };
 
@@ -397,7 +397,7 @@ export default function Map({
           />
         ))}
 
-        {/* ================= 1. MARKER LINGKARAN ODP ================= */}
+        {/* ================= 1. MARKER LINGKARAN ODP (TETAP HOVER TOOLTIP) ================= */}
         {data.map((odp, idx) => {
           if (!odp.latitude || !odp.longitude) return null;
           const color = getColor(odp.status_final);
@@ -424,7 +424,6 @@ export default function Map({
                 direction="top"
                 offset={[0, -2]}
                 opacity={1}
-                interactive={true}
                 className="compact-custom-tooltip"
               >
                 <div className="text-[10px] font-sans bg-white p-2 rounded shadow-lg text-slate-800 min-w-[190px] max-w-[240px]">
@@ -468,6 +467,12 @@ export default function Map({
                         {formattedRx}
                       </span>
                     </div>
+                    {odp.sto_desc && (
+                      <div className="col-span-2">
+                        <span className="text-slate-400 block text-[7.5px] uppercase font-bold">DESC</span>
+                        <span className="font-medium text-slate-600 truncate block">{odp.sto_desc}</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="text-[8px] text-slate-400 font-mono pt-1 mt-1 border-t border-slate-100 flex justify-between">
@@ -480,7 +485,7 @@ export default function Map({
           );
         })}
 
-        {/* ================= 2. MARKER SEGITIGA ORDER (HOVER TOOLTIP DENGAN REMARKS FULL TANPA SCROLL) ================= */}
+        {/* ================= 2. MARKER SEGITIGA ORDER (KLIK POPUP DENGAN SELEKSI TEKS & REMARKS LENGKAP) ================= */}
         {visibleOrders.map((fo, fIdx) => {
           if (!fo.lat || !fo.lon) return null;
           const nearestOdp = findNearestOdp(fo.lat, fo.lon);
@@ -499,16 +504,14 @@ export default function Map({
               position={[fo.lat, fo.lon]}
               icon={icon}
             >
-              <LeafletTooltip
-                direction="top"
-                offset={[0, -2]}
-                opacity={1}
-                interactive={false}
-                className="compact-custom-tooltip"
+              <Popup
+                autoPan={true}
+                minWidth={250}
+                maxWidth={320}
               >
-                <div className="text-[10px] font-sans bg-white p-2.5 rounded-lg shadow-2xl text-slate-800 min-w-[220px] max-w-[290px] space-y-1.5 border border-slate-200">
+                <div className="bg-white p-1 text-slate-800 space-y-1.5 font-sans select-text">
                   {/* Header Badge */}
-                  <div className="border-b border-slate-200 pb-1 flex items-center justify-between gap-1.5">
+                  <div className="border-b border-slate-200 pb-1 flex items-center justify-between gap-1">
                     <span className="font-black text-[11px] truncate flex items-center gap-1" style={{ color: markerColor }}>
                       <span>🔺</span> {pState}
                     </span>
@@ -521,7 +524,7 @@ export default function Map({
                   <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[9.5px]">
                     <div className="col-span-2">
                       <span className="text-slate-400 block text-[7.5px] uppercase font-bold">ORDER ID</span>
-                      <span className="font-mono font-black text-purple-900 block truncate" title={fo.order_id}>
+                      <span className="font-mono font-black text-purple-900 block select-all cursor-text" title="Klik untuk seleksi Order ID">
                         {fo.order_id}
                       </span>
                     </div>
@@ -535,7 +538,7 @@ export default function Map({
 
                     <div>
                       <span className="text-slate-400 block text-[7.5px] uppercase font-bold">NO HP</span>
-                      <span className="font-mono text-slate-700 block truncate">
+                      <span className="font-mono text-slate-700 block select-all cursor-text">
                         {fo.no_handphone || fo.no_handphone_mask || '-'}
                       </span>
                     </div>
@@ -553,24 +556,24 @@ export default function Map({
                     {fo.address && fo.address !== '-' && (
                       <div className="col-span-2">
                         <span className="text-slate-400 block text-[7.5px] uppercase font-bold">ALAMAT</span>
-                        <span className="text-slate-600 block text-[8.5px] leading-tight line-clamp-2" title={fo.address}>
+                        <span className="text-slate-600 block text-[8.5px] leading-tight select-text" title={fo.address}>
                           {fo.address}
                         </span>
                       </div>
                     )}
                   </div>
 
-                  {/* Remarks / Fallout Reason Box (Tampil Full Tanpa Scroll) */}
+                  {/* Remarks / Fallout Reason Box Lengkap (Tampil Full & Bisa Copas) */}
                   {(fo.fallout_reason || fo.fallout_reason_clean) && (
                     <div className="bg-red-50 p-1.5 rounded border border-red-200 text-[9px] text-red-900 space-y-0.5">
                       <span className="text-red-700 font-black block text-[8px] uppercase tracking-wide">
                         REMARKS / FALLOUT REASON:
                       </span>
-                      <p className="font-bold text-red-800 leading-tight">
+                      <p className="font-bold text-red-800 leading-tight select-text">
                         {fo.fallout_reason_clean || 'LAINNYA'}
                       </p>
                       {fo.fallout_reason && (
-                        <div className="text-[8.5px] text-slate-700 leading-snug break-words pt-1 border-t border-red-200 font-mono bg-white p-1 rounded">
+                        <div className="text-[8.5px] text-slate-700 leading-snug break-words pt-1 border-t border-red-200 font-mono bg-white p-1 rounded select-all cursor-text">
                           {fo.fallout_reason}
                         </div>
                       )}
@@ -588,7 +591,7 @@ export default function Map({
                             : `${Math.round(nearestOdp.distanceKm * 1000)} m`}
                         </span>
                       </div>
-                      <p className="font-extrabold text-blue-900 truncate" title={nearestOdp.odp_name}>
+                      <p className="font-extrabold text-blue-900 truncate select-text" title={nearestOdp.odp_name}>
                         {nearestOdp.odp_name}
                       </p>
                       <div className="flex items-center justify-between pt-0.5">
@@ -607,13 +610,13 @@ export default function Map({
                     <p className="text-slate-400 italic text-[8.5px]">Tidak ada ODP terdekat terdeteksi</p>
                   )}
 
-                  {/* Coordinate Footer */}
-                  <div className="text-[8px] text-slate-400 font-mono pt-1 border-t border-slate-100 flex justify-between">
+                  {/* Coordinate Footer (Bisa Double Click Copas) */}
+                  <div className="text-[8px] text-slate-400 font-mono pt-1 border-t border-slate-100 flex justify-between select-all cursor-text">
                     <span>Sumber: {fo.coordSource || 'ROW'}</span>
-                    <span>{fo.lat?.toFixed(4)}, {fo.lon?.toFixed(4)}</span>
+                    <span>{fo.lat?.toFixed(5)}, {fo.lon?.toFixed(5)}</span>
                   </div>
                 </div>
-              </LeafletTooltip>
+              </Popup>
             </Marker>
           );
         })}
