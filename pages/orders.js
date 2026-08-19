@@ -165,7 +165,6 @@ export default function OrdersPage() {
       const matchSto = selectedSto === 'ALL' || o.sto_co === selectedSto;
       const matchDur = selectedDuration === 'ALL' || o.order_duration_cat === selectedDuration;
       
-      // Status sekarang murni dari process_state
       const processState = (o.process_state || 'UNKNOWN').trim().toUpperCase();
       const matchStat = selectedStatus === 'ALL' || processState === selectedStatus;
       
@@ -264,18 +263,29 @@ export default function OrdersPage() {
     return { sortedWoks, columns, grandColTotals, totalAll };
   }, [filteredOrders, pivot2Sort]);
 
-  // Pivot 3: Duration vs Fallout (HANYA UNTUK PROCESS_STATE === 'FALLOUT')
+  // Pivot 3: Duration vs Fallout (HANYA UNTUK PROCESS_STATE === 'FALLOUT' ATAU SINKRON DENGAN SELECTED STATUS)
   const pivotFallout = useMemo(() => {
     const tree = {};
     let totalAll = 0;
 
-    // Filter khusus process_state === 'FALLOUT'
-    const falloutOnlyOrders = filteredOrders.filter((o) => {
-      const pState = (o.process_state || '').trim().toUpperCase();
-      return pState === 'FALLOUT';
-    });
+    // Filter khusus basis fallout
+    const baseOrders = (selectedStatus === 'ALL' || selectedStatus === 'FALLOUT')
+      ? orders.filter((o) => {
+          if (!o) return false;
+          let matchMonth = true;
+          if (selectedMonth !== 'ALL' && o.order_ts) {
+            const d = new Date(o.order_ts);
+            const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            matchMonth = mKey === selectedMonth;
+          }
+          const matchWok = selectedWok === 'ALL' || o.wok === selectedWok;
+          const matchSto = selectedSto === 'ALL' || o.sto_co === selectedSto;
+          const pState = (o.process_state || '').trim().toUpperCase();
+          return matchMonth && matchWok && matchSto && pState === 'FALLOUT';
+        })
+      : [];
 
-    falloutOnlyOrders.forEach((o) => {
+    baseOrders.forEach((o) => {
       const dur = o.order_duration_cat || 'LAINNYA';
       const r = o.fallout_reason_clean || 'LAINNYA';
 
@@ -286,13 +296,19 @@ export default function OrdersPage() {
     });
 
     return { tree, totalAll };
-  }, [filteredOrders]);
+  }, [orders, selectedMonth, selectedWok, selectedSto, selectedStatus]);
 
-  // Chart Data (Duration Fallout: Khusus process_state === 'FALLOUT', Urut Ascending per Kelompok)
+  // Chart Data
   const { chartData, dividerIndices } = useMemo(() => {
     const list = [];
     const dividers = [];
-    const sortedDurKeys = sortDurationColumns(Object.keys(pivotFallout.tree));
+    
+    // Jika durasi dipilih spesifik, tampilkan kelompok durasi tersebut saja
+    const durKeys = selectedDuration !== 'ALL' 
+      ? [selectedDuration].filter(k => pivotFallout.tree[k]) 
+      : Object.keys(pivotFallout.tree);
+    
+    const sortedDurKeys = sortDurationColumns(durKeys);
 
     let currentIndex = 0;
     sortedDurKeys.forEach((durKey, idx) => {
@@ -317,9 +333,9 @@ export default function OrdersPage() {
     });
 
     return { chartData: list, dividerIndices: dividers };
-  }, [pivotFallout]);
+  }, [pivotFallout, selectedDuration]);
 
-  // Sorting Handlers Pivot
+  // Sorting Handlers
   const handlePivot1Sort = (key) => {
     let direction = 'desc';
     if (pivot1Sort.key === key && pivot1Sort.direction === 'desc') direction = 'asc';
@@ -338,7 +354,6 @@ export default function OrdersPage() {
     setPivotFalloutSort({ key, direction });
   };
 
-  // Sorting Handler Bottom Table
   const requestSort = (key) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
@@ -437,7 +452,7 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        {/* Filter Bar Lengkap dengan Filter Bulan */}
+        {/* Filter Bar */}
         <div className="bg-white p-2.5 rounded shadow-xs border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-bold text-slate-600 text-[11px]">Filter:</span>
@@ -837,10 +852,10 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        {/* ================= SECTION TENGAH: PIVOT FALLOUT & DURATION FALLOUT CHART (KHUSUS PROCESS_STATE === 'FALLOUT') ================= */}
+        {/* ================= SECTION TENGAH: PIVOT FALLOUT & DURATION FALLOUT CHART ================= */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4">
           
-          {/* PIVOT 3: FALLOUT (SORTABLE & DEFAULT DESCENDING BY COUNT) */}
+          {/* PIVOT 3: FALLOUT (KLIK BARIS OTOMATIS SINKRON STATUS=FALLOUT & DURASI) */}
           <div className="xl:col-span-1 bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase">
               <span>Row Labels &bull; Fallout Reason</span>
@@ -881,6 +896,7 @@ export default function OrdersPage() {
 
                     return (
                       <React.Fragment key={dur.name}>
+                        {/* Klik Durasi Header -> Mengunci status=FALLOUT, durasi=dur.name, fallout=ALL */}
                         <tr
                           className={`font-black text-slate-900 border-b border-slate-300 cursor-pointer ${
                             durIdx > 0 ? 'border-t-2 border-t-slate-400' : ''
@@ -889,7 +905,12 @@ export default function OrdersPage() {
                             dur.name === '7 HARI' ? 'bg-orange-100 hover:bg-orange-200' :
                             dur.name === '30 HARI' ? 'bg-blue-100 hover:bg-blue-200' : 'bg-purple-100 hover:bg-purple-200'
                           }`}
-                          onClick={() => setSelectedDuration((prev) => (prev === dur.name ? 'ALL' : dur.name))}
+                          onClick={() => {
+                            setSelectedStatus('FALLOUT');
+                            setSelectedDuration((prev) => (prev === dur.name ? 'ALL' : dur.name));
+                            setSelectedFallout('ALL');
+                          }}
+                          title="Klik untuk filter semua fallout durasi ini"
                         >
                           <td className="p-1.5 border border-slate-300 pl-2">
                             &oplus; {dur.name}
@@ -899,14 +920,17 @@ export default function OrdersPage() {
                           </td>
                         </tr>
 
+                        {/* Klik Alasan Fallout -> Mengunci status=FALLOUT, durasi=dur.name, fallout=reason */}
                         {sortedReasons.map(([reason, cnt]) => (
                           <tr
                             key={reason}
                             className="border-b border-slate-200 hover:bg-red-50/70 cursor-pointer transition bg-white"
                             onClick={() => {
+                              setSelectedStatus('FALLOUT');
                               setSelectedDuration(dur.name);
                               setSelectedFallout((prev) => (prev === reason ? 'ALL' : reason));
                             }}
+                            title={`Klik untuk filter fallout ${reason} (${dur.name})`}
                           >
                             <td className="p-1 border border-slate-200 pl-6 font-semibold text-slate-700">
                               {reason}
@@ -924,17 +948,22 @@ export default function OrdersPage() {
                     <td
                       className="p-2 border border-slate-700 uppercase hover:text-yellow-300"
                       onClick={() => {
+                        setSelectedStatus('FALLOUT');
                         setSelectedDuration('ALL');
                         setSelectedFallout('ALL');
                       }}
-                      title="Klik untuk reset filter Fallout"
+                      title="Klik untuk filter semua data status FALLOUT"
                     >
                       Grand Total
                     </td>
                     <td
                       className="p-2 border border-slate-700 text-right pr-4 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
-                      onClick={resetFilters}
-                      title="Klik untuk reset semua filter"
+                      onClick={() => {
+                        setSelectedStatus('FALLOUT');
+                        setSelectedDuration('ALL');
+                        setSelectedFallout('ALL');
+                      }}
+                      title="Klik untuk filter semua data status FALLOUT"
                     >
                       {pivotFallout.totalAll}
                     </td>
@@ -944,7 +973,7 @@ export default function OrdersPage() {
             </div>
           </div>
 
-          {/* DIAGRAM BATANG DURATION FALLOUT (KHUSUS STATUS FALLOUT) */}
+          {/* DIAGRAM BATANG DURATION FALLOUT */}
           <div className="xl:col-span-2 bg-white border border-slate-300 shadow-xs rounded p-3">
             <div className="flex items-center justify-between border-b pb-1.5 mb-2">
               <h4 className="font-extrabold text-slate-800 text-xs sm:text-sm tracking-wide uppercase">
@@ -968,6 +997,7 @@ export default function OrdersPage() {
                     onClick={(e) => {
                       if (e && e.activePayload && e.activePayload.length) {
                         const payload = e.activePayload[0].payload;
+                        setSelectedStatus('FALLOUT');
                         setSelectedDuration(payload.duration);
                         setSelectedFallout((prev) => (prev === payload.reason ? 'ALL' : payload.reason));
                       }
@@ -1210,7 +1240,10 @@ export default function OrdersPage() {
                         </td>
                         <td
                           className="p-1.5 border border-slate-200 text-red-600 font-bold cursor-pointer hover:underline"
-                          onClick={() => row.fallout_reason_clean && setSelectedFallout((p) => (p === row.fallout_reason_clean ? 'ALL' : row.fallout_reason_clean))}
+                          onClick={() => {
+                            setSelectedStatus('FALLOUT');
+                            row.fallout_reason_clean && setSelectedFallout((p) => (p === row.fallout_reason_clean ? 'ALL' : row.fallout_reason_clean));
+                          }}
                           title="Klik untuk filter fallout ini"
                         >
                           {row.fallout_reason_clean ? (
