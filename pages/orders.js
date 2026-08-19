@@ -97,7 +97,7 @@ export default function OrdersPage() {
   const [selectedSto, setSelectedSto] = useState('ALL');
   const [selectedDuration, setSelectedDuration] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
-  const [selectedSubgroup, setSelectedSubgroup] = useState('ALL');
+  const [selectedSubgroup, setSelectedSubgroup] = useState('ALL'); // 'ALL' | 'PI_INPROGRESS' | specific
   const [selectedFallout, setSelectedFallout] = useState('ALL');
 
   // Pivot Sorting States
@@ -171,20 +171,38 @@ export default function OrdersPage() {
       const matchStat = selectedStatus === 'ALL' || processState === selectedStatus;
 
       const subGroup = (o.funneling_subgroup || '').trim().toUpperCase();
-      const matchSubgroup = selectedSubgroup === 'ALL' || subGroup === selectedSubgroup;
+      let matchSubgroup = true;
+      if (selectedSubgroup === 'PI_INPROGRESS') {
+        matchSubgroup = ALLOWED_FUNNELING_SUBGROUPS.includes(subGroup);
+      } else if (selectedSubgroup !== 'ALL') {
+        matchSubgroup = subGroup === selectedSubgroup;
+      }
       
       const matchFallout = selectedFallout === 'ALL' || o.fallout_reason_clean === selectedFallout;
       return matchMonth && matchWok && matchSto && matchDur && matchStat && matchSubgroup && matchFallout;
     });
   }, [orders, selectedMonth, selectedWok, selectedSto, selectedDuration, selectedStatus, selectedSubgroup, selectedFallout]);
 
-  // Data Khusus untuk Pivot 1 & Pivot 2 (Filter funneling_subgroup: PROVISION_ISSUED & INPROGRESS_PC)
+  // Data Basis Khusus untuk Pivot 1 & Pivot 2 (Mengabaikan filter status/fallout saat membentuk matriks pivot)
   const pivotBaseOrders = useMemo(() => {
-    return filteredOrders.filter((o) => {
+    return orders.filter((o) => {
+      if (!o) return false;
+
+      let matchMonth = true;
+      if (selectedMonth !== 'ALL' && o.order_ts) {
+        const d = new Date(o.order_ts);
+        const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        matchMonth = mKey === selectedMonth;
+      }
+
+      const matchWok = selectedWok === 'ALL' || o.wok === selectedWok;
+      const matchSto = selectedSto === 'ALL' || o.sto_co === selectedSto;
       const sub = (o.funneling_subgroup || '').trim().toUpperCase();
-      return ALLOWED_FUNNELING_SUBGROUPS.includes(sub);
+      const matchSub = ALLOWED_FUNNELING_SUBGROUPS.includes(sub);
+
+      return matchMonth && matchWok && matchSto && matchSub;
     });
-  }, [filteredOrders]);
+  }, [orders, selectedMonth, selectedWok, selectedSto]);
 
   // Pivot 1: WOK & STO vs Duration (Khusus PROVISION_ISSUED & INPROGRESS_PC)
   const pivotDuration = useMemo(() => {
@@ -281,21 +299,19 @@ export default function OrdersPage() {
     const tree = {};
     let totalAll = 0;
 
-    const baseOrders = (selectedStatus === 'ALL' || selectedStatus === 'FALLOUT')
-      ? orders.filter((o) => {
-          if (!o) return false;
-          let matchMonth = true;
-          if (selectedMonth !== 'ALL' && o.order_ts) {
-            const d = new Date(o.order_ts);
-            const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-            matchMonth = mKey === selectedMonth;
-          }
-          const matchWok = selectedWok === 'ALL' || o.wok === selectedWok;
-          const matchSto = selectedSto === 'ALL' || o.sto_co === selectedSto;
-          const pState = (o.process_state || '').trim().toUpperCase();
-          return matchMonth && matchWok && matchSto && pState === 'FALLOUT';
-        })
-      : [];
+    const baseOrders = orders.filter((o) => {
+      if (!o) return false;
+      let matchMonth = true;
+      if (selectedMonth !== 'ALL' && o.order_ts) {
+        const d = new Date(o.order_ts);
+        const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        matchMonth = mKey === selectedMonth;
+      }
+      const matchWok = selectedWok === 'ALL' || o.wok === selectedWok;
+      const matchSto = selectedSto === 'ALL' || o.sto_co === selectedSto;
+      const pState = (o.process_state || '').trim().toUpperCase();
+      return matchMonth && matchWok && matchSto && pState === 'FALLOUT';
+    });
 
     baseOrders.forEach((o) => {
       const dur = o.order_duration_cat || 'LAINNYA';
@@ -308,7 +324,7 @@ export default function OrdersPage() {
     });
 
     return { tree, totalAll };
-  }, [orders, selectedMonth, selectedWok, selectedSto, selectedStatus]);
+  }, [orders, selectedMonth, selectedWok, selectedSto]);
 
   // Chart Data (Duration Fallout)
   const { chartData, dividerIndices } = useMemo(() => {
@@ -552,7 +568,7 @@ export default function OrdersPage() {
           </div>
         )}
 
-        {/* ================= SECTION ATAS: 2 PIVOT TABLE (KHUSUS PROVISION_ISSUED & INPROGRESS_PC) ================= */}
+        {/* ================= SECTION ATAS: 2 PIVOT TABLE (SINKRON PI_INPROGRESS) ================= */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
           
           {/* PIVOT 1: DURATION */}
@@ -582,8 +598,13 @@ export default function OrdersPage() {
                           c === '30 HARI' ? 'bg-[#bfdbfe] text-blue-950 font-black' :
                           c === '3 BULAN' ? 'bg-[#e9d5ff] text-purple-950 font-black' : 'bg-slate-700'
                         }`}
-                        onClick={() => handlePivot1Sort(c)}
-                        title="Klik untuk sort kolom ini"
+                        onClick={() => {
+                          setSelectedSubgroup('PI_INPROGRESS');
+                          setSelectedStatus('ALL');
+                          setSelectedFallout('ALL');
+                          setSelectedDuration(c);
+                        }}
+                        title="Klik untuk filter kolom durasi ini"
                       >
                         {c} {pivot1Sort.key === c ? (pivot1Sort.direction === 'asc' ? '↑' : '↓') : ''}
                       </th>
@@ -620,18 +641,27 @@ export default function OrdersPage() {
                           <tr className="bg-slate-100 font-black text-slate-800 border-b border-slate-300">
                             <td
                               className="p-1.5 border border-slate-300 text-left pl-2 cursor-pointer hover:text-blue-700"
-                              onClick={() => setSelectedWok((prev) => (prev === wok.name ? 'ALL' : wok.name))}
+                              onClick={() => {
+                                setSelectedSubgroup('PI_INPROGRESS');
+                                setSelectedStatus('ALL');
+                                setSelectedFallout('ALL');
+                                setSelectedWok((prev) => (prev === wok.name ? 'ALL' : wok.name));
+                              }}
                             >
                               &oplus; {wok.name}
                             </td>
                             {pivotDuration.columns.map((c) => (
                               <td
                                 key={c}
-                                className="p-1.5 border border-slate-300 cursor-pointer hover:bg-emerald-100"
+                                className="p-1.5 border border-slate-300 cursor-pointer hover:bg-emerald-100 font-semibold"
                                 onClick={() => {
+                                  setSelectedSubgroup('PI_INPROGRESS');
+                                  setSelectedStatus('ALL');
+                                  setSelectedFallout('ALL');
                                   setSelectedWok(wok.name);
                                   setSelectedDuration(c);
                                 }}
+                                title={`Klik untuk filter WOK ${wok.name} - Durasi ${c}`}
                               >
                                 {wok.colCounts[c] || ''}
                               </td>
@@ -639,6 +669,9 @@ export default function OrdersPage() {
                             <td
                               className="p-1.5 border border-slate-300 font-extrabold bg-slate-200 cursor-pointer hover:bg-yellow-100"
                               onClick={() => {
+                                setSelectedSubgroup('PI_INPROGRESS');
+                                setSelectedStatus('ALL');
+                                setSelectedFallout('ALL');
                                 setSelectedWok(wok.name);
                                 setSelectedDuration('ALL');
                               }}
@@ -655,18 +688,27 @@ export default function OrdersPage() {
                             >
                               <td
                                 className="p-1 border border-slate-200 text-left pl-6 font-semibold text-slate-700 cursor-pointer hover:text-blue-700"
-                                onClick={() => setSelectedSto((prev) => (prev === sto.name ? 'ALL' : sto.name))}
+                                onClick={() => {
+                                  setSelectedSubgroup('PI_INPROGRESS');
+                                  setSelectedStatus('ALL');
+                                  setSelectedFallout('ALL');
+                                  setSelectedSto((prev) => (prev === sto.name ? 'ALL' : sto.name));
+                                }}
                               >
                                 {sto.name}
                               </td>
                               {pivotDuration.columns.map((c) => (
                                 <td
                                   key={c}
-                                  className="p-1 border border-slate-200 text-slate-600 cursor-pointer hover:bg-blue-100"
+                                  className="p-1 border border-slate-200 text-slate-600 cursor-pointer hover:bg-blue-100 font-semibold"
                                   onClick={() => {
+                                    setSelectedSubgroup('PI_INPROGRESS');
+                                    setSelectedStatus('ALL');
+                                    setSelectedFallout('ALL');
                                     setSelectedSto(sto.name);
                                     setSelectedDuration(c);
                                   }}
+                                  title={`Klik untuk filter STO ${sto.name} - Durasi ${c}`}
                                 >
                                   {sto.colCounts[c] || ''}
                                 </td>
@@ -674,6 +716,9 @@ export default function OrdersPage() {
                               <td
                                 className="p-1 border border-slate-200 font-bold text-slate-800 bg-slate-50 cursor-pointer hover:bg-yellow-100"
                                 onClick={() => {
+                                  setSelectedSubgroup('PI_INPROGRESS');
+                                  setSelectedStatus('ALL');
+                                  setSelectedFallout('ALL');
                                   setSelectedSto(sto.name);
                                   setSelectedDuration('ALL');
                                 }}
@@ -692,10 +737,13 @@ export default function OrdersPage() {
                     <td
                       className="p-2 border border-slate-700 text-left pl-3 uppercase hover:text-yellow-300"
                       onClick={() => {
+                        setSelectedSubgroup('PI_INPROGRESS');
+                        setSelectedStatus('ALL');
+                        setSelectedFallout('ALL');
                         setSelectedWok('ALL');
                         setSelectedSto('ALL');
                       }}
-                      title="Klik untuk reset WOK & STO"
+                      title="Klik untuk filter semua data WOK & STO (PI/Inprogress)"
                     >
                       Grand Total
                     </td>
@@ -703,16 +751,28 @@ export default function OrdersPage() {
                       <td
                         key={c}
                         className="p-2 border border-slate-700 hover:bg-slate-800"
-                        onClick={() => setSelectedDuration(c)}
-                        title={`Klik untuk filter durasi ${c}`}
+                        onClick={() => {
+                          setSelectedSubgroup('PI_INPROGRESS');
+                          setSelectedStatus('ALL');
+                          setSelectedFallout('ALL');
+                          setSelectedDuration(c);
+                        }}
+                        title={`Klik untuk filter durasi ${c} (PI/Inprogress)`}
                       >
                         {pivotDuration.grandColTotals[c] || 0}
                       </td>
                     ))}
                     <td
                       className="p-2 border border-slate-700 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
-                      onClick={resetFilters}
-                      title="Klik untuk reset semua filter"
+                      onClick={() => {
+                        setSelectedSubgroup('PI_INPROGRESS');
+                        setSelectedStatus('ALL');
+                        setSelectedFallout('ALL');
+                        setSelectedWok('ALL');
+                        setSelectedSto('ALL');
+                        setSelectedDuration('ALL');
+                      }}
+                      title="Klik untuk filter total data PROVISION_ISSUED & INPROGRESS_PC"
                     >
                       {pivotDuration.totalAll}
                     </td>
@@ -745,7 +805,11 @@ export default function OrdersPage() {
                         key={st}
                         className="p-1.5 border border-slate-600 font-bold bg-[#e0f2fe] text-blue-950 cursor-pointer hover:opacity-80 min-w-[100px] max-w-[140px] whitespace-normal break-words leading-tight"
                         title={st}
-                        onClick={() => handlePivot2Sort(st)}
+                        onClick={() => {
+                          setSelectedSubgroup('PI_INPROGRESS');
+                          setSelectedFallout('ALL');
+                          setSelectedStatus(st);
+                        }}
                       >
                         {st} {pivot2Sort.key === st ? (pivot2Sort.direction === 'asc' ? '↑' : '↓') : ''}
                       </th>
@@ -782,18 +846,25 @@ export default function OrdersPage() {
                           <tr className="bg-slate-100 font-black text-slate-800 border-b border-slate-300">
                             <td
                               className="p-1.5 border border-slate-300 text-left pl-2 cursor-pointer hover:text-blue-700"
-                              onClick={() => setSelectedWok((prev) => (prev === wok.name ? 'ALL' : wok.name))}
+                              onClick={() => {
+                                setSelectedSubgroup('PI_INPROGRESS');
+                                setSelectedFallout('ALL');
+                                setSelectedWok((prev) => (prev === wok.name ? 'ALL' : wok.name));
+                              }}
                             >
                               &oplus; {wok.name}
                             </td>
                             {pivotStatus.columns.map((st) => (
                               <td
                                 key={st}
-                                className="p-1.5 border border-slate-300 cursor-pointer hover:bg-blue-100"
+                                className="p-1.5 border border-slate-300 cursor-pointer hover:bg-blue-100 font-semibold"
                                 onClick={() => {
+                                  setSelectedSubgroup('PI_INPROGRESS');
+                                  setSelectedFallout('ALL');
                                   setSelectedWok(wok.name);
                                   setSelectedStatus(st);
                                 }}
+                                title={`Klik untuk filter WOK ${wok.name} - Status ${st}`}
                               >
                                 {wok.colCounts[st] || ''}
                               </td>
@@ -801,6 +872,8 @@ export default function OrdersPage() {
                             <td
                               className="p-1.5 border border-slate-300 font-extrabold bg-slate-200 cursor-pointer hover:bg-yellow-100"
                               onClick={() => {
+                                setSelectedSubgroup('PI_INPROGRESS');
+                                setSelectedFallout('ALL');
                                 setSelectedWok(wok.name);
                                 setSelectedStatus('ALL');
                               }}
@@ -817,18 +890,25 @@ export default function OrdersPage() {
                             >
                               <td
                                 className="p-1 border border-slate-200 text-left pl-6 font-semibold text-slate-700 cursor-pointer hover:text-blue-700"
-                                onClick={() => setSelectedSto((prev) => (prev === sto.name ? 'ALL' : sto.name))}
+                                onClick={() => {
+                                  setSelectedSubgroup('PI_INPROGRESS');
+                                  setSelectedFallout('ALL');
+                                  setSelectedSto((prev) => (prev === sto.name ? 'ALL' : sto.name));
+                                }}
                               >
                                 {sto.name}
                               </td>
                               {pivotStatus.columns.map((st) => (
                                 <td
                                   key={st}
-                                  className="p-1 border border-slate-200 text-slate-600 cursor-pointer hover:bg-blue-100"
+                                  className="p-1 border border-slate-200 text-slate-600 cursor-pointer hover:bg-blue-100 font-semibold"
                                   onClick={() => {
+                                    setSelectedSubgroup('PI_INPROGRESS');
+                                    setSelectedFallout('ALL');
                                     setSelectedSto(sto.name);
                                     setSelectedStatus(st);
                                   }}
+                                  title={`Klik untuk filter STO ${sto.name} - Status ${st}`}
                                 >
                                   {sto.colCounts[st] || ''}
                                 </td>
@@ -836,6 +916,8 @@ export default function OrdersPage() {
                               <td
                                 className="p-1 border border-slate-200 font-bold text-slate-800 bg-slate-50 cursor-pointer hover:bg-yellow-100"
                                 onClick={() => {
+                                  setSelectedSubgroup('PI_INPROGRESS');
+                                  setSelectedFallout('ALL');
                                   setSelectedSto(sto.name);
                                   setSelectedStatus('ALL');
                                 }}
@@ -854,10 +936,12 @@ export default function OrdersPage() {
                     <td
                       className="p-2 border border-slate-700 text-left pl-3 uppercase hover:text-yellow-300"
                       onClick={() => {
+                        setSelectedSubgroup('PI_INPROGRESS');
+                        setSelectedFallout('ALL');
                         setSelectedWok('ALL');
                         setSelectedSto('ALL');
                       }}
-                      title="Klik untuk reset WOK & STO"
+                      title="Klik untuk filter semua data WOK & STO (PI/Inprogress)"
                     >
                       Grand Total
                     </td>
@@ -865,16 +949,26 @@ export default function OrdersPage() {
                       <td
                         key={st}
                         className="p-2 border border-slate-700 hover:bg-slate-800"
-                        onClick={() => setSelectedStatus(st)}
-                        title={`Klik untuk filter status ${st}`}
+                        onClick={() => {
+                          setSelectedSubgroup('PI_INPROGRESS');
+                          setSelectedFallout('ALL');
+                          setSelectedStatus(st);
+                        }}
+                        title={`Klik untuk filter status ${st} (PI/Inprogress)`}
                       >
                         {pivotStatus.grandColTotals[st] || 0}
                       </td>
                     ))}
                     <td
                       className="p-2 border border-slate-700 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
-                      onClick={resetFilters}
-                      title="Klik untuk reset semua filter"
+                      onClick={() => {
+                        setSelectedSubgroup('PI_INPROGRESS');
+                        setSelectedFallout('ALL');
+                        setSelectedWok('ALL');
+                        setSelectedSto('ALL');
+                        setSelectedStatus('ALL');
+                      }}
+                      title="Klik untuk filter total data PROVISION_ISSUED & INPROGRESS_PC"
                     >
                       {pivotStatus.totalAll}
                     </td>
@@ -939,6 +1033,7 @@ export default function OrdersPage() {
                           }`}
                           onClick={() => {
                             setSelectedStatus('FALLOUT');
+                            setSelectedSubgroup('ALL');
                             setSelectedDuration((prev) => (prev === dur.name ? 'ALL' : dur.name));
                             setSelectedFallout('ALL');
                           }}
@@ -958,6 +1053,7 @@ export default function OrdersPage() {
                             className="border-b border-slate-200 hover:bg-red-50/70 cursor-pointer transition bg-white"
                             onClick={() => {
                               setSelectedStatus('FALLOUT');
+                              setSelectedSubgroup('ALL');
                               setSelectedDuration(dur.name);
                               setSelectedFallout((prev) => (prev === reason ? 'ALL' : reason));
                             }}
@@ -980,6 +1076,7 @@ export default function OrdersPage() {
                       className="p-2 border border-slate-700 uppercase hover:text-yellow-300"
                       onClick={() => {
                         setSelectedStatus('FALLOUT');
+                        setSelectedSubgroup('ALL');
                         setSelectedDuration('ALL');
                         setSelectedFallout('ALL');
                       }}
@@ -991,6 +1088,7 @@ export default function OrdersPage() {
                       className="p-2 border border-slate-700 text-right pr-4 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
                       onClick={() => {
                         setSelectedStatus('FALLOUT');
+                        setSelectedSubgroup('ALL');
                         setSelectedDuration('ALL');
                         setSelectedFallout('ALL');
                       }}
@@ -1029,6 +1127,7 @@ export default function OrdersPage() {
                       if (e && e.activePayload && e.activePayload.length) {
                         const payload = e.activePayload[0].payload;
                         setSelectedStatus('FALLOUT');
+                        setSelectedSubgroup('ALL');
                         setSelectedDuration(payload.duration);
                         setSelectedFallout((prev) => (prev === payload.reason ? 'ALL' : payload.reason));
                       }
@@ -1283,6 +1382,7 @@ export default function OrdersPage() {
                           className="p-1.5 border border-slate-200 text-red-600 font-bold cursor-pointer hover:underline"
                           onClick={() => {
                             setSelectedStatus('FALLOUT');
+                            setSelectedSubgroup('ALL');
                             row.fallout_reason_clean && setSelectedFallout((p) => (p === row.fallout_reason_clean ? 'ALL' : row.fallout_reason_clean));
                           }}
                           title="Klik untuk filter fallout ini"
