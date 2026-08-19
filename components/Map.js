@@ -20,7 +20,6 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-// Custom Icon Segitiga Order (15px)
 const createTriangleIcon = (color = '#e11d48') => {
   return L.divIcon({
     className: 'custom-triangle-marker',
@@ -115,7 +114,6 @@ export default function Map({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedOrderState, setSelectedOrderState] = useState('FALLOUT');
 
-  // Fullscreen Listener
   useEffect(() => {
     const handleFullscreenChange = () => {
       const isCurrentlyFs = !!(
@@ -397,7 +395,7 @@ export default function Map({
           />
         ))}
 
-        {/* ================= 1. MARKER LINGKARAN ODP (TETAP HOVER TOOLTIP) ================= */}
+        {/* 1. MARKER LINGKARAN ODP */}
         {data.map((odp, idx) => {
           if (!odp.latitude || !odp.longitude) return null;
           const color = getColor(odp.status_final);
@@ -467,12 +465,6 @@ export default function Map({
                         {formattedRx}
                       </span>
                     </div>
-                    {odp.sto_desc && (
-                      <div className="col-span-2">
-                        <span className="text-slate-400 block text-[7.5px] uppercase font-bold">DESC</span>
-                        <span className="font-medium text-slate-600 truncate block">{odp.sto_desc}</span>
-                      </div>
-                    )}
                   </div>
 
                   <div className="text-[8px] text-slate-400 font-mono pt-1 mt-1 border-t border-slate-100 flex justify-between">
@@ -485,7 +477,7 @@ export default function Map({
           );
         })}
 
-        {/* ================= 2. MARKER SEGITIGA ORDER (KLIK POPUP DENGAN SELEKSI TEKS & REMARKS LENGKAP) ================= */}
+        {/* 2. MARKER SEGITIGA ORDER (KLIK POPUP DENGAN REMARKS UNTUK SEMUA ORDER) */}
         {visibleOrders.map((fo, fIdx) => {
           if (!fo.lat || !fo.lon) return null;
           const nearestOdp = findNearestOdp(fo.lat, fo.lon);
@@ -497,6 +489,10 @@ export default function Map({
           const pState = (fo.process_state || 'UNKNOWN').toUpperCase();
           const markerColor = pState === 'FALLOUT' ? '#e11d48' : pState === 'COMPLETED' ? '#16a34a' : pState.includes('CANCEL') ? '#ea580c' : '#8b5cf6';
           const icon = createTriangleIcon(markerColor);
+
+          // Ambil remarks dari fallout_reason atau fallback order_status_desc
+          const remarksRaw = fo.fallout_reason || fo.order_status_desc || '';
+          const remarksTitle = fo.fallout_reason_clean || pState;
 
           return (
             <Marker
@@ -563,22 +559,18 @@ export default function Map({
                     )}
                   </div>
 
-                  {/* Remarks / Fallout Reason Box Lengkap (Tampil Full & Bisa Copas) */}
-                  {(fo.fallout_reason || fo.fallout_reason_clean) && (
-                    <div className="bg-red-50 p-1.5 rounded border border-red-200 text-[9px] text-red-900 space-y-0.5">
-                      <span className="text-red-700 font-black block text-[8px] uppercase tracking-wide">
-                        REMARKS / FALLOUT REASON:
-                      </span>
-                      <p className="font-bold text-red-800 leading-tight select-text">
-                        {fo.fallout_reason_clean || 'LAINNYA'}
-                      </p>
-                      {fo.fallout_reason && (
-                        <div className="text-[8.5px] text-slate-700 leading-snug break-words pt-1 border-t border-red-200 font-mono bg-white p-1 rounded select-all cursor-text">
-                          {fo.fallout_reason}
-                        </div>
-                      )}
+                  {/* Remarks Box Lengkap untuk SEMUA ORDER */}
+                  <div className="bg-slate-50 p-1.5 rounded border border-slate-200 text-[9px] space-y-0.5">
+                    <span className="text-slate-500 font-black block text-[8px] uppercase tracking-wide">
+                      REMARKS / STATUS REASON:
+                    </span>
+                    <p className="font-bold text-slate-800 leading-tight">
+                      {remarksTitle}
+                    </p>
+                    <div className="text-[8.5px] text-slate-600 leading-snug break-words pt-1 border-t border-slate-200 font-mono bg-white p-1 rounded select-all cursor-text">
+                      {remarksRaw || 'Tidak ada catatan tambahan (No remarks available).'}
                     </div>
-                  )}
+                  </div>
 
                   {/* Nearest ODP Analysis */}
                   {nearestOdp ? (
