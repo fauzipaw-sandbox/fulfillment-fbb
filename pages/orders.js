@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import Head from 'next/head';
 import Papa from 'papaparse';
 import Sidebar from '../components/Sidebar';
@@ -46,8 +46,6 @@ const MONTH_NAMES = [
   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
 ];
 
-const ALLOWED_FUNNELING_SUBGROUPS = ['PROVISION_ISSUED', 'INPROGRESS_PC'];
-
 function formatFullDateTime(d) {
   if (!d || isNaN(d.getTime())) return '-';
   const day = String(d.getDate()).padStart(2, '0');
@@ -82,6 +80,105 @@ function normalizeFalloutReason(rawVal) {
   return 'LAINNYA';
 }
 
+// Komponen Reusable Multiselect Dropdown dengan Checkbox
+function MultiSelectDropdown({ options = [], selected = [], onChange, badgeColor = 'bg-slate-800 text-emerald-300' }) {
+  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const toggleOption = (val) => {
+    if (selected.includes(val)) {
+      onChange(selected.filter((item) => item !== val));
+    } else {
+      onChange([...selected, val]);
+    }
+  };
+
+  const selectAll = () => {
+    onChange(options.map((o) => (typeof o === 'string' ? o : o.value)));
+  };
+
+  const clearAll = () => {
+    onChange([]);
+  };
+
+  const displayText = useMemo(() => {
+    if (selected.length === 0) return '0 Dipilih';
+    if (selected.length === options.length) return 'Semua Dipilih';
+    if (selected.length <= 2) return selected.join(', ');
+    return `${selected.length} Terpilih`;
+  }, [selected, options]);
+
+  return (
+    <div className="relative inline-block text-left" ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={`${badgeColor} border border-slate-600 rounded px-2 py-0.5 text-[9.5px] font-bold flex items-center gap-1.5 shadow-sm hover:opacity-90 transition cursor-pointer`}
+      >
+        <span className="truncate max-w-[160px]">{displayText}</span>
+        <span className="text-[7.5px] text-slate-400">▼</span>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 mt-1 w-60 max-h-64 overflow-y-auto bg-slate-900 text-white rounded-lg shadow-2xl border border-slate-700 p-2 z-[2000] text-[10px] space-y-1.5 animate-fadeIn">
+          <div className="flex items-center justify-between pb-1 border-b border-slate-700 text-[9px] font-bold">
+            <button
+              type="button"
+              onClick={selectAll}
+              className="text-blue-400 hover:underline cursor-pointer"
+            >
+              Pilih Semua
+            </button>
+            <button
+              type="button"
+              onClick={clearAll}
+              className="text-red-400 hover:underline cursor-pointer"
+            >
+              Kosongkan
+            </button>
+          </div>
+          <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+            {options.map((opt) => {
+              const val = typeof opt === 'string' ? opt : opt.value;
+              const count = typeof opt === 'object' ? opt.count : null;
+              const isChecked = selected.includes(val);
+              return (
+                <label
+                  key={val}
+                  className="flex items-center justify-between gap-2 p-1 rounded hover:bg-slate-800 cursor-pointer transition select-none"
+                >
+                  <div className="flex items-center gap-1.5 truncate">
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleOption(val)}
+                      className="rounded accent-blue-500 cursor-pointer"
+                    />
+                    <span className="font-semibold truncate">{val}</span>
+                  </div>
+                  {count !== null && (
+                    <span className="text-[8.5px] text-slate-400 font-mono">({count})</span>
+                  )}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function OrdersPage() {
   const dataContext = useData() || {};
   const orders = dataContext.ordersData || [];
@@ -97,14 +194,16 @@ export default function OrdersPage() {
   const [selectedSto, setSelectedSto] = useState('ALL');
   const [selectedDuration, setSelectedDuration] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
-  const [selectedSubgroup, setSelectedSubgroup] = useState('ALL');
   const [selectedFallout, setSelectedFallout] = useState('ALL');
 
-  // Filter Dropdown Mandiri Bagian Atas Pivot 1 & 2 (Default: PROVISION_ISSUED & INPROGRESS_PC)
-  const [pivotSubgroupFilter, setPivotSubgroupFilter] = useState('PI_INPROGRESS');
+  // Filter Multiselect Dropdown Subgroup Pivot 1 & 2 (Default: PROVISION_ISSUED dan INPROGRESS_PC terpisah & terpilih)
+  const [selectedPivotSubgroups, setSelectedPivotSubgroups] = useState([
+    'PROVISION_ISSUED',
+    'INPROGRESS_PC'
+  ]);
 
-  // Filter Dropdown Mandiri Bagian Fallout Reason Pivot 3 & Chart (Default: FALLOUT)
-  const [falloutSectionStatusFilter, setFalloutSectionStatusFilter] = useState('FALLOUT');
+  // Filter Multiselect Dropdown Status Section Fallout (Default: FALLOUT terpilih)
+  const [selectedFalloutStates, setSelectedFalloutStates] = useState(['FALLOUT']);
 
   // Pivot Sorting States
   const [pivot1Sort, setPivot1Sort] = useState({ key: 'total', direction: 'desc' });
@@ -117,24 +216,32 @@ export default function OrdersPage() {
   const [sortConfig, setSortConfig] = useState({ key: 'order_ts', direction: 'desc' });
   const rowsPerPage = 50;
 
-  // List Unik Subgroup untuk Dropdown
-  const availableSubgroups = useMemo(() => {
-    const set = new Set();
+  // List Unik Subgroup Lengkap dengan Jumlah
+  const availableSubgroupOptions = useMemo(() => {
+    const map = {};
     orders.forEach((o) => {
       const sub = (o.funneling_subgroup || '').trim().toUpperCase();
-      if (sub) set.add(sub);
+      if (sub) {
+        map[sub] = (map[sub] || 0) + 1;
+      }
     });
-    return Array.from(set).sort();
+    return Object.keys(map)
+      .sort()
+      .map((k) => ({ value: k, count: map[k] }));
   }, [orders]);
 
-  // List Unik Process State untuk Dropdown
-  const availableProcessStates = useMemo(() => {
-    const set = new Set();
+  // List Unik Process State Lengkap dengan Jumlah
+  const availableProcessStateOptions = useMemo(() => {
+    const map = {};
     orders.forEach((o) => {
       const ps = (o.process_state || '').trim().toUpperCase();
-      if (ps) set.add(ps);
+      if (ps) {
+        map[ps] = (map[ps] || 0) + 1;
+      }
     });
-    return Array.from(set).sort();
+    return Object.keys(map)
+      .sort()
+      .map((k) => ({ value: k, count: map[k] }));
   }, [orders]);
 
   // List Bulan Dinamis
@@ -197,19 +304,15 @@ export default function OrdersPage() {
       const matchStat = selectedStatus === 'ALL' || processState === selectedStatus;
 
       const subGroup = (o.funneling_subgroup || '').trim().toUpperCase();
-      let matchSubgroup = true;
-      if (selectedSubgroup === 'PI_INPROGRESS') {
-        matchSubgroup = ALLOWED_FUNNELING_SUBGROUPS.includes(subGroup);
-      } else if (selectedSubgroup !== 'ALL') {
-        matchSubgroup = subGroup === selectedSubgroup;
-      }
+      const matchSubgroup =
+        selectedPivotSubgroups.length === 0 || selectedPivotSubgroups.includes(subGroup);
       
       const matchFallout = selectedFallout === 'ALL' || o.fallout_reason_clean === selectedFallout;
       return matchMonth && matchWok && matchSto && matchDur && matchStat && matchSubgroup && matchFallout;
     });
-  }, [orders, selectedMonth, selectedWok, selectedSto, selectedDuration, selectedStatus, selectedSubgroup, selectedFallout]);
+  }, [orders, selectedMonth, selectedWok, selectedSto, selectedDuration, selectedStatus, selectedPivotSubgroups, selectedFallout]);
 
-  // Data Basis Khusus Pivot 1 & Pivot 2 (Mengikuti Dropdown Subgroup di Card Atas)
+  // Data Basis Khusus Pivot 1 & Pivot 2 (Mengikuti Multiselect Subgroups)
   const pivotBaseOrders = useMemo(() => {
     return orders.filter((o) => {
       if (!o) return false;
@@ -225,16 +328,12 @@ export default function OrdersPage() {
       const matchSto = selectedSto === 'ALL' || o.sto_co === selectedSto;
       const sub = (o.funneling_subgroup || '').trim().toUpperCase();
 
-      let matchSub = true;
-      if (pivotSubgroupFilter === 'PI_INPROGRESS') {
-        matchSub = ALLOWED_FUNNELING_SUBGROUPS.includes(sub);
-      } else if (pivotSubgroupFilter !== 'ALL') {
-        matchSub = sub === pivotSubgroupFilter;
-      }
+      const matchSub =
+        selectedPivotSubgroups.length === 0 || selectedPivotSubgroups.includes(sub);
 
       return matchMonth && matchWok && matchSto && matchSub;
     });
-  }, [orders, selectedMonth, selectedWok, selectedSto, pivotSubgroupFilter]);
+  }, [orders, selectedMonth, selectedWok, selectedSto, selectedPivotSubgroups]);
 
   // Pivot 1: WOK & STO vs Duration
   const pivotDuration = useMemo(() => {
@@ -326,7 +425,7 @@ export default function OrdersPage() {
     return { sortedWoks, columns, grandColTotals, totalAll };
   }, [pivotBaseOrders, pivot2Sort]);
 
-  // Pivot 3: Duration vs Fallout (Mengikuti Dropdown Status di Card Bawah)
+  // Pivot 3: Duration vs Fallout (Mengikuti Multiselect Status pada Section Fallout)
   const pivotFallout = useMemo(() => {
     const tree = {};
     let totalAll = 0;
@@ -342,7 +441,8 @@ export default function OrdersPage() {
       const matchWok = selectedWok === 'ALL' || o.wok === selectedWok;
       const matchSto = selectedSto === 'ALL' || o.sto_co === selectedSto;
       const pState = (o.process_state || '').trim().toUpperCase();
-      const matchState = falloutSectionStatusFilter === 'ALL' || pState === falloutSectionStatusFilter;
+      const matchState =
+        selectedFalloutStates.length === 0 || selectedFalloutStates.includes(pState);
 
       return matchMonth && matchWok && matchSto && matchState;
     });
@@ -358,7 +458,7 @@ export default function OrdersPage() {
     });
 
     return { tree, totalAll };
-  }, [orders, selectedMonth, selectedWok, selectedSto, falloutSectionStatusFilter]);
+  }, [orders, selectedMonth, selectedWok, selectedSto, selectedFalloutStates]);
 
   // Chart Data (Duration Fallout)
   const { chartData, dividerIndices } = useMemo(() => {
@@ -475,10 +575,9 @@ export default function OrdersPage() {
     setSelectedSto('ALL');
     setSelectedDuration('ALL');
     setSelectedStatus('ALL');
-    setSelectedSubgroup('ALL');
     setSelectedFallout('ALL');
-    setPivotSubgroupFilter('PI_INPROGRESS');
-    setFalloutSectionStatusFilter('FALLOUT');
+    setSelectedPivotSubgroups(['PROVISION_ISSUED', 'INPROGRESS_PC']);
+    setSelectedFalloutStates(['FALLOUT']);
   };
 
   return (
@@ -510,7 +609,7 @@ export default function OrdersPage() {
             <button
               type="button"
               onClick={() => setShowUploader(!showUploader)}
-              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded shadow transition"
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded shadow transition cursor-pointer"
             >
               {showUploader ? 'Tutup Upload' : 'Upload Data Baru'}
             </button>
@@ -573,17 +672,17 @@ export default function OrdersPage() {
               className="p-1 border rounded font-semibold text-slate-700 bg-slate-50 text-[11px]"
             >
               <option value="ALL">Semua Status (Process State)</option>
-              {availableProcessStates.map((st) => (
-                <option key={st} value={st}>{st}</option>
+              {availableProcessStateOptions.map((st) => (
+                <option key={st.value} value={st.value}>{st.value}</option>
               ))}
             </select>
           </div>
 
-          {(selectedMonth !== 'ALL' || selectedWok !== 'ALL' || selectedSto !== 'ALL' || selectedDuration !== 'ALL' || selectedStatus !== 'ALL' || selectedSubgroup !== 'ALL' || selectedFallout !== 'ALL') && (
+          {(selectedMonth !== 'ALL' || selectedWok !== 'ALL' || selectedSto !== 'ALL' || selectedDuration !== 'ALL' || selectedStatus !== 'ALL' || selectedFallout !== 'ALL') && (
             <button
               type="button"
               onClick={resetFilters}
-              className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded font-bold text-[10px] shadow"
+              className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded font-bold text-[10px] shadow cursor-pointer"
             >
               ✕ Reset Semua Filter
             </button>
@@ -599,7 +698,7 @@ export default function OrdersPage() {
           </div>
         )}
 
-        {/* ================= SECTION ATAS: 2 PIVOT TABLE (DENGAN DROPDOWN SUBGROUP MANDIRI) ================= */}
+        {/* ================= SECTION ATAS: 2 PIVOT TABLE (DENGAN MULTISELECT SUBGROUP) ================= */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
           
           {/* PIVOT 1: DURATION */}
@@ -607,22 +706,15 @@ export default function OrdersPage() {
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase flex-wrap gap-1">
               <span>Count of order_id &bull; Duration SLA</span>
               
-              {/* Dropdown Subgroup Mandiri Pivot 1 & 2 */}
-              <div className="flex items-center gap-1">
+              {/* Multiselect Subgroups Dropdown */}
+              <div className="flex items-center gap-1.5">
                 <span className="text-[9px] text-slate-300 font-bold">Subgroup:</span>
-                <select
-                  value={pivotSubgroupFilter}
-                  onChange={(e) => setPivotSubgroupFilter(e.target.value)}
-                  className="bg-slate-800 text-emerald-300 border border-slate-600 rounded px-1.5 py-0.5 text-[9.5px] font-bold outline-none cursor-pointer"
-                >
-                  <option value="PI_INPROGRESS">PROVISION_ISSUED & INPROGRESS_PC (Default)</option>
-                  <option value="ALL">Semua Subgroup ({orders.length})</option>
-                  {availableSubgroups.map((sg) => (
-                    <option key={sg} value={sg}>
-                      {sg} ({orders.filter(o => (o.funneling_subgroup||'').toUpperCase() === sg).length})
-                    </option>
-                  ))}
-                </select>
+                <MultiSelectDropdown
+                  options={availableSubgroupOptions}
+                  selected={selectedPivotSubgroups}
+                  onChange={setSelectedPivotSubgroups}
+                  badgeColor="bg-slate-800 text-emerald-300"
+                />
               </div>
             </div>
 
@@ -646,7 +738,6 @@ export default function OrdersPage() {
                           c === '3 BULAN' ? 'bg-[#e9d5ff] text-purple-950 font-black' : 'bg-slate-700'
                         }`}
                         onClick={() => {
-                          setSelectedSubgroup(pivotSubgroupFilter);
                           setSelectedStatus('ALL');
                           setSelectedFallout('ALL');
                           setSelectedDuration(c);
@@ -689,7 +780,6 @@ export default function OrdersPage() {
                             <td
                               className="p-1.5 border border-slate-300 text-left pl-2 cursor-pointer hover:text-blue-700"
                               onClick={() => {
-                                setSelectedSubgroup(pivotSubgroupFilter);
                                 setSelectedStatus('ALL');
                                 setSelectedFallout('ALL');
                                 setSelectedWok((prev) => (prev === wok.name ? 'ALL' : wok.name));
@@ -702,7 +792,6 @@ export default function OrdersPage() {
                                 key={c}
                                 className="p-1.5 border border-slate-300 cursor-pointer hover:bg-emerald-100 font-semibold"
                                 onClick={() => {
-                                  setSelectedSubgroup(pivotSubgroupFilter);
                                   setSelectedStatus('ALL');
                                   setSelectedFallout('ALL');
                                   setSelectedWok(wok.name);
@@ -716,7 +805,6 @@ export default function OrdersPage() {
                             <td
                               className="p-1.5 border border-slate-300 font-extrabold bg-slate-200 cursor-pointer hover:bg-yellow-100"
                               onClick={() => {
-                                setSelectedSubgroup(pivotSubgroupFilter);
                                 setSelectedStatus('ALL');
                                 setSelectedFallout('ALL');
                                 setSelectedWok(wok.name);
@@ -736,7 +824,6 @@ export default function OrdersPage() {
                               <td
                                 className="p-1 border border-slate-200 text-left pl-6 font-semibold text-slate-700 cursor-pointer hover:text-blue-700"
                                 onClick={() => {
-                                  setSelectedSubgroup(pivotSubgroupFilter);
                                   setSelectedStatus('ALL');
                                   setSelectedFallout('ALL');
                                   setSelectedSto((prev) => (prev === sto.name ? 'ALL' : sto.name));
@@ -749,7 +836,6 @@ export default function OrdersPage() {
                                   key={c}
                                   className="p-1 border border-slate-200 text-slate-600 cursor-pointer hover:bg-blue-100 font-semibold"
                                   onClick={() => {
-                                    setSelectedSubgroup(pivotSubgroupFilter);
                                     setSelectedStatus('ALL');
                                     setSelectedFallout('ALL');
                                     setSelectedSto(sto.name);
@@ -763,7 +849,6 @@ export default function OrdersPage() {
                               <td
                                 className="p-1 border border-slate-200 font-bold text-slate-800 bg-slate-50 cursor-pointer hover:bg-yellow-100"
                                 onClick={() => {
-                                  setSelectedSubgroup(pivotSubgroupFilter);
                                   setSelectedStatus('ALL');
                                   setSelectedFallout('ALL');
                                   setSelectedSto(sto.name);
@@ -784,7 +869,6 @@ export default function OrdersPage() {
                     <td
                       className="p-2 border border-slate-700 text-left pl-3 uppercase hover:text-yellow-300"
                       onClick={() => {
-                        setSelectedSubgroup(pivotSubgroupFilter);
                         setSelectedStatus('ALL');
                         setSelectedFallout('ALL');
                         setSelectedWok('ALL');
@@ -799,7 +883,6 @@ export default function OrdersPage() {
                         key={c}
                         className="p-2 border border-slate-700 hover:bg-slate-800"
                         onClick={() => {
-                          setSelectedSubgroup(pivotSubgroupFilter);
                           setSelectedStatus('ALL');
                           setSelectedFallout('ALL');
                           setSelectedDuration(c);
@@ -812,7 +895,6 @@ export default function OrdersPage() {
                     <td
                       className="p-2 border border-slate-700 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
                       onClick={() => {
-                        setSelectedSubgroup(pivotSubgroupFilter);
                         setSelectedStatus('ALL');
                         setSelectedFallout('ALL');
                         setSelectedWok('ALL');
@@ -853,7 +935,6 @@ export default function OrdersPage() {
                         className="p-1.5 border border-slate-600 font-bold bg-[#e0f2fe] text-blue-950 cursor-pointer hover:opacity-80 min-w-[100px] max-w-[140px] whitespace-normal break-words leading-tight"
                         title={st}
                         onClick={() => {
-                          setSelectedSubgroup(pivotSubgroupFilter);
                           setSelectedFallout('ALL');
                           setSelectedStatus(st);
                         }}
@@ -894,7 +975,6 @@ export default function OrdersPage() {
                             <td
                               className="p-1.5 border border-slate-300 text-left pl-2 cursor-pointer hover:text-blue-700"
                               onClick={() => {
-                                setSelectedSubgroup(pivotSubgroupFilter);
                                 setSelectedFallout('ALL');
                                 setSelectedWok((prev) => (prev === wok.name ? 'ALL' : wok.name));
                               }}
@@ -906,7 +986,6 @@ export default function OrdersPage() {
                                 key={st}
                                 className="p-1.5 border border-slate-300 cursor-pointer hover:bg-blue-100 font-semibold"
                                 onClick={() => {
-                                  setSelectedSubgroup(pivotSubgroupFilter);
                                   setSelectedFallout('ALL');
                                   setSelectedWok(wok.name);
                                   setSelectedStatus(st);
@@ -919,7 +998,6 @@ export default function OrdersPage() {
                             <td
                               className="p-1.5 border border-slate-300 font-extrabold bg-slate-200 cursor-pointer hover:bg-yellow-100"
                               onClick={() => {
-                                setSelectedSubgroup(pivotSubgroupFilter);
                                 setSelectedFallout('ALL');
                                 setSelectedWok(wok.name);
                                 setSelectedStatus('ALL');
@@ -938,7 +1016,6 @@ export default function OrdersPage() {
                               <td
                                 className="p-1 border border-slate-200 text-left pl-6 font-semibold text-slate-700 cursor-pointer hover:text-blue-700"
                                 onClick={() => {
-                                  setSelectedSubgroup(pivotSubgroupFilter);
                                   setSelectedFallout('ALL');
                                   setSelectedSto((prev) => (prev === sto.name ? 'ALL' : sto.name));
                                 }}
@@ -950,7 +1027,6 @@ export default function OrdersPage() {
                                   key={st}
                                   className="p-1 border border-slate-200 text-slate-600 cursor-pointer hover:bg-blue-100 font-semibold"
                                   onClick={() => {
-                                    setSelectedSubgroup(pivotSubgroupFilter);
                                     setSelectedFallout('ALL');
                                     setSelectedSto(sto.name);
                                     setSelectedStatus(st);
@@ -963,7 +1039,6 @@ export default function OrdersPage() {
                               <td
                                 className="p-1 border border-slate-200 font-bold text-slate-800 bg-slate-50 cursor-pointer hover:bg-yellow-100"
                                 onClick={() => {
-                                  setSelectedSubgroup(pivotSubgroupFilter);
                                   setSelectedFallout('ALL');
                                   setSelectedSto(sto.name);
                                   setSelectedStatus('ALL');
@@ -983,7 +1058,6 @@ export default function OrdersPage() {
                     <td
                       className="p-2 border border-slate-700 text-left pl-3 uppercase hover:text-yellow-300"
                       onClick={() => {
-                        setSelectedSubgroup(pivotSubgroupFilter);
                         setSelectedFallout('ALL');
                         setSelectedWok('ALL');
                         setSelectedSto('ALL');
@@ -997,7 +1071,6 @@ export default function OrdersPage() {
                         key={st}
                         className="p-2 border border-slate-700 hover:bg-slate-800"
                         onClick={() => {
-                          setSelectedSubgroup(pivotSubgroupFilter);
                           setSelectedFallout('ALL');
                           setSelectedStatus(st);
                         }}
@@ -1009,7 +1082,6 @@ export default function OrdersPage() {
                     <td
                       className="p-2 border border-slate-700 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
                       onClick={() => {
-                        setSelectedSubgroup(pivotSubgroupFilter);
                         setSelectedFallout('ALL');
                         setSelectedWok('ALL');
                         setSelectedSto('ALL');
@@ -1026,30 +1098,23 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        {/* ================= SECTION TENGAH: PIVOT FALLOUT & DURATION FALLOUT CHART (DENGAN DROPDOWN STATUS MANDIRI) ================= */}
+        {/* ================= SECTION TENGAH: PIVOT FALLOUT & DURATION FALLOUT CHART (DENGAN MULTISELECT STATUS) ================= */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4">
           
           {/* PIVOT 3: FALLOUT */}
           <div className="xl:col-span-1 bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase flex-wrap gap-1">
-              <span>Row Labels &bull; Fallout Reason</span>
+              <span>Fallout</span>
               
-              {/* Dropdown Status Mandiri Section Fallout */}
-              <div className="flex items-center gap-1">
+              {/* Multiselect Status Dropdown Section Fallout */}
+              <div className="flex items-center gap-1.5">
                 <span className="text-[9px] text-slate-300 font-bold">Status:</span>
-                <select
-                  value={falloutSectionStatusFilter}
-                  onChange={(e) => setFalloutSectionStatusFilter(e.target.value)}
-                  className="bg-slate-800 text-yellow-300 border border-slate-600 rounded px-1.5 py-0.5 text-[9.5px] font-bold outline-none cursor-pointer"
-                >
-                  <option value="FALLOUT">FALLOUT (Default)</option>
-                  <option value="ALL">Semua Status ({orders.length})</option>
-                  {availableProcessStates.filter(ps => ps !== 'FALLOUT').map((ps) => (
-                    <option key={ps} value={ps}>
-                      {ps} ({orders.filter(o => (o.process_state||'').toUpperCase() === ps).length})
-                    </option>
-                  ))}
-                </select>
+                <MultiSelectDropdown
+                  options={availableProcessStateOptions}
+                  selected={selectedFalloutStates}
+                  onChange={setSelectedFalloutStates}
+                  badgeColor="bg-slate-800 text-yellow-300"
+                />
               </div>
             </div>
 
@@ -1061,7 +1126,7 @@ export default function OrdersPage() {
                       className="p-2 border border-slate-600 cursor-pointer hover:bg-slate-700"
                       onClick={() => handlePivotFalloutSort('reason')}
                     >
-                      Row Labels {pivotFalloutSort.key === 'reason' ? (pivotFalloutSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                      Fallout {pivotFalloutSort.key === 'reason' ? (pivotFalloutSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
                     <th
                       className="p-2 border border-slate-600 text-right pr-4 cursor-pointer hover:bg-slate-700"
@@ -1097,8 +1162,9 @@ export default function OrdersPage() {
                             dur.name === '30 HARI' ? 'bg-blue-100 hover:bg-blue-200' : 'bg-purple-100 hover:bg-purple-200'
                           }`}
                           onClick={() => {
-                            setSelectedStatus(falloutSectionStatusFilter);
-                            setSelectedSubgroup('ALL');
+                            if (selectedFalloutStates.length === 1) {
+                              setSelectedStatus(selectedFalloutStates[0]);
+                            }
                             setSelectedDuration((prev) => (prev === dur.name ? 'ALL' : dur.name));
                             setSelectedFallout('ALL');
                           }}
@@ -1117,8 +1183,9 @@ export default function OrdersPage() {
                             key={reason}
                             className="border-b border-slate-200 hover:bg-red-50/70 cursor-pointer transition bg-white"
                             onClick={() => {
-                              setSelectedStatus(falloutSectionStatusFilter);
-                              setSelectedSubgroup('ALL');
+                              if (selectedFalloutStates.length === 1) {
+                                setSelectedStatus(selectedFalloutStates[0]);
+                              }
                               setSelectedDuration(dur.name);
                               setSelectedFallout((prev) => (prev === reason ? 'ALL' : reason));
                             }}
@@ -1140,8 +1207,9 @@ export default function OrdersPage() {
                     <td
                       className="p-2 border border-slate-700 uppercase hover:text-yellow-300"
                       onClick={() => {
-                        setSelectedStatus(falloutSectionStatusFilter);
-                        setSelectedSubgroup('ALL');
+                        if (selectedFalloutStates.length === 1) {
+                          setSelectedStatus(selectedFalloutStates[0]);
+                        }
                         setSelectedDuration('ALL');
                         setSelectedFallout('ALL');
                       }}
@@ -1152,8 +1220,9 @@ export default function OrdersPage() {
                     <td
                       className="p-2 border border-slate-700 text-right pr-4 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
                       onClick={() => {
-                        setSelectedStatus(falloutSectionStatusFilter);
-                        setSelectedSubgroup('ALL');
+                        if (selectedFalloutStates.length === 1) {
+                          setSelectedStatus(selectedFalloutStates[0]);
+                        }
                         setSelectedDuration('ALL');
                         setSelectedFallout('ALL');
                       }}
@@ -1174,7 +1243,7 @@ export default function OrdersPage() {
                 DURATION FALLOUT
               </h4>
               <span className="text-[10px] text-purple-700 font-bold bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
-                Filter Status: {falloutSectionStatusFilter}
+                Filter Status: {selectedFalloutStates.length === availableProcessStateOptions.length ? 'Semua Status' : selectedFalloutStates.join(', ')}
               </span>
             </div>
 
@@ -1191,8 +1260,9 @@ export default function OrdersPage() {
                     onClick={(e) => {
                       if (e && e.activePayload && e.activePayload.length) {
                         const payload = e.activePayload[0].payload;
-                        setSelectedStatus(falloutSectionStatusFilter);
-                        setSelectedSubgroup('ALL');
+                        if (selectedFalloutStates.length === 1) {
+                          setSelectedStatus(selectedFalloutStates[0]);
+                        }
                         setSelectedDuration(payload.duration);
                         setSelectedFallout((prev) => (prev === payload.reason ? 'ALL' : payload.reason));
                       }
@@ -1315,7 +1385,7 @@ export default function OrdersPage() {
               <button
                 type="button"
                 onClick={handleExportCSV}
-                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold shadow flex items-center gap-1 whitespace-nowrap transition"
+                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold shadow flex items-center gap-1 whitespace-nowrap transition cursor-pointer"
               >
                 <span>📥</span> Download CSV ({filteredOrders.length.toLocaleString()})
               </button>
@@ -1411,11 +1481,7 @@ export default function OrdersPage() {
                             {pState}
                           </span>
                         </td>
-                        <td
-                          className="p-1.5 border border-slate-200 font-bold text-slate-700 cursor-pointer hover:text-blue-700 hover:underline"
-                          onClick={() => setSelectedSubgroup((p) => (p === row.funneling_subgroup ? 'ALL' : row.funneling_subgroup))}
-                          title="Klik untuk filter Subgroup ini"
-                        >
+                        <td className="p-1.5 border border-slate-200 font-bold text-slate-700">
                           {row.funneling_subgroup || '-'}
                         </td>
                         <td className="p-1.5 border border-slate-200 font-semibold">{row.name || '-'}</td>
@@ -1446,8 +1512,9 @@ export default function OrdersPage() {
                         <td
                           className="p-1.5 border border-slate-200 text-red-600 font-bold cursor-pointer hover:underline"
                           onClick={() => {
-                            setSelectedStatus(falloutSectionStatusFilter);
-                            setSelectedSubgroup('ALL');
+                            if (selectedFalloutStates.length === 1) {
+                              setSelectedStatus(selectedFalloutStates[0]);
+                            }
                             row.fallout_reason_clean && setSelectedFallout((p) => (p === row.fallout_reason_clean ? 'ALL' : row.fallout_reason_clean));
                           }}
                           title="Klik untuk filter fallout ini"
@@ -1485,7 +1552,7 @@ export default function OrdersPage() {
                   type="button"
                   onClick={() => setCurrentPage(1)}
                   disabled={currentPage === 1}
-                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                 >
                   &laquo; Pertama
                 </button>
@@ -1493,16 +1560,16 @@ export default function OrdersPage() {
                   type="button"
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                 >
                   &lsaquo; Prev
                 </button>
                 <span className="px-2 font-bold text-slate-700">{currentPage} / {totalPages}</span>
                 <button
                   type="button"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  onClick={() => setCurrentPage((p) => Math.min(totalOdpPages, p + 1))}
                   disabled={currentPage === totalPages}
-                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                 >
                   Next &rsaquo;
                 </button>
@@ -1510,7 +1577,7 @@ export default function OrdersPage() {
                   type="button"
                   onClick={() => setCurrentPage(totalPages)}
                   disabled={currentPage === totalPages}
-                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                  className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                 >
                   Terakhir &raquo;
                 </button>
