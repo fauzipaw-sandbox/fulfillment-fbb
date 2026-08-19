@@ -20,21 +20,21 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-// Custom Icon Segitiga untuk Order Fallout
-const createTriangleIcon = () => {
+// Custom Icon Segitiga Lebih Kecil & Elegan (14px)
+const createTriangleIcon = (color = '#e11d48') => {
   return L.divIcon({
     className: 'custom-triangle-marker',
     html: `
-      <div style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.4));">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="#e11d48" stroke="#ffffff" stroke-width="2.5">
+      <div style="filter: drop-shadow(0 1.5px 2.5px rgba(0,0,0,0.5)); display: flex; align-items: center; justify-content: center;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="${color}" stroke="#ffffff" stroke-width="2">
           <path d="M12 2L1 21h22L12 2z" />
-          <circle cx="12" cy="14" r="2" fill="#ffffff"/>
+          <circle cx="12" cy="14" r="1.5" fill="#ffffff"/>
         </svg>
       </div>
     `,
-    iconSize: [22, 22],
-    iconAnchor: [11, 11],
-    popupAnchor: [0, -10],
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+    popupAnchor: [0, -7],
   });
 };
 
@@ -52,8 +52,15 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-function MapController({ data, focusLocation, markerRefs, roadRouteCoordinates, manualMeasureLine }) {
+function MapController({ data, focusLocation, markerRefs, roadRouteCoordinates, manualMeasureLine, isFullscreen }) {
   const map = useMap();
+
+  // Invalidate size saat toggle fullscreen agar render Leaflet tidak patah
+  useEffect(() => {
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 200);
+  }, [isFullscreen, map]);
 
   useEffect(() => {
     if (roadRouteCoordinates && roadRouteCoordinates.length > 0) {
@@ -92,7 +99,7 @@ function MapClickHandler({ measureMode, onMapClick }) {
 
 export default function Map({
   data = [],
-  falloutOrders = [],
+  ordersData = [],
   focusLocation,
   manualMeasureLine,
   manualMeasureInfo,
@@ -103,9 +110,31 @@ export default function Map({
   const [clickPoints, setClickPoints] = useState([]);
   const [measureActive, setMeasureActive] = useState(false);
   const [mapType, setMapType] = useState('street');
-  const [showFalloutMarkers, setShowFalloutMarkers] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  
+  // State Filter Process State Order (Default: FALLOUT)
+  const [selectedOrderState, setSelectedOrderState] = useState('FALLOUT');
 
-  const triangleIcon = useMemo(() => createTriangleIcon(), []);
+  // List Unik Process State dari Orders
+  const availableProcessStates = useMemo(() => {
+    const set = new Set();
+    (ordersData || []).forEach((o) => {
+      const ps = (o.process_state || '').trim().toUpperCase();
+      if (ps) set.add(ps);
+    });
+    return Array.from(set).sort();
+  }, [ordersData]);
+
+  // Order yang Sesuai Pilihan Filter Process State
+  const visibleOrders = useMemo(() => {
+    if (selectedOrderState === 'NONE') return [];
+    return (ordersData || []).filter((o) => {
+      if (!o.lat || !o.lon) return false;
+      const ps = (o.process_state || '').trim().toUpperCase();
+      if (selectedOrderState === 'ALL') return true;
+      return ps === selectedOrderState;
+    });
+  }, [ordersData, selectedOrderState]);
 
   const getColor = (status) => {
     const s = (status || '').toUpperCase();
@@ -139,7 +168,6 @@ export default function Map({
     return acc + calculateDistance(prev[0], prev[1], curr[0], curr[1]);
   }, 0);
 
-  // Helper untuk mencari ODP terdekat dari titik Fallout Order
   const findNearestOdp = (lat, lon) => {
     if (!lat || !lon || !data || data.length === 0) return null;
     let minDistance = Infinity;
@@ -159,25 +187,38 @@ export default function Map({
   };
 
   return (
-    <div className="relative w-full h-full">
-      {/* Map Control Buttons */}
-      <div className="absolute top-2 right-2 z-[1000] flex items-center gap-1.5 flex-wrap justify-end">
-        {/* Toggle Layer Fallout Order */}
-        {falloutOrders && falloutOrders.length > 0 && (
-          <label className="bg-white/95 backdrop-blur px-2 py-1 rounded shadow border border-rose-300 text-[10px] font-extrabold text-rose-900 flex items-center gap-1.5 cursor-pointer hover:bg-rose-50 transition">
-            <input
-              type="checkbox"
-              checked={showFalloutMarkers}
-              onChange={(e) => setShowFalloutMarkers(e.target.checked)}
-              className="accent-rose-600 rounded"
-            />
-            <span className="flex items-center gap-1">
-              <span className="inline-block w-2.5 h-2.5 bg-rose-600 rounded-xs"></span>
-              Fallout ({falloutOrders.length})
-            </span>
-          </label>
-        )}
+    <div className={`relative w-full h-full transition-all duration-300 ${
+      isFullscreen ? 'fixed inset-0 z-[99999] bg-slate-900' : 'rounded'
+    }`}>
+      {/* Map Control Buttons Top Right */}
+      <div className="absolute top-2.5 right-2.5 z-[1000] flex items-center gap-1.5 flex-wrap justify-end">
+        
+        {/* Dropdown Filter Process State Order (By Default: FALLOUT) */}
+        <div className="bg-white/95 backdrop-blur px-2 py-1 rounded shadow border border-slate-300 flex items-center gap-1.5 text-[10.5px]">
+          <span className="font-bold text-slate-700 flex items-center gap-1">
+            <span className="inline-block w-2.5 h-2.5 bg-rose-600 rounded-xs"></span>
+            Order:
+          </span>
+          <select
+            value={selectedOrderState}
+            onChange={(e) => setSelectedOrderState(e.target.value)}
+            className="p-0.5 border border-slate-300 rounded font-black text-rose-800 bg-rose-50 text-[10px] outline-none cursor-pointer"
+          >
+            <option value="FALLOUT">FALLOUT ({ordersData.filter(o => (o.process_state||'').toUpperCase() === 'FALLOUT').length})</option>
+            <option value="ALL">SEMUA STATUS ({ordersData.length})</option>
+            {availableProcessStates.filter(ps => ps !== 'FALLOUT').map((ps) => {
+              const count = ordersData.filter(o => (o.process_state||'').toUpperCase() === ps).length;
+              return (
+                <option key={ps} value={ps}>
+                  {ps} ({count})
+                </option>
+              );
+            })}
+            <option value="NONE">-- Sembunyikan Order --</option>
+          </select>
+        </div>
 
+        {/* Map Type Toggle */}
         <div className="bg-white rounded shadow border border-slate-300 overflow-hidden flex text-[10px] font-bold">
           <button
             type="button"
@@ -195,6 +236,7 @@ export default function Map({
           </button>
         </div>
 
+        {/* Ukur Jarak */}
         <button
           type="button"
           onClick={() => {
@@ -209,10 +251,21 @@ export default function Map({
         >
           {measureActive ? '✕ Tutup' : '📏 Ukur'}
         </button>
+
+        {/* Tombol Fullscreen Maps (Presentasi) */}
+        <button
+          type="button"
+          onClick={() => setIsFullscreen(!isFullscreen)}
+          className="px-2.5 py-1 text-[10px] font-black rounded shadow border bg-[#0f172a] text-white hover:bg-slate-800 transition flex items-center gap-1"
+          title={isFullscreen ? 'Keluar Layar Penuh' : 'Layar Penuh (Mode Presentasi)'}
+        >
+          <span>{isFullscreen ? '🗗' : '⛶'}</span>
+          <span>{isFullscreen ? 'Exit' : 'Fullscreen'}</span>
+        </button>
       </div>
 
       {measureActive && (
-        <div className="absolute top-12 right-2 z-[1000] bg-white/95 backdrop-blur p-2 rounded shadow border border-slate-300 text-[10px] text-slate-800 min-w-[150px]">
+        <div className="absolute top-12 right-2.5 z-[1000] bg-white/95 backdrop-blur p-2 rounded shadow border border-slate-300 text-[10px] text-slate-800 min-w-[150px]">
           <p className="font-bold border-b pb-0.5">
             Titik: <span className="text-blue-600 font-black">{clickPoints.length}</span>
           </p>
@@ -240,7 +293,7 @@ export default function Map({
       <MapContainer
         center={defaultCenter}
         zoom={7}
-        style={{ height: '100%', width: '100%', borderRadius: '0.375rem' }}
+        style={{ height: '100%', width: '100%', borderRadius: isFullscreen ? '0' : '0.375rem' }}
       >
         {mapType === 'satellite' ? (
           <TileLayer
@@ -260,6 +313,7 @@ export default function Map({
           markerRefs={markerRefs}
           roadRouteCoordinates={roadRouteCoordinates}
           manualMeasureLine={manualMeasureLine}
+          isFullscreen={isFullscreen}
         />
         <MapClickHandler measureMode={measureActive} onMapClick={handleMapClick} />
 
@@ -308,7 +362,7 @@ export default function Map({
             <CircleMarker
               key={`${odp.odp_name}-${idx}`}
               center={[odp.latitude, odp.longitude]}
-              radius={5}
+              radius={4.5}
               ref={(el) => {
                 if (el) markerRefs.current[odp.odp_name] = el;
               }}
@@ -384,88 +438,91 @@ export default function Map({
           );
         })}
 
-        {/* ================= 2. MARKER SEGITIGA ORDER FALLOUT ================= */}
-        {showFalloutMarkers &&
-          falloutOrders.map((fo, fIdx) => {
-            if (!fo.lat || !fo.lon) return null;
-            const nearestOdp = findNearestOdp(fo.lat, fo.lon);
-            const nearestColor = nearestOdp ? getColor(nearestOdp.status_final) : '#64748b';
-            const nearestOcc = nearestOdp && nearestOdp.is_total > 0
-              ? Math.round((nearestOdp.used / nearestOdp.is_total) * 100)
-              : 0;
+        {/* ================= 2. MARKER SEGITIGA ORDER SESUAI PROCESS_STATE ================= */}
+        {visibleOrders.map((fo, fIdx) => {
+          if (!fo.lat || !fo.lon) return null;
+          const nearestOdp = findNearestOdp(fo.lat, fo.lon);
+          const nearestColor = nearestOdp ? getColor(nearestOdp.status_final) : '#64748b';
+          const nearestOcc = nearestOdp && nearestOdp.is_total > 0
+            ? Math.round((nearestOdp.used / nearestOdp.is_total) * 100)
+            : 0;
 
-            return (
-              <Marker
-                key={`fallout-${fo.order_id}-${fIdx}`}
-                position={[fo.lat, fo.lon]}
-                icon={triangleIcon}
-              >
-                <Popup>
-                  <div className="text-[10px] font-sans p-1 min-w-[210px] space-y-1.5">
-                    {/* Header Order Fallout */}
-                    <div className="border-b border-rose-200 pb-1 flex items-center justify-between gap-1">
-                      <span className="font-black text-rose-700 text-[11px]">
-                        🔺 ORDER FALLOUT
-                      </span>
-                      <span className="bg-rose-100 text-rose-900 font-bold px-1.5 py-0.2 rounded text-[8px]">
-                        {fo.order_duration_cat || '3 HARI'}
-                      </span>
-                    </div>
+          const pState = (fo.process_state || 'UNKNOWN').toUpperCase();
+          const markerColor = pState === 'FALLOUT' ? '#e11d48' : pState === 'COMPLETED' ? '#16a34a' : pState.includes('CANCEL') ? '#ea580c' : '#8b5cf6';
+          const icon = createTriangleIcon(markerColor);
 
-                    {/* Detail Order */}
-                    <div className="space-y-0.5 text-slate-700">
-                      <p>
-                        <strong className="text-slate-900 font-black">ID:</strong> {fo.order_id}
-                      </p>
-                      <p>
-                        <strong className="text-slate-900">Pelanggan:</strong> {fo.name || '-'} ({fo.no_handphone || '-'})
-                      </p>
-                      <p>
-                        <strong className="text-slate-900">STO:</strong> {fo.sto_co} | <strong className="text-slate-900">WOK:</strong> {fo.wok}
-                      </p>
-                      <p className="text-[9.5px] text-red-600 font-bold leading-tight mt-0.5 bg-red-50 p-1 rounded border border-red-100">
-                        Reason: {fo.fallout_reason_clean || fo.fallout_reason || '-'}
-                      </p>
-                    </div>
-
-                    {/* Analisis ODP Terdekat */}
-                    {nearestOdp ? (
-                      <div className="bg-slate-50 p-1.5 rounded border border-slate-200 text-[9px] space-y-0.5">
-                        <p className="font-black text-slate-900 flex justify-between items-center border-b border-slate-200 pb-0.5">
-                          <span>📍 ODP TERDEKAT:</span>
-                          <span className="text-blue-700">
-                            {nearestOdp.distanceKm >= 1
-                              ? `${nearestOdp.distanceKm.toFixed(2)} km`
-                              : `${Math.round(nearestOdp.distanceKm * 1000)} m`}
-                          </span>
-                        </p>
-                        <p className="font-extrabold text-blue-900 truncate">
-                          {nearestOdp.odp_name}
-                        </p>
-                        <div className="flex items-center justify-between pt-0.5">
-                          <span>
-                            Port: <strong>{nearestOdp.used}/{nearestOdp.is_total}</strong> ({nearestOcc}%)
-                          </span>
-                          <span
-                            className="text-white px-1.5 py-0.2 rounded text-[8px] font-black uppercase"
-                            style={{ backgroundColor: nearestColor }}
-                          >
-                            {nearestOdp.status_final}
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-slate-400 italic text-[9px]">Tidak ada ODP terdekat terdeteksi</p>
-                    )}
-
-                    <div className="text-[8px] text-slate-400 font-mono text-right">
-                      Tikor ({fo.coordSource}): {fo.lat.toFixed(5)}, {fo.lon.toFixed(5)}
-                    </div>
+          return (
+            <Marker
+              key={`order-${fo.order_id}-${fIdx}`}
+              position={[fo.lat, fo.lon]}
+              icon={icon}
+            >
+              <Popup>
+                <div className="text-[10px] font-sans p-1 min-w-[210px] space-y-1.5">
+                  <div className="border-b border-slate-200 pb-1 flex items-center justify-between gap-1">
+                    <span className="font-black text-[11px]" style={{ color: markerColor }}>
+                      🔺 {pState}
+                    </span>
+                    <span className="bg-slate-100 text-slate-800 font-bold px-1.5 py-0.2 rounded text-[8px]">
+                      {fo.order_duration_cat || '3 HARI'}
+                    </span>
                   </div>
-                </Popup>
-              </Marker>
-            );
-          })}
+
+                  <div className="space-y-0.5 text-slate-700">
+                    <p>
+                      <strong className="text-slate-900 font-black">ID:</strong> {fo.order_id}
+                    </p>
+                    <p>
+                      <strong className="text-slate-900">Pelanggan:</strong> {fo.name || '-'} ({fo.no_handphone || '-'})
+                    </p>
+                    <p>
+                      <strong className="text-slate-900">STO:</strong> {fo.sto_co} | <strong className="text-slate-900">WOK:</strong> {fo.wok}
+                    </p>
+                    {fo.fallout_reason && (
+                      <p className="text-[9.5px] text-red-600 font-bold leading-tight mt-0.5 bg-red-50 p-1 rounded border border-red-100">
+                        Reason: {fo.fallout_reason_clean || fo.fallout_reason}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Analisis ODP Terdekat */}
+                  {nearestOdp ? (
+                    <div className="bg-slate-50 p-1.5 rounded border border-slate-200 text-[9px] space-y-0.5">
+                      <p className="font-black text-slate-900 flex justify-between items-center border-b border-slate-200 pb-0.5">
+                        <span>📍 ODP TERDEKAT:</span>
+                        <span className="text-blue-700">
+                          {nearestOdp.distanceKm >= 1
+                            ? `${nearestOdp.distanceKm.toFixed(2)} km`
+                            : `${Math.round(nearestOdp.distanceKm * 1000)} m`}
+                        </span>
+                      </p>
+                      <p className="font-extrabold text-blue-900 truncate">
+                        {nearestOdp.odp_name}
+                      </p>
+                      <div className="flex items-center justify-between pt-0.5">
+                        <span>
+                          Port: <strong>{nearestOdp.used}/{nearestOdp.is_total}</strong> ({nearestOcc}%)
+                        </span>
+                        <span
+                          className="text-white px-1.5 py-0.2 rounded text-[8px] font-black uppercase"
+                          style={{ backgroundColor: nearestColor }}
+                        >
+                          {nearestOdp.status_final}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-slate-400 italic text-[9px]">Tidak ada ODP terdekat terdeteksi</p>
+                  )}
+
+                  <div className="text-[8px] text-slate-400 font-mono text-right">
+                    Tikor ({fo.coordSource}): {fo.lat.toFixed(5)}, {fo.lon.toFixed(5)}
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
+          );
+        })}
       </MapContainer>
     </div>
   );
