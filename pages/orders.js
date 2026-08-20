@@ -57,10 +57,11 @@ function formatFullDateTime(d) {
   return `${day} ${month} ${year} ${hours}:${mins}`;
 }
 
-// Fungsi Normalisasi Durasi Saklek Realtime jika ada data lama/baru
+// FUNGSI SAKLEK: Hitung Hari Ini - Tanggal Provi / Order TS
 function getSaklekDurationCategory(order) {
-  if (order.order_ts || order.provi) {
-    const proviDate = new Date(order.order_ts || order.provi);
+  const dateStr = order.order_ts || order.provi || order.order_date;
+  if (dateStr) {
+    const proviDate = new Date(dateStr);
     if (!isNaN(proviDate.getTime())) {
       const today = new Date();
       const diffTime = today.getTime() - proviDate.getTime();
@@ -73,6 +74,7 @@ function getSaklekDurationCategory(order) {
     }
   }
 
+  // Fallback jika tidak ada tanggal valid
   const raw = String(order.order_duration_cat || order.aging_fallout || '').toUpperCase().trim();
   if (raw.includes('1 HARI') || raw.includes('2-3') || raw.includes('3 HARI')) return '3 HARI';
   if (raw.includes('4-7') || raw.includes('7 HARI')) return '7 HARI';
@@ -238,8 +240,9 @@ export default function OrdersPage() {
   const availableMonths = useMemo(() => {
     const set = new Set();
     orders.forEach((o) => {
-      if (o && o.order_ts) {
-        const d = new Date(o.order_ts);
+      const dateVal = o.order_ts || o.provi || o.order_date;
+      if (dateVal) {
+        const d = new Date(dateVal);
         if (!isNaN(d.getTime())) {
           const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
           const label = `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
@@ -255,7 +258,10 @@ export default function OrdersPage() {
   const headerCutoffText = useMemo(() => {
     if (!orders || orders.length === 0) return '*Cut Off Data -';
     const dates = orders
-      .map((o) => (o && o.order_ts ? new Date(o.order_ts).getTime() : null))
+      .map((o) => {
+        const dateVal = o.order_ts || o.provi || o.order_date;
+        return dateVal ? new Date(dateVal).getTime() : null;
+      })
       .filter((t) => t && !isNaN(t));
 
     if (dates.length === 0) return '*Cut Off Data';
@@ -271,10 +277,11 @@ export default function OrdersPage() {
 
       let matchMonth = true;
       if (selectedMonth !== 'ALL') {
-        if (!o.order_ts) {
+        const dateVal = o.order_ts || o.provi || o.order_date;
+        if (!dateVal) {
           matchMonth = false;
         } else {
-          const d = new Date(o.order_ts);
+          const d = new Date(dateVal);
           if (isNaN(d.getTime())) {
             matchMonth = false;
           } else {
@@ -286,8 +293,8 @@ export default function OrdersPage() {
 
       const matchWok = selectedWok === 'ALL' || o.wok === selectedWok;
       const matchSto = selectedSto === 'ALL' || o.sto_co === selectedSto;
-      const durVal = getSaklekDurationCategory(o);
-      const matchDur = selectedDuration === 'ALL' || durVal === selectedDuration;
+      const saklekDur = getSaklekDurationCategory(o);
+      const matchDur = selectedDuration === 'ALL' || saklekDur === selectedDuration;
       
       const processState = (o.process_state || 'UNKNOWN').trim().toUpperCase();
       const matchStat = selectedStatus === 'ALL' || processState === selectedStatus;
@@ -311,10 +318,13 @@ export default function OrdersPage() {
       if (!o) return false;
 
       let matchMonth = true;
-      if (selectedMonth !== 'ALL' && o.order_ts) {
-        const d = new Date(o.order_ts);
-        const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        matchMonth = mKey === selectedMonth;
+      if (selectedMonth !== 'ALL') {
+        const dateVal = o.order_ts || o.provi || o.order_date;
+        if (dateVal) {
+          const d = new Date(dateVal);
+          const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          matchMonth = mKey === selectedMonth;
+        }
       }
 
       const matchWok = selectedWok === 'ALL' || o.wok === selectedWok;
@@ -328,16 +338,15 @@ export default function OrdersPage() {
     });
   }, [orders, selectedMonth, selectedWok, selectedSto, selectedPivotSubgroups]);
 
-  // Pivot 1: WOK & STO vs Duration Saklek
+  // Pivot 1: WOK & STO vs Duration (100% Saklek 4 Kategori)
   const pivotDuration = useMemo(() => {
-    const durColumnsSet = new Set(DURATION_ORDER);
+    const columns = [...DURATION_ORDER];
     const map = {};
 
     pivotBaseOrders.forEach((o) => {
       const wok = o.wok || 'PALANGKARAYA';
       const sto = o.sto_co || 'UNKNOWN';
       const dur = getSaklekDurationCategory(o);
-      durColumnsSet.add(dur);
 
       if (!map[wok]) map[wok] = { name: wok, total: 0, stos: {}, colCounts: {} };
       if (!map[wok].stos[sto]) map[wok].stos[sto] = { name: sto, total: 0, colCounts: {} };
@@ -349,7 +358,6 @@ export default function OrdersPage() {
       map[wok].stos[sto].colCounts[dur] = (map[wok].stos[sto].colCounts[dur] || 0) + 1;
     });
 
-    const columns = sortDurationColumns(Array.from(durColumnsSet));
     const grandColTotals = {};
     columns.forEach((c) => (grandColTotals[c] = 0));
     let totalAll = 0;
@@ -418,18 +426,24 @@ export default function OrdersPage() {
     return { sortedWoks, columns, grandColTotals, totalAll };
   }, [pivotBaseOrders, pivot2Sort]);
 
-  // Pivot 3: Duration vs Fallout Saklek
+  // Pivot 3: Duration vs Fallout (100% Saklek 4 Kategori)
   const pivotFallout = useMemo(() => {
     const tree = {};
+    DURATION_ORDER.forEach((k) => {
+      tree[k] = { name: k, total: 0, reasons: {} };
+    });
     let totalAll = 0;
 
     const baseOrders = orders.filter((o) => {
       if (!o) return false;
       let matchMonth = true;
-      if (selectedMonth !== 'ALL' && o.order_ts) {
-        const d = new Date(o.order_ts);
-        const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        matchMonth = mKey === selectedMonth;
+      if (selectedMonth !== 'ALL') {
+        const dateVal = o.order_ts || o.provi || o.order_date;
+        if (dateVal) {
+          const d = new Date(dateVal);
+          const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          matchMonth = mKey === selectedMonth;
+        }
       }
       const matchWok = selectedWok === 'ALL' || o.wok === selectedWok;
       const matchSto = selectedSto === 'ALL' || o.sto_co === selectedSto;
@@ -459,7 +473,7 @@ export default function OrdersPage() {
     
     const durKeys = selectedDuration !== 'ALL' 
       ? [selectedDuration].filter((k) => pivotFallout.tree[k]) 
-      : Object.keys(pivotFallout.tree);
+      : DURATION_ORDER.filter((k) => pivotFallout.tree[k] && pivotFallout.tree[k].total > 0);
     
     const sortedDurKeys = sortDurationColumns(durKeys);
 
@@ -1045,6 +1059,7 @@ export default function OrdersPage() {
                                 className="p-1 border border-slate-200 text-left pl-6 font-semibold text-slate-700 cursor-pointer hover:text-blue-700"
                                 onClick={() => {
                                   setActiveSubgroupScope(selectedPivotSubgroups);
+                                  setSelectedStatus('ALL');
                                   setSelectedFallout('ALL');
                                   setSelectedSto((prev) => (prev === sto.name ? 'ALL' : sto.name));
                                 }}
