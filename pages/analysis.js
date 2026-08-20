@@ -52,10 +52,21 @@ export default function AnalysisPage() {
   const [radiusLimit, setRadiusLimit] = useState(250);
   const [selectedOrderState, setSelectedOrderState] = useState('FALLOUT');
 
+  // Search & Target Terpilih
   const [searchInput, setSearchInput] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [selectedTarget, setSelectedTarget] = useState(null);
 
+  // Fitur Ukur Jarak Rute Darat (Jalan Raya)
+  const [showMeasureModal, setShowMeasureModal] = useState(false);
+  const [pointAInput, setPointAInput] = useState('');
+  const [pointBInput, setPointBInput] = useState('');
+  const [isRouting, setIsRouting] = useState(false);
+  const [measureResult, setMeasureResult] = useState(null);
+  const [manualMeasureLine, setManualMeasureLine] = useState(null);
+  const [roadRouteCoordinates, setRoadRouteCoordinates] = useState([]);
+
+  // Table State
   const [tableSearch, setTableSearch] = useState('');
   const [tableSort, setTableSort] = useState({ key: 'distanceMeters', direction: 'asc' });
   const [currentPage, setCurrentPage] = useState(1);
@@ -119,6 +130,54 @@ export default function AnalysisPage() {
     setSearchInput(target.displayName || target.odp_name || target.order_id);
     setSuggestions([]);
     setCurrentPage(1);
+  };
+
+  // Parser Titik A dan B untuk Pengukuran Jarak Jalan Darat
+  const parsePoint = (input) => {
+    if (!input) return null;
+    const clean = input.trim();
+    if (clean.includes(',')) {
+      const parts = clean.split(',').map((p) => parseFloat(p.trim()));
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) return { name: clean, lat: parts[0], lon: parts[1] };
+    }
+    const foundOdp = cleanOdpList.find((d) => d.odp_name && d.odp_name.toLowerCase() === clean.toLowerCase());
+    if (foundOdp && foundOdp.latitude && foundOdp.longitude) return { name: foundOdp.odp_name, lat: foundOdp.latitude, lon: foundOdp.longitude };
+
+    const foundOrd = cleanOrderList.find((o) => o.order_id && o.order_id.toLowerCase() === clean.toLowerCase());
+    if (foundOrd && foundOrd.lat && foundOrd.lon) return { name: foundOrd.order_id, lat: foundOrd.lat, lon: foundOrd.lon };
+
+    return null;
+  };
+
+  const handleCalculateRoadDistance = async () => {
+    const pA = parsePoint(pointAInput);
+    const pB = parsePoint(pointBInput);
+    if (!pA || !pB) {
+      alert('Masukkan Titik A dan B yang valid (Nama ODP, Order ID, atau format Latitude,Longitude)!');
+      return;
+    }
+    setIsRouting(true);
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${pA.lon},${pA.lat};${pB.lon},${pB.lat}?overview=full&geometries=geojson`;
+      const res = await fetch(url);
+      const json = await res.json();
+      if (json.code === 'Ok' && json.routes && json.routes.length > 0) {
+        const route = json.routes[0];
+        const distanceMeters = route.distance;
+        const distanceKm = distanceMeters / 1000;
+        const latlngs = route.geometry.coordinates.map((c) => [c[1], c[0]]);
+        setRoadRouteCoordinates(latlngs);
+        setManualMeasureLine([[pA.lat, pA.lon], [pB.lat, pB.lon]]);
+        setMeasureResult({ from: pA.name, to: pB.name, km: distanceKm.toFixed(2), meter: Math.round(distanceMeters).toLocaleString() });
+      } else {
+        throw new Error('Rute jalan tidak ditemukan.');
+      }
+    } catch (err) {
+      setManualMeasureLine([[pA.lat, pA.lon], [pB.lat, pB.lon]]);
+      setRoadRouteCoordinates([[pA.lat, pA.lon], [pB.lat, pB.lon]]);
+    } finally {
+      setIsRouting(false);
+    }
   };
 
   const nearbyCombinedData = useMemo(() => {
@@ -234,7 +293,7 @@ export default function AnalysisPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `analysis_radius_${radiusLimit}m_export.csv`);
+    link.setAttribute('download', `analysis_radius_${radiusLimit}m_${selectedTarget?.id || 'target'}_export.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -267,7 +326,7 @@ export default function AnalysisPage() {
               ODP &amp; FULFILLMENT ORDER ANALYSIS
             </h1>
             <p className="text-[10px] sm:text-xs font-semibold text-yellow-300 mt-0.5">
-              Pemetaan Radius Presisi &bull; Analisis Relasi Titik Order &amp; ODP Terdekat (&lt;{radiusLimit}m)
+              Pemetaan Radius Presisi &bull; Analisis Relasi Titik Order &amp; ODP Terdekat (&lt;{radiusLimit}m) &bull; Rute Darat
             </p>
           </div>
 
@@ -375,6 +434,63 @@ export default function AnalysisPage() {
           </div>
         </div>
 
+        {/* Modal Perhitungan Jarak Rute Darat (OSRM Driving) */}
+        {showMeasureModal && (
+          <div className="bg-slate-50 p-2.5 border border-slate-300 rounded shadow-xs text-xs space-y-2">
+            <div className="flex items-center justify-between border-b border-slate-200 pb-1">
+              <p className="font-bold text-slate-800 text-[11px] flex items-center gap-1">
+                <span>🚗</span> Hitung Jarak Rute Darat (Jalan Raya) Berdasarkan ODP Name / Order ID / Koordinat:
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowMeasureModal(false)}
+                className="text-slate-400 hover:text-slate-700 font-black"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <label className="text-[10px] text-slate-500 font-semibold">Titik A (Start):</label>
+                <input
+                  type="text"
+                  placeholder="Contoh: ODP-PLK-FAA/01 atau Order ID atau -2.21,113.91"
+                  value={pointAInput}
+                  onChange={(e) => setPointAInput(e.target.value)}
+                  className="w-full p-1.5 border rounded text-xs mt-0.5 bg-white font-semibold"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-500 font-semibold">Titik B (End):</label>
+                <input
+                  type="text"
+                  placeholder="Contoh: ODP-PLK-FAA/05 atau Order ID atau -2.22,113.92"
+                  value={pointBInput}
+                  onChange={(e) => setPointBInput(e.target.value)}
+                  className="w-full p-1.5 border rounded text-xs mt-0.5 bg-white font-semibold"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              <button
+                type="button"
+                disabled={isRouting}
+                onClick={handleCalculateRoadDistance}
+                className="px-3.5 py-1.5 bg-blue-600 text-white font-bold rounded text-[11px] hover:bg-blue-700 shadow disabled:opacity-50 cursor-pointer"
+              >
+                {isRouting ? 'Menghitung Rute Darat...' : '🚗 Hitung Jarak Jalan & Gambar di Peta'}
+              </button>
+              {measureResult && (
+                <p className="font-bold text-blue-900 text-xs bg-blue-50 px-2.5 py-1 rounded border border-blue-200">
+                  Hasil Rute: <span className="text-emerald-700 font-black">{measureResult.km} km</span> ({measureResult.meter} m)
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Info Banner Target */}
         {selectedTarget ? (
           <div className="bg-blue-50 border-l-4 border-blue-600 p-2.5 rounded shadow-xs text-xs flex flex-col sm:flex-row justify-between sm:items-center gap-2">
@@ -417,6 +533,10 @@ export default function AnalysisPage() {
             selectedOrderState={selectedOrderState}
             setSelectedOrderState={setSelectedOrderState}
             availableProcessStates={availableProcessStates}
+            manualMeasureLine={manualMeasureLine}
+            manualMeasureInfo={measureResult}
+            roadRouteCoordinates={roadRouteCoordinates}
+            onToggleMeasureModal={() => setShowMeasureModal(!showMeasureModal)}
           />
         </div>
 
