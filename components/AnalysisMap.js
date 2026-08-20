@@ -92,8 +92,8 @@ export default function AnalysisMap({
   selectedTarget = null,
   radiusLimit = 250,
   onSelectTarget,
-  selectedOrderState = 'FALLOUT',
-  setSelectedOrderState,
+  selectedOrderStates = ['FALLOUT'],
+  setSelectedOrderStates,
   availableProcessStates = [],
   manualMeasureLine,
   manualMeasureInfo,
@@ -102,11 +102,23 @@ export default function AnalysisMap({
 }) {
   const defaultCenter = [-1.7, 114.8];
   const containerRef = useRef(null);
+  const dropdownRef = useRef(null);
 
   const [mapType, setMapType] = useState('street');
   const [measureActive, setMeasureActive] = useState(false);
   const [clickPoints, setClickPoints] = useState([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [openOrderStateDropdown, setOpenOrderStateDropdown] = useState(false);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setOpenOrderStateDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -204,14 +216,28 @@ export default function AnalysisMap({
   };
 
   const visibleOrders = useMemo(() => {
-    if (selectedOrderState === 'NONE') return [];
+    if (!selectedOrderStates || selectedOrderStates.length === 0) return [];
     return (ordersData || []).filter((o) => {
       if (!o.lat || !o.lon) return false;
       const ps = (o.process_state || '').trim().toUpperCase();
-      if (selectedOrderState === 'ALL') return true;
-      return ps === selectedOrderState;
+      return selectedOrderStates.includes(ps);
     });
-  }, [ordersData, selectedOrderState]);
+  }, [ordersData, selectedOrderStates]);
+
+  const toggleOrderState = (val) => {
+    if (selectedOrderStates.includes(val)) {
+      setSelectedOrderStates(selectedOrderStates.filter(s => s !== val));
+    } else {
+      setSelectedOrderStates([...selectedOrderStates, val]);
+    }
+  };
+
+  const orderStateSummaryText = useMemo(() => {
+    if (selectedOrderStates.length === 0) return 'Sembunyikan Order';
+    if (selectedOrderStates.length === availableProcessStates.length) return 'Semua Status';
+    if (selectedOrderStates.length === 1) return selectedOrderStates[0];
+    return `${selectedOrderStates.length} Status Dipilih`;
+  }, [selectedOrderStates, availableProcessStates]);
 
   return (
     <div
@@ -221,7 +247,7 @@ export default function AnalysisMap({
       }`}
     >
       <div className="absolute top-2.5 right-2.5 z-[1000] flex items-center gap-1.5 flex-wrap justify-end">
-        {/* Tombol Ukur Rute Jalan Darat OSRM */}
+        {/* Tombol Ukur Rute Darat OSRM */}
         <button
           type="button"
           onClick={onToggleMeasureModal}
@@ -230,29 +256,58 @@ export default function AnalysisMap({
           <span>🚗</span> Jarak Darat
         </button>
 
-        {/* Dropdown Process State */}
-        <div className="bg-white/95 backdrop-blur px-2 py-1 rounded shadow border border-slate-300 flex items-center gap-1.5 text-[10.5px]">
-          <span className="font-bold text-slate-700 flex items-center gap-1">
-            <span className="inline-block w-2.5 h-2.5 bg-rose-600 rounded-xs"></span>
-            Order:
-          </span>
-          <select
-            value={selectedOrderState}
-            onChange={(e) => setSelectedOrderState(e.target.value)}
-            className="p-0.5 border border-slate-300 rounded font-black text-rose-800 bg-rose-50 text-[10px] outline-none cursor-pointer"
+        {/* Dropdown Multiselect Order Process State (Default: FALLOUT) */}
+        <div className="relative" ref={dropdownRef}>
+          <button
+            type="button"
+            onClick={() => setOpenOrderStateDropdown(!openOrderStateDropdown)}
+            className="bg-white/95 backdrop-blur px-2.5 py-1 rounded shadow border border-slate-300 flex items-center gap-1.5 text-[10.5px] font-bold text-slate-800 hover:bg-slate-100 cursor-pointer"
           >
-            <option value="FALLOUT">FALLOUT ({ordersData.filter((o) => (o.process_state || '').toUpperCase() === 'FALLOUT').length})</option>
-            <option value="ALL">SEMUA STATUS ({ordersData.length})</option>
-            {availableProcessStates.filter((ps) => ps !== 'FALLOUT').map((ps) => {
-              const count = ordersData.filter((o) => (o.process_state || '').toUpperCase() === ps).length;
-              return (
-                <option key={ps} value={ps}>
-                  {ps} ({count})
-                </option>
-              );
-            })}
-            <option value="NONE">-- Sembunyikan Order --</option>
-          </select>
+            <span className="inline-block w-2.5 h-2.5 bg-rose-600 rounded-xs"></span>
+            <span>Order: <strong className="text-rose-800">{orderStateSummaryText} ({visibleOrders.length})</strong></span>
+            <span className="text-[8px] text-slate-400">▼</span>
+          </button>
+
+          {openOrderStateDropdown && (
+            <div className="absolute right-0 mt-1 w-52 max-h-60 overflow-y-auto bg-slate-900 text-white rounded-lg shadow-2xl border border-slate-700 p-2 z-[2000] text-[10px] space-y-1">
+              <div className="flex justify-between items-center pb-1 border-b border-slate-700 text-[8.5px] font-bold">
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrderStates(availableProcessStates)}
+                  className="text-blue-400 hover:underline cursor-pointer"
+                >
+                  Pilih Semua
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrderStates([])}
+                  className="text-red-400 hover:underline cursor-pointer"
+                >
+                  Kosongkan
+                </button>
+              </div>
+              <div className="space-y-1 pt-1">
+                {availableProcessStates.map((st) => {
+                  const isChecked = selectedOrderStates.includes(st);
+                  const count = ordersData.filter(o => (o.process_state || '').toUpperCase() === st).length;
+                  return (
+                    <label key={st} className="flex items-center justify-between p-1 rounded hover:bg-slate-800 cursor-pointer select-none">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleOrderState(st)}
+                          className="accent-rose-500 cursor-pointer"
+                        />
+                        <span className="font-bold truncate">{st}</span>
+                      </div>
+                      <span className="text-[8.5px] text-slate-400 font-mono">({count})</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Map Type */}
@@ -273,7 +328,7 @@ export default function AnalysisMap({
           </button>
         </div>
 
-        {/* Ukur Jarak Manual Point-to-Point */}
+        {/* Ukur Jarak Manual */}
         <button
           type="button"
           onClick={() => {
@@ -353,12 +408,10 @@ export default function AnalysisMap({
         />
         <MapClickHandler measureMode={measureActive} onMapClick={handleMapClick} />
 
-        {/* Garis Rute Jalan Darat OSRM */}
         {roadRouteCoordinates && roadRouteCoordinates.length > 0 && (
           <Polyline positions={roadRouteCoordinates} pathOptions={{ color: '#2563eb', weight: 4, opacity: 0.9 }} />
         )}
 
-        {/* Pin Titik A & B Pengukuran Jarak Darat */}
         {manualMeasureLine && manualMeasureLine.length === 2 && (
           <>
             <Marker position={manualMeasureLine[0]}>
@@ -388,7 +441,7 @@ export default function AnalysisMap({
           />
         ))}
 
-        {/* 1. Lingkaran Radius 250M */}
+        {/* Lingkaran Radius 250M */}
         {selectedTarget && selectedTarget.lat && selectedTarget.lon && (
           <>
             <Circle
@@ -415,7 +468,7 @@ export default function AnalysisMap({
           </>
         )}
 
-        {/* 2. Marker ODP */}
+        {/* Marker ODP */}
         {odpData.map((odp, idx) => {
           if (!odp.latitude || !odp.longitude) return null;
           const color = getColor(odp.status_final);
@@ -503,7 +556,7 @@ export default function AnalysisMap({
           );
         })}
 
-        {/* 3. Marker Order */}
+        {/* Marker Order */}
         {visibleOrders.map((ord, idx) => {
           if (!ord.lat || !ord.lon) return null;
           const nearestOdp = findNearestOdp(ord.lat, ord.lon);
@@ -515,7 +568,7 @@ export default function AnalysisMap({
           const pState = (ord.process_state || 'UNKNOWN').toUpperCase();
           const markerColor = pState === 'FALLOUT' ? '#e11d48' : pState === 'COMPLETED' ? '#16a34a' : pState.includes('CANCEL') ? '#ea580c' : '#8b5cf6';
           const icon = createTriangleIcon(markerColor);
-          const remarksRaw = ord.fallout_reason || ord.order_status_desc || '';
+          const remarksRaw = ord.fallout_reason || ord.remark || ord.order_status_desc || '';
 
           return (
             <Marker
@@ -543,7 +596,7 @@ export default function AnalysisMap({
                       <span>🔺</span> {pState}
                     </span>
                     <span className="bg-slate-100 text-slate-700 font-bold px-1.5 py-0.5 rounded text-[8.5px] whitespace-nowrap">
-                      {ord.order_duration_cat || '3 HARI'}
+                      {ord.order_duration_cat || ord.aging_fallout || '3 HARI'}
                     </span>
                   </div>
 
@@ -585,7 +638,7 @@ export default function AnalysisMap({
                       REMARKS / STATUS REASON:
                     </span>
                     <p className="font-bold text-slate-800 leading-tight">
-                      {ord.fallout_reason_clean || pState}
+                      {ord.symptom || ord.fallout_category || ord.fallout_reason_clean || pState}
                     </p>
                     <div className="text-[8.5px] text-slate-600 leading-snug break-words pt-1 border-t border-slate-200 font-mono bg-white p-1 rounded select-all cursor-text">
                       {remarksRaw || 'Tidak ada catatan tambahan.'}
