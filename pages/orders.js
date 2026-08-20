@@ -20,7 +20,7 @@ const ALLOWED_STOS = [
   'BNT', 'PLK', 'KKN', 'MTW', 'PPS', 'PYM', 'TML', 'AMP', 'KKP', 'KRI', 'KSO', 'PRC'
 ];
 
-// Saklek 4 Kategori Durasi
+// Saklek 4 Kategori Durasi Saja
 const DURATION_ORDER = ['3 HARI', '7 HARI', '30 HARI', '3 BULAN'];
 
 function sortDurationColumns(cols = []) {
@@ -57,24 +57,52 @@ function formatFullDateTime(d) {
   return `${day} ${month} ${year} ${hours}:${mins}`;
 }
 
-// FUNGSI SAKLEK: Hitung Hari Ini - Tanggal Provi / Order TS
-function getSaklekDurationCategory(order) {
-  const dateStr = order.order_ts || order.provi || order.order_date;
-  if (dateStr) {
-    const proviDate = new Date(dateStr);
-    if (!isNaN(proviDate.getTime())) {
-      const today = new Date();
-      const diffTime = today.getTime() - proviDate.getTime();
-      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+function parseUniversalDate(val) {
+  if (!val) return null;
+  if (val instanceof Date && !isNaN(val.getTime())) return val;
 
-      if (diffDays <= 3) return '3 HARI';
-      if (diffDays <= 7) return '7 HARI';
-      if (diffDays <= 30) return '30 HARI';
-      return '3 BULAN';
-    }
+  if (typeof val === 'number') {
+    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+    return new Date(excelEpoch.getTime() + val * 86400000);
   }
 
-  // Fallback jika tidak ada tanggal valid
+  const str = String(val).trim();
+  if (!str) return null;
+
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (dmyMatch) {
+    const day = parseInt(dmyMatch[1], 10);
+    const month = parseInt(dmyMatch[2], 10) - 1;
+    const year = parseInt(dmyMatch[3], 10);
+    const d = new Date(year, month, day);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) return parsed;
+
+  return null;
+}
+
+// Fungsi Hitung Durasi Saklek Realtime (Today - Provi / Order TS)
+function getSaklekDurationCategory(order) {
+  const dateVal = order.order_ts || order.provi || order.order_date;
+  const proviDate = parseUniversalDate(dateVal);
+
+  if (proviDate) {
+    const today = new Date();
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const startOfProvi = new Date(proviDate.getFullYear(), proviDate.getMonth(), proviDate.getDate());
+
+    const diffTime = startOfToday.getTime() - startOfProvi.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays <= 3) return '3 HARI';
+    if (diffDays <= 7) return '7 HARI';
+    if (diffDays <= 30) return '30 HARI';
+    return '3 BULAN';
+  }
+
   const raw = String(order.order_duration_cat || order.aging_fallout || '').toUpperCase().trim();
   if (raw.includes('1 HARI') || raw.includes('2-3') || raw.includes('3 HARI')) return '3 HARI';
   if (raw.includes('4-7') || raw.includes('7 HARI')) return '7 HARI';
@@ -241,13 +269,11 @@ export default function OrdersPage() {
     const set = new Set();
     orders.forEach((o) => {
       const dateVal = o.order_ts || o.provi || o.order_date;
-      if (dateVal) {
-        const d = new Date(dateVal);
-        if (!isNaN(d.getTime())) {
-          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-          const label = `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
-          set.add(JSON.stringify({ key, label }));
-        }
+      const d = parseUniversalDate(dateVal);
+      if (d) {
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const label = `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
+        set.add(JSON.stringify({ key, label }));
       }
     });
     return Array.from(set)
@@ -260,7 +286,8 @@ export default function OrdersPage() {
     const dates = orders
       .map((o) => {
         const dateVal = o.order_ts || o.provi || o.order_date;
-        return dateVal ? new Date(dateVal).getTime() : null;
+        const d = parseUniversalDate(dateVal);
+        return d ? d.getTime() : null;
       })
       .filter((t) => t && !isNaN(t));
 
@@ -278,16 +305,12 @@ export default function OrdersPage() {
       let matchMonth = true;
       if (selectedMonth !== 'ALL') {
         const dateVal = o.order_ts || o.provi || o.order_date;
-        if (!dateVal) {
+        const d = parseUniversalDate(dateVal);
+        if (!d) {
           matchMonth = false;
         } else {
-          const d = new Date(dateVal);
-          if (isNaN(d.getTime())) {
-            matchMonth = false;
-          } else {
-            const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-            matchMonth = mKey === selectedMonth;
-          }
+          const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          matchMonth = mKey === selectedMonth;
         }
       }
 
@@ -320,8 +343,8 @@ export default function OrdersPage() {
       let matchMonth = true;
       if (selectedMonth !== 'ALL') {
         const dateVal = o.order_ts || o.provi || o.order_date;
-        if (dateVal) {
-          const d = new Date(dateVal);
+        const d = parseUniversalDate(dateVal);
+        if (d) {
           const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
           matchMonth = mKey === selectedMonth;
         }
@@ -338,7 +361,7 @@ export default function OrdersPage() {
     });
   }, [orders, selectedMonth, selectedWok, selectedSto, selectedPivotSubgroups]);
 
-  // Pivot 1: WOK & STO vs Duration (100% Saklek 4 Kategori)
+  // Pivot 1: WOK & STO vs Duration (Saklek 4 Kategori)
   const pivotDuration = useMemo(() => {
     const columns = [...DURATION_ORDER];
     const map = {};
@@ -426,7 +449,7 @@ export default function OrdersPage() {
     return { sortedWoks, columns, grandColTotals, totalAll };
   }, [pivotBaseOrders, pivot2Sort]);
 
-  // Pivot 3: Duration vs Fallout (100% Saklek 4 Kategori)
+  // Pivot 3: Duration vs Fallout (Saklek 4 Kategori)
   const pivotFallout = useMemo(() => {
     const tree = {};
     DURATION_ORDER.forEach((k) => {
@@ -439,8 +462,8 @@ export default function OrdersPage() {
       let matchMonth = true;
       if (selectedMonth !== 'ALL') {
         const dateVal = o.order_ts || o.provi || o.order_date;
-        if (dateVal) {
-          const d = new Date(dateVal);
+        const d = parseUniversalDate(dateVal);
+        if (d) {
           const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
           matchMonth = mKey === selectedMonth;
         }
@@ -522,7 +545,7 @@ export default function OrdersPage() {
 
   const requestSort = (key) => {
     let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
+    if (sortConfig.key === key && sortConfig.direction === 'desc') direction = 'asc';
     setSortConfig({ key, direction });
   };
 
@@ -730,7 +753,7 @@ export default function OrdersPage() {
         {/* SECTION ATAS: 2 PIVOT TABLE */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
           
-          {/* PIVOT 1: DURATION */}
+          {/* PIVOT 1: DURATION (100% SAKLEK) */}
           <div className="bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase flex-wrap gap-1">
               <span>Count of order_id &bull; Duration SLA</span>
@@ -1059,7 +1082,6 @@ export default function OrdersPage() {
                                 className="p-1 border border-slate-200 text-left pl-6 font-semibold text-slate-700 cursor-pointer hover:text-blue-700"
                                 onClick={() => {
                                   setActiveSubgroupScope(selectedPivotSubgroups);
-                                  setSelectedStatus('ALL');
                                   setSelectedFallout('ALL');
                                   setSelectedSto((prev) => (prev === sto.name ? 'ALL' : sto.name));
                                 }}
@@ -1150,7 +1172,7 @@ export default function OrdersPage() {
         {/* SECTION TENGAH: PIVOT FALLOUT & DURATION FALLOUT CHART */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4">
           
-          {/* PIVOT 3: FALLOUT */}
+          {/* PIVOT 3: FALLOUT (SAKLEK 4 KATEGORI) */}
           <div className="xl:col-span-1 bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase flex-wrap gap-1">
               <span>Fallout</span>
@@ -1498,7 +1520,7 @@ export default function OrdersPage() {
                     Price {sortConfig.key === 'price_package' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
                   <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('order_ts')}>
-                    Order Date {sortConfig.key === 'order_ts' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    Order Date (Provi) {sortConfig.key === 'order_ts' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
                   <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('ps_ts')}>
                     PS Date {sortConfig.key === 'ps_ts' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
