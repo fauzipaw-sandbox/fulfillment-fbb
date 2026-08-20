@@ -15,11 +15,9 @@ function detectDelimiter(firstLine) {
   return ',';
 }
 
-// Parser Tanggal Anti Timezone Shift (Menjaga tanggal tetap persis sesuai file Excel)
 function parseLocalDateString(val) {
   if (!val) return null;
 
-  // Jika berupa Excel Serial Number (misal: 46011)
   if (typeof val === 'number') {
     const excelEpoch = new Date(Date.UTC(1899, 11, 30));
     const d = new Date(excelEpoch.getTime() + val * 86400000);
@@ -29,9 +27,7 @@ function parseLocalDateString(val) {
     return `${y}-${m}-${day}`;
   }
 
-  // Jika berupa Objek Date dari JS
   if (val instanceof Date && !isNaN(val.getTime())) {
-    // Ambil tahun, bulan, tanggal berdasarkan UTC jika jam 00:00Z, atau local date
     const y = val.getUTCFullYear();
     const m = String(val.getUTCMonth() + 1).padStart(2, '0');
     const day = String(val.getUTCDate()).padStart(2, '0');
@@ -41,7 +37,6 @@ function parseLocalDateString(val) {
   const str = String(val).trim();
   if (!str) return null;
 
-  // Format YYYY-MM-DD (misal: 2026-08-18 atau 2026-08-18 00:00:00)
   const ymdMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
   if (ymdMatch) {
     const y = ymdMatch[1];
@@ -50,7 +45,6 @@ function parseLocalDateString(val) {
     return `${y}-${m}-${d}`;
   }
 
-  // Format DD/MM/YYYY atau DD-MM-YYYY (misal: 18/08/2026)
   const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
   if (dmyMatch) {
     const d = String(parseInt(dmyMatch[1], 10)).padStart(2, '0');
@@ -62,7 +56,7 @@ function parseLocalDateString(val) {
   return str.slice(0, 10);
 }
 
-// Hitung Durasi Saklek (Today - Provi Date)
+// Perhitungan 5 Kategori Durasi Saklek
 function calculateDurationFromProviDateStr(proviDateStr, fallbackRaw) {
   if (proviDateStr && proviDateStr.length >= 10) {
     const parts = proviDateStr.slice(0, 10).split('-');
@@ -78,22 +72,24 @@ function calculateDurationFromProviDateStr(proviDateStr, fallbackRaw) {
       const diffTime = todayDate.getTime() - proviDate.getTime();
       const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-      if (diffDays <= 3) return '3 HARI';
-      if (diffDays <= 7) return '7 HARI';
-      if (diffDays <= 30) return '30 HARI';
-      return '3 BULAN';
+      if (diffDays <= 3) return '> 0 HARI';
+      if (diffDays <= 7) return '> 3 HARI';
+      if (diffDays <= 30) return '> 7 HARI';
+      if (diffDays <= 90) return '> 1 BULAN';
+      return '> 3 BULAN';
     }
   }
 
   if (fallbackRaw) {
     const s = String(fallbackRaw).toUpperCase().trim();
-    if (s.includes('1 HARI') || s.includes('2-3') || s.includes('3 HARI')) return '3 HARI';
-    if (s.includes('4-7') || s.includes('7 HARI')) return '7 HARI';
-    if (s.includes('30 HARI') || s.includes('30')) return '30 HARI';
-    if (s.includes('>7') || s.includes('BULAN') || s.includes('3 BULAN')) return '3 BULAN';
+    if (s.includes('1 HARI') || s.includes('2-3') || s.includes('0 HARI')) return '> 0 HARI';
+    if (s.includes('4-7') || s.includes('3 HARI')) return '> 3 HARI';
+    if (s.includes('7 HARI')) return '> 7 HARI';
+    if (s.includes('1 BULAN') || s.includes('30 HARI')) return '> 1 BULAN';
+    if (s.includes('3 BULAN') || s.includes('>7')) return '> 3 BULAN';
   }
 
-  return '3 HARI';
+  return '> 0 HARI';
 }
 
 function normalizeOrderKeys(row) {
@@ -122,11 +118,8 @@ function normalizeOrderKeys(row) {
     }
   }
 
-  // 1. Provi Date sebagai sumber Order Date yang tepat tanpa timezone shift
   const rawProvi = normalized.provi || normalized.order_ts || normalized.order_date || null;
   const formattedOrderDate = parseLocalDateString(rawProvi);
-
-  // 2. Hitung Duration Category Saklek
   const rawAging = normalized.aging_fallout || normalized.order_duration_cat || null;
   const finalDurationCat = calculateDurationFromProviDateStr(formattedOrderDate, rawAging);
 
@@ -383,7 +376,7 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
           <p className="font-extrabold text-purple-950 text-[11px]">
             Drag &amp; Drop file Order di sini atau <span className="text-purple-600 underline">klik untuk browse</span>
           </p>
-          <span className="text-[9px] text-slate-500 mt-0.5 font-semibold">Provi &rarr; Order Date &amp; Auto Durasi Saklek (3 HARI, 7 HARI, 30 HARI, 3 BULAN)</span>
+          <span className="text-[9px] text-slate-500 mt-0.5 font-semibold">Support CSV (Pipe/Comma) &amp; Excel (.xlsx)</span>
           {uploadingOrder && <p className="text-[10px] text-purple-700 font-bold animate-pulse mt-1.5">{orderProgress}</p>}
           {!uploadingOrder && orderProgress && <p className="text-[10px] text-emerald-700 font-bold mt-1.5">{orderProgress}</p>}
         </div>
