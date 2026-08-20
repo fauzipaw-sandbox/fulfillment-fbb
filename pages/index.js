@@ -165,6 +165,7 @@ export default function Dashboard() {
   const [orderTableSort, setOrderTableSort] = useState({ key: 'order_ts', direction: 'desc' });
   const rowsPerPage = 50;
 
+  // Data Terfilter Sinkron dengan klik di Card Overview
   const fullyFilteredData = useMemo(() => {
     return (data || []).filter((d) => {
       const matchStatus = selectedStatus === 'ALL' || d.status_final === selectedStatus;
@@ -177,6 +178,18 @@ export default function Dashboard() {
       return matchStatus && matchRx && matchKab && matchSto && matchWok && matchPort;
     });
   }, [data, selectedStatus, selectedRx, selectedKabupaten, selectedStoFilter, selectedWokFilter, selectedPortFilter]);
+
+  // Data untuk Kualitas Redaman (ikut tersinkron saat Status/Port di Overview ODP diklik)
+  const rxFilteredData = useMemo(() => {
+    return (data || []).filter((d) => {
+      const matchStatus = selectedStatus === 'ALL' || d.status_final === selectedStatus;
+      const matchKab = selectedKabupaten === 'ALL' || d.kabupaten === selectedKabupaten;
+      const matchSto = selectedStoFilter === 'ALL' || d.sto === selectedStoFilter;
+      const matchWok = selectedWokFilter === 'ALL' || d.wok === selectedWokFilter;
+      const matchPort = selectedPortFilter === 'ALL' || (selectedPortFilter === 'USED' && d.used > 0) || (selectedPortFilter === 'AVAI' && d.avai > 0);
+      return matchStatus && matchKab && matchSto && matchWok && matchPort;
+    });
+  }, [data, selectedStatus, selectedKabupaten, selectedStoFilter, selectedWokFilter, selectedPortFilter]);
 
   const falloutMapMarkers = useMemo(() => {
     return (ordersData || [])
@@ -205,6 +218,7 @@ export default function Dashboard() {
         (o.name && o.name.toLowerCase().includes(s)) ||
         (o.odp_name && o.odp_name.toLowerCase().includes(s)) ||
         (o.sto_co && o.sto_co.toLowerCase().includes(s)) ||
+        (o.symptom && o.symptom.toLowerCase().includes(s)) ||
         (o.fallout_reason_clean && o.fallout_reason_clean.toLowerCase().includes(s));
 
       return matchSto && matchWok && matchSearch;
@@ -219,13 +233,11 @@ export default function Dashboard() {
     return `*Cut Off Data until ${formatDateFormatted(latestDate)}`;
   }, [data]);
 
-  // STATS OVERVIEW GLOBAL DI-FREEZE ANGKANYA
+  // STATS OVERVIEW GLOBAL (Angka Tetap Freeze Sebagai Global Reference)
   const statsOverview = useMemo(() => {
     let totalPort = 0, usedPort = 0, avaiPort = 0;
     let colorCounts = { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 };
     let colorPorts = { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 };
-    let rxCounts = { RED: 0, ORANGE: 0, YELLOW: 0, GREEN: 0, NO_DATA: 0 };
-    let rxPorts = { RED: 0, ORANGE: 0, YELLOW: 0, GREEN: 0, NO_DATA: 0 };
 
     (data || []).forEach(item => {
       totalPort += item.is_total;
@@ -235,14 +247,25 @@ export default function Dashboard() {
         colorCounts[item.status_final]++;
         colorPorts[item.status_final] += item.is_total;
       }
+    });
+
+    return { totalPort, usedPort, avaiPort, colorCounts, colorPorts };
+  }, [data]);
+
+  // STATS KUALITAS REDAMAN (Sync Dengan Pilihan di Overview ODP)
+  const statsRxSync = useMemo(() => {
+    let rxCounts = { RED: 0, ORANGE: 0, YELLOW: 0, GREEN: 0, NO_DATA: 0 };
+    let rxPorts = { RED: 0, ORANGE: 0, YELLOW: 0, GREEN: 0, NO_DATA: 0 };
+
+    rxFilteredData.forEach(item => {
       if (rxCounts[item.rx_category] !== undefined) {
         rxCounts[item.rx_category]++;
         rxPorts[item.rx_category] += item.is_total;
       }
     });
 
-    return { totalPort, usedPort, avaiPort, colorCounts, colorPorts, rxCounts, rxPorts };
-  }, [data]);
+    return { rxCounts, rxPorts, totalValid: rxFilteredData.length - rxCounts.NO_DATA };
+  }, [rxFilteredData]);
 
   const statsFiltered = useMemo(() => {
     const kabMap = {}, flatStosMap = {};
@@ -382,7 +405,6 @@ export default function Dashboard() {
     return sortedBottomOrderData.slice(start, start + rowsPerPage);
   }, [sortedBottomOrderData, currentOrderPage]);
 
-  // Export ODP Terfilter
   const handleExportFilteredOdpCSV = () => {
     if (fullyFilteredData.length === 0) return alert('Tidak ada data ODP terfilter.');
     const clean = fullyFilteredData.map(({ parsed_date, ...rest }) => rest);
@@ -397,7 +419,6 @@ export default function Dashboard() {
     document.body.removeChild(link);
   };
 
-  // Export Semua ODP
   const handleExportAllOdpCSV = () => {
     if (!data || data.length === 0) return alert('Data ODP kosong.');
     const clean = data.map(({ parsed_date, ...rest }) => rest);
@@ -412,7 +433,6 @@ export default function Dashboard() {
     document.body.removeChild(link);
   };
 
-  // Export Orders Terfilter
   const handleExportFilteredOrderCSV = () => {
     if (filteredOrders.length === 0) return alert('Tidak ada data Order.');
     const csv = Papa.unparse(filteredOrders);
@@ -426,7 +446,6 @@ export default function Dashboard() {
     document.body.removeChild(link);
   };
 
-  // Export Semua Orders
   const handleExportAllOrderCSV = () => {
     if (!ordersData || ordersData.length === 0) return alert('Data Order kosong.');
     const csv = Papa.unparse(ordersData);
@@ -514,7 +533,6 @@ export default function Dashboard() {
   const totalPortGlobal = statsOverview.totalPort;
   const occGlobal = totalPortGlobal > 0 ? ((statsOverview.usedPort / totalPortGlobal) * 100).toFixed(1) : '0.0';
   const avaiGlobal = totalPortGlobal > 0 ? ((statsOverview.avaiPort / totalPortGlobal) * 100).toFixed(1) : '0.0';
-  const totalRxValid = totalOdpGlobal - statsOverview.rxCounts.NO_DATA;
 
   const getAvailBg = (availPerc) => {
     if (availPerc <= 1) return 'bg-[#fca5a5] text-red-950 font-bold';
@@ -526,7 +544,7 @@ export default function Dashboard() {
   return (
     <Sidebar>
       <Head>
-        <title>ODP Profile &amp; Utilization</title>
+        <title>ODP Profile & Utilization</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
       </Head>
 
@@ -545,7 +563,7 @@ export default function Dashboard() {
         <div className="bg-gradient-to-r from-[#211c47] to-[#3a3575] text-white p-3 sm:p-4 flex flex-col md:flex-row justify-between items-start md:items-center border-b-4 border-purple-500 rounded-t-lg shadow-sm gap-2">
           <div>
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-wide uppercase italic">
-              ODP PROFILE &amp; UTILIZATION
+              ODP PROFILE & UTILIZATION
             </h1>
             <p className="text-[10px] sm:text-xs font-semibold mt-0.5 opacity-90 text-yellow-300">
               {headerCutoffText}
@@ -566,7 +584,7 @@ export default function Dashboard() {
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
-              {showUploader ? 'Tutup Upload' : 'Upload Data (ODP &amp; Order)'}
+              {showUploader ? 'Tutup Upload' : 'Upload Data'}
             </button>
           </div>
         </div>
@@ -609,7 +627,7 @@ export default function Dashboard() {
           {/* ================= KOLOM KIRI ================= */}
           <div className="space-y-3 sm:space-y-4">
             
-            {/* 1. OVERVIEW ODP PROFILE (BERSIH & BISA DIKLIK UNTUK FILTER) */}
+            {/* 1. OVERVIEW ODP PROFILE */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
                 <span className="font-extrabold text-xs sm:text-sm tracking-wide">OVERVIEW ODP PROFILE</span>
@@ -756,12 +774,12 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* 2. KUALITAS REDAMAN */}
+            {/* 2. KUALITAS REDAMAN (SYNC DENGAN FILTER OVERVIEW ODP) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#059669] via-[#0d9488] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
                 <span className="font-extrabold text-xs sm:text-sm tracking-wide">KUALITAS REDAMAN (ONT RX LEVEL)</span>
                 <span className="bg-white/20 hover:bg-white/30 text-white text-[9.5px] font-semibold px-2 py-0.5 rounded-full border border-white/20 backdrop-blur-sm">
-                  {selectedRx !== 'ALL' ? `Filter: ${selectedRx}` : 'Klik box untuk filter'}
+                  {selectedRx !== 'ALL' ? `Filter RX: ${selectedRx}` : 'Klik box untuk filter'}
                 </span>
               </div>
 
@@ -773,12 +791,12 @@ export default function Dashboard() {
                   }`}
                 >
                   <div className="bg-red-600 text-white text-[9px] font-bold py-0.5 rounded-sm">&lt; -25 dBm</div>
-                  <p className="text-base sm:text-lg font-black text-red-950 mt-1">{statsOverview.rxCounts.RED.toLocaleString()}</p>
+                  <p className="text-base sm:text-lg font-black text-red-950 mt-1">{statsRxSync.rxCounts.RED.toLocaleString()}</p>
                   <p className="text-[10px] font-bold text-red-700">
-                    {totalRxValid > 0 ? ((statsOverview.rxCounts.RED / totalRxValid) * 100).toFixed(1) : 0}%
+                    {statsRxSync.totalValid > 0 ? ((statsRxSync.rxCounts.RED / statsRxSync.totalValid) * 100).toFixed(1) : 0}%
                   </p>
                   <p className="text-[9px] font-bold text-red-800 mt-0.5">
-                    {(statsOverview.rxPorts.RED / 1000).toFixed(1)}K Port
+                    {(statsRxSync.rxPorts.RED / 1000).toFixed(1)}K Port
                   </p>
                 </div>
 
@@ -789,12 +807,12 @@ export default function Dashboard() {
                   }`}
                 >
                   <div className="bg-orange-500 text-white text-[9px] font-bold py-0.5 rounded-sm">-25 s/d -21</div>
-                  <p className="text-base sm:text-lg font-black text-orange-950 mt-1">{statsOverview.rxCounts.ORANGE.toLocaleString()}</p>
+                  <p className="text-base sm:text-lg font-black text-orange-950 mt-1">{statsRxSync.rxCounts.ORANGE.toLocaleString()}</p>
                   <p className="text-[10px] font-bold text-orange-800">
-                    {totalRxValid > 0 ? ((statsOverview.rxCounts.ORANGE / totalRxValid) * 100).toFixed(1) : 0}%
+                    {statsRxSync.totalValid > 0 ? ((statsRxSync.rxCounts.ORANGE / statsRxSync.totalValid) * 100).toFixed(1) : 0}%
                   </p>
                   <p className="text-[9px] font-bold text-orange-800 mt-0.5">
-                    {(statsOverview.rxPorts.ORANGE / 1000).toFixed(1)}K Port
+                    {(statsRxSync.rxPorts.ORANGE / 1000).toFixed(1)}K Port
                   </p>
                 </div>
 
@@ -805,12 +823,12 @@ export default function Dashboard() {
                   }`}
                 >
                   <div className="bg-yellow-400 text-black text-[9px] font-bold py-0.5 rounded-sm">-21 s/d -18</div>
-                  <p className="text-base sm:text-lg font-black text-yellow-950 mt-1">{statsOverview.rxCounts.YELLOW.toLocaleString()}</p>
+                  <p className="text-base sm:text-lg font-black text-yellow-950 mt-1">{statsRxSync.rxCounts.YELLOW.toLocaleString()}</p>
                   <p className="text-[10px] font-bold text-yellow-800">
-                    {totalRxValid > 0 ? ((statsOverview.rxCounts.YELLOW / totalRxValid) * 100).toFixed(1) : 0}%
+                    {statsRxSync.totalValid > 0 ? ((statsRxSync.rxCounts.YELLOW / statsRxSync.totalValid) * 100).toFixed(1) : 0}%
                   </p>
                   <p className="text-[9px] font-bold text-yellow-800 mt-0.5">
-                    {(statsOverview.rxPorts.YELLOW / 1000).toFixed(1)}K Port
+                    {(statsRxSync.rxPorts.YELLOW / 1000).toFixed(1)}K Port
                   </p>
                 </div>
 
@@ -821,12 +839,12 @@ export default function Dashboard() {
                   }`}
                 >
                   <div className="bg-emerald-600 text-white text-[9px] font-bold py-0.5 rounded-sm">&gt; -18 dBm</div>
-                  <p className="text-base sm:text-lg font-black text-emerald-900 mt-1">{statsOverview.rxCounts.GREEN.toLocaleString()}</p>
+                  <p className="text-base sm:text-lg font-black text-emerald-900 mt-1">{statsRxSync.rxCounts.GREEN.toLocaleString()}</p>
                   <p className="text-[10px] font-bold text-emerald-700">
-                    {totalRxValid > 0 ? ((statsOverview.rxCounts.GREEN / totalRxValid) * 100).toFixed(1) : 0}%
+                    {statsRxSync.totalValid > 0 ? ((statsRxSync.rxCounts.GREEN / statsRxSync.totalValid) * 100).toFixed(1) : 0}%
                   </p>
                   <p className="text-[9px] font-bold text-emerald-800 mt-0.5">
-                    {(statsOverview.rxPorts.GREEN / 1000).toFixed(1)}K Port
+                    {(statsRxSync.rxPorts.GREEN / 1000).toFixed(1)}K Port
                   </p>
                 </div>
               </div>
@@ -883,11 +901,11 @@ export default function Dashboard() {
 
           {/* ================= KOLOM KANAN ================= */}
           <div className="space-y-3 sm:space-y-4">
-            {/* MAPS LOKASI ODP & FALLOUT ORDER */}
+            {/* MAPS LOKASI ODP & FALLOUT ORDER (TANPA DROPDOWN ORDER) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm relative">
               <div className="bg-gradient-to-r from-[#1e3a8a] to-[#3a3575] text-white p-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-xs sm:text-sm">MAPS LOKASI ODP &amp; FALLOUT</span>
+                  <span className="font-bold text-xs sm:text-sm">MAPS LOKASI ODP & FALLOUT</span>
                   <button
                     type="button"
                     onClick={() => setShowMeasureModal(!showMeasureModal)}
@@ -959,7 +977,7 @@ export default function Dashboard() {
                       onClick={handleCalculateRoadDistance}
                       className="px-3 py-1 bg-blue-600 text-white font-bold rounded text-[11px] hover:bg-blue-700 shadow disabled:opacity-50 cursor-pointer"
                     >
-                      {isRouting ? 'Menghitung Rute...' : '🚗 Hitung Jarak Jalan &amp; Gambar di Peta'}
+                      {isRouting ? 'Menghitung Rute...' : '🚗 Hitung Jarak Jalan & Gambar di Peta'}
                     </button>
                     {measureResult && (
                       <p className="font-bold text-blue-900 text-xs">
@@ -985,7 +1003,7 @@ export default function Dashboard() {
             {/* OCCUPANCY & AVAILABLE PORT */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
-                <span className="font-extrabold text-xs sm:text-sm tracking-wide">OCCUPANCY &amp; AVAILABLE PORT</span>
+                <span className="font-extrabold text-xs sm:text-sm tracking-wide">OCCUPANCY & AVAILABLE PORT</span>
                 <span className="bg-white/20 hover:bg-white/30 text-white text-[9.5px] font-semibold px-2 py-0.5 rounded-full border border-white/20 backdrop-blur-sm">
                   {selectedStoFilter !== 'ALL' ? `STO: ${selectedStoFilter}` : selectedWokFilter !== 'ALL' ? `WOK: ${selectedWokFilter}` : 'Klik STO / WOK untuk filter'}
                 </span>
@@ -1406,11 +1424,13 @@ export default function Dashboard() {
                           <td className="p-1.5 border border-slate-200">{row.wok || '-'}</td>
                           <td className="p-1.5 border border-slate-200 font-bold text-blue-800">{row.odp_name || '-'}</td>
                           <td className="p-1.5 border border-slate-200">{row.product_commercial_name || '-'}</td>
-                          <td className="p-1.5 border border-slate-200 font-bold text-emerald-800">{row.order_duration_cat || '-'}</td>
+                          <td className="p-1.5 border border-slate-200 font-bold text-emerald-800">
+                            {row.order_duration_cat || row.aging_fallout || '-'}
+                          </td>
                           <td className="p-1.5 border border-slate-200 text-red-600 font-bold">
-                            {row.fallout_reason_clean ? (
+                            {(row.symptom || row.fallout_category || row.fallout_reason_clean) ? (
                               <span className="bg-red-50 px-1.5 py-0.5 rounded border border-red-200">
-                                {row.fallout_reason_clean}
+                                {row.symptom || row.fallout_category || row.fallout_reason_clean}
                               </span>
                             ) : '-'}
                           </td>
