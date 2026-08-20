@@ -20,7 +20,7 @@ const ALLOWED_STOS = [
   'BNT', 'PLK', 'KKN', 'MTW', 'PPS', 'PYM', 'TML', 'AMP', 'KKP', 'KRI', 'KSO', 'PRC'
 ];
 
-// Saklek 4 Kategori Durasi Saja
+// Saklek 4 Kategori Durasi
 const DURATION_ORDER = ['3 HARI', '7 HARI', '30 HARI', '3 BULAN'];
 
 function sortDurationColumns(cols = []) {
@@ -57,50 +57,60 @@ function formatFullDateTime(d) {
   return `${day} ${month} ${year} ${hours}:${mins}`;
 }
 
-function parseUniversalDate(val) {
+function parseLocalDateString(val) {
   if (!val) return null;
-  if (val instanceof Date && !isNaN(val.getTime())) return val;
-
-  if (typeof val === 'number') {
-    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
-    return new Date(excelEpoch.getTime() + val * 86400000);
+  if (val instanceof Date && !isNaN(val.getTime())) {
+    const y = val.getUTCFullYear();
+    const m = String(val.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(val.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   }
 
   const str = String(val).trim();
   if (!str) return null;
 
-  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-  if (dmyMatch) {
-    const day = parseInt(dmyMatch[1], 10);
-    const month = parseInt(dmyMatch[2], 10) - 1;
-    const year = parseInt(dmyMatch[3], 10);
-    const d = new Date(year, month, day);
-    if (!isNaN(d.getTime())) return d;
+  const ymdMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (ymdMatch) {
+    const y = ymdMatch[1];
+    const m = String(parseInt(ymdMatch[2], 10)).padStart(2, '0');
+    const d = String(parseInt(ymdMatch[3], 10)).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   }
 
-  const parsed = new Date(str);
-  if (!isNaN(parsed.getTime())) return parsed;
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (dmyMatch) {
+    const d = String(parseInt(dmyMatch[1], 10)).padStart(2, '0');
+    const m = String(parseInt(dmyMatch[2], 10)).padStart(2, '0');
+    const y = dmyMatch[3];
+    return `${y}-${m}-${d}`;
+  }
 
-  return null;
+  return str.slice(0, 10);
 }
 
 // Fungsi Hitung Durasi Saklek Realtime (Today - Provi / Order TS)
 function getSaklekDurationCategory(order) {
-  const dateVal = order.order_ts || order.provi || order.order_date;
-  const proviDate = parseUniversalDate(dateVal);
+  const dateStr = parseLocalDateString(order.order_ts || order.provi || order.order_date);
 
-  if (proviDate) {
-    const today = new Date();
-    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const startOfProvi = new Date(proviDate.getFullYear(), proviDate.getMonth(), proviDate.getDate());
+  if (dateStr && dateStr.length >= 10) {
+    const parts = dateStr.slice(0, 10).split('-');
+    if (parts.length === 3) {
+      const proviY = parseInt(parts[0], 10);
+      const proviM = parseInt(parts[1], 10) - 1;
+      const proviD = parseInt(parts[2], 10);
 
-    const diffTime = startOfToday.getTime() - startOfProvi.getTime();
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      const proviDate = new Date(proviY, proviM, proviD);
+      const today = new Date();
+      const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
-    if (diffDays <= 3) return '3 HARI';
-    if (diffDays <= 7) return '7 HARI';
-    if (diffDays <= 30) return '30 HARI';
-    return '3 BULAN';
+      const diffTime = todayDate.getTime() - proviDate.getTime();
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays <= 3) return '3 HARI';
+      if (diffDays <= 7) return '7 HARI';
+      if (diffDays <= 30) return '30 HARI';
+      return '3 BULAN';
+    }
   }
 
   const raw = String(order.order_duration_cat || order.aging_fallout || '').toUpperCase().trim();
@@ -268,12 +278,16 @@ export default function OrdersPage() {
   const availableMonths = useMemo(() => {
     const set = new Set();
     orders.forEach((o) => {
-      const dateVal = o.order_ts || o.provi || o.order_date;
-      const d = parseUniversalDate(dateVal);
-      if (d) {
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        const label = `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`;
-        set.add(JSON.stringify({ key, label }));
+      const dateVal = parseLocalDateString(o.order_ts || o.provi || o.order_date);
+      if (dateVal && dateVal.length >= 7) {
+        const parts = dateVal.split('-');
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        if (!isNaN(y) && !isNaN(m) && m >= 1 && m <= 12) {
+          const key = `${y}-${String(m).padStart(2, '0')}`;
+          const label = `${MONTH_NAMES[m - 1]} ${y}`;
+          set.add(JSON.stringify({ key, label }));
+        }
       }
     });
     return Array.from(set)
@@ -285,9 +299,12 @@ export default function OrdersPage() {
     if (!orders || orders.length === 0) return '*Cut Off Data -';
     const dates = orders
       .map((o) => {
-        const dateVal = o.order_ts || o.provi || o.order_date;
-        const d = parseUniversalDate(dateVal);
-        return d ? d.getTime() : null;
+        const dateVal = parseLocalDateString(o.order_ts || o.provi || o.order_date);
+        if (dateVal && dateVal.length >= 10) {
+          const parts = dateVal.split('-');
+          return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10)).getTime();
+        }
+        return null;
       })
       .filter((t) => t && !isNaN(t));
 
@@ -304,12 +321,11 @@ export default function OrdersPage() {
 
       let matchMonth = true;
       if (selectedMonth !== 'ALL') {
-        const dateVal = o.order_ts || o.provi || o.order_date;
-        const d = parseUniversalDate(dateVal);
-        if (!d) {
+        const dateVal = parseLocalDateString(o.order_ts || o.provi || o.order_date);
+        if (!dateVal || dateVal.length < 7) {
           matchMonth = false;
         } else {
-          const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          const mKey = dateVal.slice(0, 7);
           matchMonth = mKey === selectedMonth;
         }
       }
@@ -342,10 +358,9 @@ export default function OrdersPage() {
 
       let matchMonth = true;
       if (selectedMonth !== 'ALL') {
-        const dateVal = o.order_ts || o.provi || o.order_date;
-        const d = parseUniversalDate(dateVal);
-        if (d) {
-          const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const dateVal = parseLocalDateString(o.order_ts || o.provi || o.order_date);
+        if (dateVal && dateVal.length >= 7) {
+          const mKey = dateVal.slice(0, 7);
           matchMonth = mKey === selectedMonth;
         }
       }
@@ -461,10 +476,9 @@ export default function OrdersPage() {
       if (!o) return false;
       let matchMonth = true;
       if (selectedMonth !== 'ALL') {
-        const dateVal = o.order_ts || o.provi || o.order_date;
-        const d = parseUniversalDate(dateVal);
-        if (d) {
-          const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const dateVal = parseLocalDateString(o.order_ts || o.provi || o.order_date);
+        if (dateVal && dateVal.length >= 7) {
+          const mKey = dateVal.slice(0, 7);
           matchMonth = mKey === selectedMonth;
         }
       }
@@ -545,7 +559,7 @@ export default function OrdersPage() {
 
   const requestSort = (key) => {
     let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'desc') direction = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'desc') direction = 'desc';
     setSortConfig({ key, direction });
   };
 
@@ -1545,6 +1559,7 @@ export default function OrdersPage() {
                     const rowNumber = (currentPage - 1) * rowsPerPage + idx + 1;
                     const pState = (row.process_state || 'UNKNOWN').trim().toUpperCase();
                     const saklekDur = getSaklekDurationCategory(row);
+                    const displayOrderDate = parseLocalDateString(row.order_ts || row.provi || row.order_date) || '-';
 
                     return (
                       <tr
@@ -1618,7 +1633,7 @@ export default function OrdersPage() {
                           ) : '-'}
                         </td>
                         <td className="p-1.5 border border-slate-200 text-right">{row.price_package ? Number(row.price_package).toLocaleString() : '-'}</td>
-                        <td className="p-1.5 border border-slate-200">{row.order_ts || '-'}</td>
+                        <td className="p-1.5 border border-slate-200 font-mono text-[9px] font-bold text-slate-800">{displayOrderDate}</td>
                         <td className="p-1.5 border border-slate-200">{row.ps_ts || '-'}</td>
                         <td className="p-1.5 border border-slate-200">{row.sf_name || '-'}</td>
                         <td className="p-1.5 border border-slate-200 max-w-[200px] truncate" title={row.address}>{row.address || '-'}</td>
