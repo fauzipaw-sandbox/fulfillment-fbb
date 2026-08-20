@@ -52,7 +52,7 @@ function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-function MapController({ selectedTarget, radiusLimit, isFullscreen }) {
+function MapController({ selectedTarget, radiusLimit, isFullscreen, roadRouteCoordinates, manualMeasureLine }) {
   const map = useMap();
 
   useEffect(() => {
@@ -63,10 +63,14 @@ function MapController({ selectedTarget, radiusLimit, isFullscreen }) {
   }, [isFullscreen, map]);
 
   useEffect(() => {
-    if (selectedTarget && selectedTarget.lat && selectedTarget.lon) {
+    if (roadRouteCoordinates && roadRouteCoordinates.length > 0) {
+      map.fitBounds(roadRouteCoordinates, { padding: [35, 35], maxZoom: 16 });
+    } else if (manualMeasureLine && manualMeasureLine.length === 2) {
+      map.fitBounds(manualMeasureLine, { padding: [35, 35], maxZoom: 16 });
+    } else if (selectedTarget && selectedTarget.lat && selectedTarget.lon) {
       map.flyTo([selectedTarget.lat, selectedTarget.lon], 17, { animate: true, duration: 1 });
     }
-  }, [selectedTarget, radiusLimit, map]);
+  }, [selectedTarget, radiusLimit, roadRouteCoordinates, manualMeasureLine, map]);
 
   return null;
 }
@@ -91,6 +95,10 @@ export default function AnalysisMap({
   selectedOrderState = 'FALLOUT',
   setSelectedOrderState,
   availableProcessStates = [],
+  manualMeasureLine,
+  manualMeasureInfo,
+  roadRouteCoordinates,
+  onToggleMeasureModal,
 }) {
   const defaultCenter = [-1.7, 114.8];
   const containerRef = useRef(null);
@@ -213,6 +221,15 @@ export default function AnalysisMap({
       }`}
     >
       <div className="absolute top-2.5 right-2.5 z-[1000] flex items-center gap-1.5 flex-wrap justify-end">
+        {/* Tombol Ukur Rute Jalan Darat OSRM */}
+        <button
+          type="button"
+          onClick={onToggleMeasureModal}
+          className="px-2.5 py-1 bg-blue-700 hover:bg-blue-600 text-white rounded text-[10px] font-bold shadow flex items-center gap-1 cursor-pointer transition"
+        >
+          <span>🚗</span> Jarak Darat
+        </button>
+
         {/* Dropdown Process State */}
         <div className="bg-white/95 backdrop-blur px-2 py-1 rounded shadow border border-slate-300 flex items-center gap-1.5 text-[10.5px]">
           <span className="font-bold text-slate-700 flex items-center gap-1">
@@ -256,7 +273,7 @@ export default function AnalysisMap({
           </button>
         </div>
 
-        {/* Ukur Jarak */}
+        {/* Ukur Jarak Manual Point-to-Point */}
         <button
           type="button"
           onClick={() => {
@@ -327,8 +344,36 @@ export default function AnalysisMap({
           />
         )}
 
-        <MapController selectedTarget={selectedTarget} radiusLimit={radiusLimit} isFullscreen={isFullscreen} />
+        <MapController
+          selectedTarget={selectedTarget}
+          radiusLimit={radiusLimit}
+          isFullscreen={isFullscreen}
+          roadRouteCoordinates={roadRouteCoordinates}
+          manualMeasureLine={manualMeasureLine}
+        />
         <MapClickHandler measureMode={measureActive} onMapClick={handleMapClick} />
+
+        {/* Garis Rute Jalan Darat OSRM */}
+        {roadRouteCoordinates && roadRouteCoordinates.length > 0 && (
+          <Polyline positions={roadRouteCoordinates} pathOptions={{ color: '#2563eb', weight: 4, opacity: 0.9 }} />
+        )}
+
+        {/* Pin Titik A & B Pengukuran Jarak Darat */}
+        {manualMeasureLine && manualMeasureLine.length === 2 && (
+          <>
+            <Marker position={manualMeasureLine[0]}>
+              <Popup><div className="text-[10px] font-bold text-blue-700">Titik A: {manualMeasureInfo?.from || 'Start'}</div></Popup>
+            </Marker>
+            <Marker position={manualMeasureLine[1]}>
+              <Popup>
+                <div className="text-[10px] font-sans">
+                  <p className="font-bold text-emerald-700">Titik B: {manualMeasureInfo?.to || 'End'}</p>
+                  <p className="font-bold text-blue-900 mt-0.5">Jarak Jalan: {manualMeasureInfo?.km} km ({manualMeasureInfo?.meter} m)</p>
+                </div>
+              </Popup>
+            </Marker>
+          </>
+        )}
 
         {clickPoints.length > 1 && (
           <Polyline positions={clickPoints} pathOptions={{ color: '#ea580c', weight: 2.5, dashArray: '4, 4' }} />
