@@ -226,17 +226,22 @@ export default function AnalysisMap({
 
   const toggleOrderState = (val) => {
     if (selectedOrderStates.includes(val)) {
-      setSelectedOrderStates(selectedOrderStates.filter(s => s !== val));
+      setSelectedOrderStates(selectedOrderStates.filter((s) => s !== val));
     } else {
       setSelectedOrderStates([...selectedOrderStates, val]);
     }
+  };
+
+  const removeSingleOrderState = (e, val) => {
+    e.stopPropagation();
+    setSelectedOrderStates(selectedOrderStates.filter((s) => s !== val));
   };
 
   const orderStateSummaryText = useMemo(() => {
     if (selectedOrderStates.length === 0) return 'Sembunyikan Order';
     if (selectedOrderStates.length === availableProcessStates.length) return 'Semua Status';
     if (selectedOrderStates.length === 1) return selectedOrderStates[0];
-    return `${selectedOrderStates.length} Status Dipilih`;
+    return `${selectedOrderStates.length} Status`;
   }, [selectedOrderStates, availableProcessStates]);
 
   return (
@@ -246,7 +251,13 @@ export default function AnalysisMap({
         isFullscreen ? 'fixed inset-0 z-[99999] w-screen h-screen bg-slate-900' : 'rounded'
       }`}
     >
-      <div className="absolute top-2.5 right-2.5 z-[1000] flex items-center gap-1.5 flex-wrap justify-end">
+      {/* Control Bar Pojok Kanan Atas */}
+      <div
+        className="absolute top-2.5 right-2.5 z-[1000] flex items-center gap-1.5 flex-wrap justify-end"
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+      >
         {/* Tombol Ukur Rute Darat OSRM */}
         <button
           type="button"
@@ -256,7 +267,7 @@ export default function AnalysisMap({
           <span>🚗</span> Jarak Darat
         </button>
 
-        {/* Dropdown Multiselect Order Process State (Default: FALLOUT) */}
+        {/* Dropdown Multiselect Order Process State */}
         <div className="relative" ref={dropdownRef}>
           <button
             type="button"
@@ -264,13 +275,19 @@ export default function AnalysisMap({
             className="bg-white/95 backdrop-blur px-2.5 py-1 rounded shadow border border-slate-300 flex items-center gap-1.5 text-[10.5px] font-bold text-slate-800 hover:bg-slate-100 cursor-pointer"
           >
             <span className="inline-block w-2.5 h-2.5 bg-rose-600 rounded-xs"></span>
-            <span>Order: <strong className="text-rose-800">{orderStateSummaryText} ({visibleOrders.length})</strong></span>
-            <span className="text-[8px] text-slate-400">▼</span>
+            <span>
+              Order: <strong className="text-rose-800">{orderStateSummaryText}</strong> ({visibleOrders.length})
+            </span>
+            <span className="text-[8px] text-slate-500">▼</span>
           </button>
 
           {openOrderStateDropdown && (
-            <div className="absolute right-0 mt-1 w-52 max-h-60 overflow-y-auto bg-slate-900 text-white rounded-lg shadow-2xl border border-slate-700 p-2 z-[2000] text-[10px] space-y-1">
-              <div className="flex justify-between items-center pb-1 border-b border-slate-700 text-[8.5px] font-bold">
+            <div
+              className="absolute right-0 mt-1 w-56 max-h-64 overflow-y-auto bg-slate-900 text-white rounded-lg shadow-2xl border border-slate-700 p-2 z-[2000] text-[10px] space-y-1.5"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-center pb-1 border-b border-slate-700 text-[9px] font-bold">
                 <button
                   type="button"
                   onClick={() => setSelectedOrderStates(availableProcessStates)}
@@ -283,15 +300,42 @@ export default function AnalysisMap({
                   onClick={() => setSelectedOrderStates([])}
                   className="text-red-400 hover:underline cursor-pointer"
                 >
-                  Kosongkan
+                  ✕ Sembunyikan Semua
                 </button>
               </div>
-              <div className="space-y-1 pt-1">
+
+              {/* Tag / Badge Status Aktif dengan tombol hapus cepat (✕) */}
+              {selectedOrderStates.length > 0 && (
+                <div className="flex flex-wrap gap-1 pb-1 border-b border-slate-800">
+                  {selectedOrderStates.map((st) => (
+                    <span
+                      key={`tag-${st}`}
+                      className="bg-rose-950/80 border border-rose-600 text-rose-200 text-[8.5px] font-bold px-1.5 py-0.2 rounded-full flex items-center gap-1"
+                    >
+                      <span>{st}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => removeSingleOrderState(e, st)}
+                        className="text-rose-400 hover:text-white font-black cursor-pointer"
+                        title={`Hapus filter ${st}`}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* List Checkbox Status */}
+              <div className="space-y-1 pt-0.5 max-h-40 overflow-y-auto">
                 {availableProcessStates.map((st) => {
                   const isChecked = selectedOrderStates.includes(st);
-                  const count = ordersData.filter(o => (o.process_state || '').toUpperCase() === st).length;
+                  const count = ordersData.filter((o) => (o.process_state || '').toUpperCase() === st).length;
                   return (
-                    <label key={st} className="flex items-center justify-between p-1 rounded hover:bg-slate-800 cursor-pointer select-none">
+                    <label
+                      key={st}
+                      className="flex items-center justify-between p-1 rounded hover:bg-slate-800 cursor-pointer select-none"
+                    >
                       <div className="flex items-center gap-1.5 truncate">
                         <input
                           type="checkbox"
@@ -299,7 +343,9 @@ export default function AnalysisMap({
                           onChange={() => toggleOrderState(st)}
                           className="accent-rose-500 cursor-pointer"
                         />
-                        <span className="font-bold truncate">{st}</span>
+                        <span className={`font-bold truncate ${isChecked ? 'text-rose-300' : 'text-slate-300'}`}>
+                          {st}
+                        </span>
                       </div>
                       <span className="text-[8.5px] text-slate-400 font-mono">({count})</span>
                     </label>
@@ -357,7 +403,11 @@ export default function AnalysisMap({
       </div>
 
       {measureActive && (
-        <div className="absolute top-12 right-2.5 z-[1000] bg-white/95 backdrop-blur p-2 rounded shadow border border-slate-300 text-[10px] text-slate-800 min-w-[150px]">
+        <div
+          className="absolute top-12 right-2.5 z-[1000] bg-white/95 backdrop-blur p-2 rounded shadow border border-slate-300 text-[10px] text-slate-800 min-w-[150px]"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
           <p className="font-bold border-b pb-0.5">
             Titik: <span className="text-blue-600 font-black">{clickPoints.length}</span>
           </p>
