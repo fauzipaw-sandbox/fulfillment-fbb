@@ -15,29 +15,69 @@ function detectDelimiter(firstLine) {
   return ',';
 }
 
-// Hitung Durasi Saklek: 3 HARI, 7 HARI, 30 HARI, 3 BULAN
-function calculateDurationCategory(proviDateStr, fallbackCat) {
-  if (proviDateStr) {
-    const proviDate = new Date(proviDateStr);
-    if (!isNaN(proviDate.getTime())) {
-      const today = new Date();
-      const diffTime = today.getTime() - proviDate.getTime();
-      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+// Parser Tanggal Universal (Mendukung Objek Date, String YYYY-MM-DD, DD/MM/YYYY, dan Excel Serial Number)
+function parseUniversalDate(val) {
+  if (!val) return null;
+  if (val instanceof Date && !isNaN(val.getTime())) return val;
 
-      if (diffDays <= 3) return '3 HARI';
-      if (diffDays <= 7) return '7 HARI';
-      if (diffDays <= 30) return '30 HARI';
-      return '3 BULAN';
-    }
+  // Jika berupa Excel Serial Number (misal: 46011)
+  if (typeof val === 'number') {
+    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+    return new Date(excelEpoch.getTime() + val * 86400000);
   }
 
-  // Fallback mapping jika kolom provi kosong tapi ada aging_fallout/duration_cat
-  if (fallbackCat) {
-    const str = String(fallbackCat).toUpperCase().trim();
-    if (str.includes('1 HARI') || str.includes('2-3') || str.includes('3 HARI')) return '3 HARI';
-    if (str.includes('4-7') || str.includes('7 HARI') || str.includes('7 HARI')) return '7 HARI';
-    if (str.includes('30 HARI') || str.includes('30')) return '30 HARI';
-    if (str.includes('>7') || str.includes('BULAN') || str.includes('3 BULAN')) return '3 BULAN';
+  const str = String(val).trim();
+  if (!str) return null;
+
+  // Format DD/MM/YYYY atau DD-MM-YYYY
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (dmyMatch) {
+    const day = parseInt(dmyMatch[1], 10);
+    const month = parseInt(dmyMatch[2], 10) - 1;
+    const year = parseInt(dmyMatch[3], 10);
+    const d = new Date(year, month, day);
+    if (!isNaN(d.getTime())) return d;
+  }
+
+  // Standar ISO YYYY-MM-DD
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) return parsed;
+
+  return null;
+}
+
+function formatDateToISO(dateObj) {
+  if (!dateObj || isNaN(dateObj.getTime())) return null;
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const d = String(dateObj.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// Hitung Durasi Saklek (Today - Provi Date)
+function calculateDurationFromProvi(proviRaw, fallbackRaw) {
+  const proviDate = parseUniversalDate(proviRaw);
+  if (proviDate) {
+    const today = new Date();
+    // Normalize ke jam 00:00:00 untuk perbandingan hari yang presisi
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const startOfProvi = new Date(proviDate.getFullYear(), proviDate.getMonth(), proviDate.getDate());
+    
+    const diffTime = startOfToday.getTime() - startOfProvi.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays <= 3) return '3 HARI';
+    if (diffDays <= 7) return '7 HARI';
+    if (diffDays <= 30) return '30 HARI';
+    return '3 BULAN';
+  }
+
+  if (fallbackRaw) {
+    const s = String(fallbackRaw).toUpperCase().trim();
+    if (s.includes('1 HARI') || s.includes('2-3') || s.includes('3 HARI')) return '3 HARI';
+    if (s.includes('4-7') || s.includes('7 HARI')) return '7 HARI';
+    if (s.includes('30 HARI') || s.includes('30')) return '30 HARI';
+    if (s.includes('>7') || s.includes('BULAN') || s.includes('3 BULAN')) return '3 BULAN';
   }
 
   return '3 HARI';
@@ -69,9 +109,14 @@ function normalizeOrderKeys(row) {
     }
   }
 
-  const proviVal = normalized.provi || normalized.order_ts || normalized.order_date || null;
-  const rawDuration = normalized.order_duration_cat || normalized.aging_fallout || null;
-  const finalDurationCat = calculateDurationCategory(proviVal, rawDuration);
+  // 1. Provi Date sebagai sumber utama Order Date
+  const rawProvi = normalized.provi || normalized.order_ts || normalized.order_date || null;
+  const parsedProviDate = parseUniversalDate(rawProvi);
+  const formattedOrderDate = parsedProviDate ? formatDateToISO(parsedProviDate) : (rawProvi ? String(rawProvi) : null);
+
+  // 2. Hitung Duration Category Saklek
+  const rawAging = normalized.aging_fallout || normalized.order_duration_cat || null;
+  const finalDurationCat = calculateDurationFromProvi(parsedProviDate || rawProvi, rawAging);
 
   return {
     order_id: String(orderId).trim(),
@@ -90,12 +135,12 @@ function normalizeOrderKeys(row) {
     symptom: normalized.symptom || null,
     category_hk: normalized.category_hk || null,
     status_hk: normalized.status_hk || null,
-    tanggal_hk: normalized.tanggal_hk || null,
+    tanggal_hk: normalized.tanggal_hk ? formatDateToISO(parseUniversalDate(normalized.tanggal_hk)) || String(normalized.tanggal_hk) : null,
     pic_dept: normalized.pic_dept || null,
     remark: normalized.remark || null,
     price_package: normalized.price_package || normalized.price || null,
-    order_ts: proviVal,
-    ps_ts: normalized.ps_ts || normalized.ps_date || null,
+    order_ts: formattedOrderDate,
+    ps_ts: normalized.ps_ts ? formatDateToISO(parseUniversalDate(normalized.ps_ts)) || String(normalized.ps_ts) : null,
     sf_name: normalized.sf_name || null,
     address: normalized.address || normalized.alamat || null,
     latitude: lat ? parseFloat(lat) : null,
@@ -185,7 +230,7 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
       let rawRows = [];
       if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
         const buffer = await file.arrayBuffer();
-        const wb = XLSX.read(buffer, { type: 'array' });
+        const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
         const ws = wb.Sheets[wb.SheetNames[0]];
         rawRows = XLSX.utils.sheet_to_json(ws, { defval: null });
       } else {
@@ -228,7 +273,7 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
       let rawRows = [];
       if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
         const buffer = await file.arrayBuffer();
-        const wb = XLSX.read(buffer, { type: 'array' });
+        const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
         const ws = wb.Sheets[wb.SheetNames[0]];
         rawRows = XLSX.utils.sheet_to_json(ws, { defval: null });
       } else {
@@ -326,7 +371,7 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
           <p className="font-extrabold text-purple-950 text-[11px]">
             Drag &amp; Drop file Order di sini atau <span className="text-purple-600 underline">klik untuk browse</span>
           </p>
-          <span className="text-[9px] text-slate-500 mt-0.5 font-semibold">Auto Hitung Durasi Provi: 3 HARI, 7 HARI, 30 HARI, 3 BULAN</span>
+          <span className="text-[9px] text-slate-500 mt-0.5 font-semibold">Provi &rarr; Order Date &amp; Auto Durasi (3 HARI, 7 HARI, 30 HARI, 3 BULAN)</span>
           {uploadingOrder && <p className="text-[10px] text-purple-700 font-bold animate-pulse mt-1.5">{orderProgress}</p>}
           {!uploadingOrder && orderProgress && <p className="text-[10px] text-emerald-700 font-bold mt-1.5">{orderProgress}</p>}
         </div>
