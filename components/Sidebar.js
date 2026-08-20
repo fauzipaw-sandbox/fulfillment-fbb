@@ -26,6 +26,16 @@ export default function Sidebar({ children }) {
         </svg>
       ),
     },
+    {
+      name: 'ODP & Fulfillment Analysis',
+      path: '/analysis',
+      icon: (
+        <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      ),
+    },
   ];
 
   return (
@@ -59,11 +69,10 @@ export default function Sidebar({ children }) {
             <span className="font-black text-xs text-center w-full text-red-400">TSEL</span>
           )}
 
-          {/* Desktop Toggle Button */}
           <button
             type="button"
             onClick={() => setIsDesktopCollapsed(!isDesktopCollapsed)}
-            className="hidden lg:flex items-center justify-center p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition"
+            className="hidden lg:flex items-center justify-center p-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white transition cursor-pointer"
             title={isDesktopCollapsed ? 'Buka Sidebar' : 'Sembunyikan Sidebar'}
           >
             <svg
@@ -76,7 +85,6 @@ export default function Sidebar({ children }) {
             </svg>
           </button>
 
-          {/* Mobile Close Button */}
           <button
             type="button"
             onClick={() => setIsMobileOpen(false)}
@@ -114,7 +122,7 @@ export default function Sidebar({ children }) {
           })}
         </nav>
 
-        {/* Custom Footer */}
+        {/* Footer */}
         <div className="p-2.5 border-t border-white/10 text-[9px] text-slate-300 text-center leading-relaxed">
           {!isDesktopCollapsed ? (
             <span>&copy; 2026 | Created with ❤️ by Fauzi Ramdani - 97122</span>
@@ -130,7 +138,6 @@ export default function Sidebar({ children }) {
           isDesktopCollapsed ? 'lg:pl-16' : 'lg:pl-64'
         }`}
       >
-        {/* Mobile Header Bar */}
         <div className="lg:hidden bg-[#211c47] text-white p-2.5 flex items-center justify-between shadow sticky top-0 z-[1000]">
           <button
             type="button"
