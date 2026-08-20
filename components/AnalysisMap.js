@@ -69,7 +69,6 @@ export default function AnalysisMap({
 
   return (
     <div className="relative w-full h-full">
-      {/* Map Control Buttons */}
       <div className="absolute top-2.5 right-2.5 z-[1000] flex items-center gap-1.5">
         <div className="bg-white rounded shadow border border-slate-300 overflow-hidden flex text-[10px] font-bold">
           <button
@@ -112,7 +111,7 @@ export default function AnalysisMap({
 
         <MapAutoCenter selectedTarget={selectedTarget} radiusLimit={radiusLimit} />
 
-        {/* Lingkaran Radius 250M */}
+        {/* Lingkaran Radius */}
         {selectedTarget && selectedTarget.lat && selectedTarget.lon && (
           <>
             <Circle
