@@ -15,61 +15,74 @@ function detectDelimiter(firstLine) {
   return ',';
 }
 
-// Parser Tanggal Universal (Mendukung Objek Date, String YYYY-MM-DD, DD/MM/YYYY, dan Excel Serial Number)
-function parseUniversalDate(val) {
+// Parser Tanggal Anti Timezone Shift (Menjaga tanggal tetap persis sesuai file Excel)
+function parseLocalDateString(val) {
   if (!val) return null;
-  if (val instanceof Date && !isNaN(val.getTime())) return val;
 
   // Jika berupa Excel Serial Number (misal: 46011)
   if (typeof val === 'number') {
     const excelEpoch = new Date(Date.UTC(1899, 11, 30));
-    return new Date(excelEpoch.getTime() + val * 86400000);
+    const d = new Date(excelEpoch.getTime() + val * 86400000);
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(d.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  // Jika berupa Objek Date dari JS
+  if (val instanceof Date && !isNaN(val.getTime())) {
+    // Ambil tahun, bulan, tanggal berdasarkan UTC jika jam 00:00Z, atau local date
+    const y = val.getUTCFullYear();
+    const m = String(val.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(val.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
   }
 
   const str = String(val).trim();
   if (!str) return null;
 
-  // Format DD/MM/YYYY atau DD-MM-YYYY
-  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-  if (dmyMatch) {
-    const day = parseInt(dmyMatch[1], 10);
-    const month = parseInt(dmyMatch[2], 10) - 1;
-    const year = parseInt(dmyMatch[3], 10);
-    const d = new Date(year, month, day);
-    if (!isNaN(d.getTime())) return d;
+  // Format YYYY-MM-DD (misal: 2026-08-18 atau 2026-08-18 00:00:00)
+  const ymdMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (ymdMatch) {
+    const y = ymdMatch[1];
+    const m = String(parseInt(ymdMatch[2], 10)).padStart(2, '0');
+    const d = String(parseInt(ymdMatch[3], 10)).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   }
 
-  // Standar ISO YYYY-MM-DD
-  const parsed = new Date(str);
-  if (!isNaN(parsed.getTime())) return parsed;
+  // Format DD/MM/YYYY atau DD-MM-YYYY (misal: 18/08/2026)
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (dmyMatch) {
+    const d = String(parseInt(dmyMatch[1], 10)).padStart(2, '0');
+    const m = String(parseInt(dmyMatch[2], 10)).padStart(2, '0');
+    const y = dmyMatch[3];
+    return `${y}-${m}-${d}`;
+  }
 
-  return null;
-}
-
-function formatDateToISO(dateObj) {
-  if (!dateObj || isNaN(dateObj.getTime())) return null;
-  const y = dateObj.getFullYear();
-  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-  const d = String(dateObj.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return str.slice(0, 10);
 }
 
 // Hitung Durasi Saklek (Today - Provi Date)
-function calculateDurationFromProvi(proviRaw, fallbackRaw) {
-  const proviDate = parseUniversalDate(proviRaw);
-  if (proviDate) {
-    const today = new Date();
-    // Normalize ke jam 00:00:00 untuk perbandingan hari yang presisi
-    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const startOfProvi = new Date(proviDate.getFullYear(), proviDate.getMonth(), proviDate.getDate());
-    
-    const diffTime = startOfToday.getTime() - startOfProvi.getTime();
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+function calculateDurationFromProviDateStr(proviDateStr, fallbackRaw) {
+  if (proviDateStr && proviDateStr.length >= 10) {
+    const parts = proviDateStr.slice(0, 10).split('-');
+    if (parts.length === 3) {
+      const proviY = parseInt(parts[0], 10);
+      const proviM = parseInt(parts[1], 10) - 1;
+      const proviD = parseInt(parts[2], 10);
 
-    if (diffDays <= 3) return '3 HARI';
-    if (diffDays <= 7) return '7 HARI';
-    if (diffDays <= 30) return '30 HARI';
-    return '3 BULAN';
+      const proviDate = new Date(proviY, proviM, proviD);
+      const today = new Date();
+      const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+      const diffTime = todayDate.getTime() - proviDate.getTime();
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays <= 3) return '3 HARI';
+      if (diffDays <= 7) return '7 HARI';
+      if (diffDays <= 30) return '30 HARI';
+      return '3 BULAN';
+    }
   }
 
   if (fallbackRaw) {
@@ -109,14 +122,13 @@ function normalizeOrderKeys(row) {
     }
   }
 
-  // 1. Provi Date sebagai sumber utama Order Date
+  // 1. Provi Date sebagai sumber Order Date yang tepat tanpa timezone shift
   const rawProvi = normalized.provi || normalized.order_ts || normalized.order_date || null;
-  const parsedProviDate = parseUniversalDate(rawProvi);
-  const formattedOrderDate = parsedProviDate ? formatDateToISO(parsedProviDate) : (rawProvi ? String(rawProvi) : null);
+  const formattedOrderDate = parseLocalDateString(rawProvi);
 
   // 2. Hitung Duration Category Saklek
   const rawAging = normalized.aging_fallout || normalized.order_duration_cat || null;
-  const finalDurationCat = calculateDurationFromProvi(parsedProviDate || rawProvi, rawAging);
+  const finalDurationCat = calculateDurationFromProviDateStr(formattedOrderDate, rawAging);
 
   return {
     order_id: String(orderId).trim(),
@@ -135,12 +147,12 @@ function normalizeOrderKeys(row) {
     symptom: normalized.symptom || null,
     category_hk: normalized.category_hk || null,
     status_hk: normalized.status_hk || null,
-    tanggal_hk: normalized.tanggal_hk ? formatDateToISO(parseUniversalDate(normalized.tanggal_hk)) || String(normalized.tanggal_hk) : null,
+    tanggal_hk: parseLocalDateString(normalized.tanggal_hk),
     pic_dept: normalized.pic_dept || null,
     remark: normalized.remark || null,
     price_package: normalized.price_package || normalized.price || null,
     order_ts: formattedOrderDate,
-    ps_ts: normalized.ps_ts ? formatDateToISO(parseUniversalDate(normalized.ps_ts)) || String(normalized.ps_ts) : null,
+    ps_ts: parseLocalDateString(normalized.ps_ts),
     sf_name: normalized.sf_name || null,
     address: normalized.address || normalized.alamat || null,
     latitude: lat ? parseFloat(lat) : null,
@@ -179,7 +191,7 @@ function normalizeOdpKeys(row) {
     status: normalized.status || null,
     status_final: normalized.status_final || 'BLACK',
     ont_rx_level: normalized.ont_rx_level !== undefined && normalized.ont_rx_level !== null && normalized.ont_rx_level !== '' ? parseFloat(normalized.ont_rx_level) : null,
-    event_date: normalized.event_date || null,
+    event_date: parseLocalDateString(normalized.event_date),
   };
 }
 
@@ -230,9 +242,9 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
       let rawRows = [];
       if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
         const buffer = await file.arrayBuffer();
-        const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
+        const wb = XLSX.read(buffer, { type: 'array', raw: false, dateNF: 'yyyy-mm-dd' });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        rawRows = XLSX.utils.sheet_to_json(ws, { defval: null });
+        rawRows = XLSX.utils.sheet_to_json(ws, { defval: null, raw: false });
       } else {
         const text = await file.text();
         const firstLine = text.split('\n')[0];
@@ -273,9 +285,9 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
       let rawRows = [];
       if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
         const buffer = await file.arrayBuffer();
-        const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
+        const wb = XLSX.read(buffer, { type: 'array', raw: false, dateNF: 'yyyy-mm-dd' });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        rawRows = XLSX.utils.sheet_to_json(ws, { defval: null });
+        rawRows = XLSX.utils.sheet_to_json(ws, { defval: null, raw: false });
       } else {
         const text = await file.text();
         const firstLine = text.split('\n')[0];
@@ -371,7 +383,7 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
           <p className="font-extrabold text-purple-950 text-[11px]">
             Drag &amp; Drop file Order di sini atau <span className="text-purple-600 underline">klik untuk browse</span>
           </p>
-          <span className="text-[9px] text-slate-500 mt-0.5 font-semibold">Provi &rarr; Order Date &amp; Auto Durasi (3 HARI, 7 HARI, 30 HARI, 3 BULAN)</span>
+          <span className="text-[9px] text-slate-500 mt-0.5 font-semibold">Provi &rarr; Order Date &amp; Auto Durasi Saklek (3 HARI, 7 HARI, 30 HARI, 3 BULAN)</span>
           {uploadingOrder && <p className="text-[10px] text-purple-700 font-bold animate-pulse mt-1.5">{orderProgress}</p>}
           {!uploadingOrder && orderProgress && <p className="text-[10px] text-emerald-700 font-bold mt-1.5">{orderProgress}</p>}
         </div>
