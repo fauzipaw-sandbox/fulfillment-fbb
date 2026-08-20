@@ -107,28 +107,6 @@ const CustomChartTooltip = ({ active, payload, label }) => {
   return null;
 };
 
-function extractOrderCoordinates(order) {
-  if (!order) return null;
-  const reason = String(order.fallout_reason || '');
-
-  const match = reason.match(/KP:\s*(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)/i);
-  if (match && match[1] && match[2]) {
-    const lat = parseFloat(match[1]);
-    const lon = parseFloat(match[2]);
-    if (!isNaN(lat) && !isNaN(lon)) {
-      return { lat, lon, coordSource: 'KP' };
-    }
-  }
-
-  const lat = typeof order.latitude === 'number' ? order.latitude : parseFloat(order.latitude);
-  const lon = typeof order.longitude === 'number' ? order.longitude : parseFloat(order.longitude);
-  if (!isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0) {
-    return { lat, lon, coordSource: 'ROW' };
-  }
-
-  return null;
-}
-
 export default function Dashboard() {
   const { odpData: data, ordersData, odpLoaded, reloadOdp, reloadOrders } = useData();
   const [sortConfig, setSortConfig] = useState({ key: 'occ', direction: 'desc' });
@@ -165,7 +143,6 @@ export default function Dashboard() {
   const [orderTableSort, setOrderTableSort] = useState({ key: 'order_ts', direction: 'desc' });
   const rowsPerPage = 50;
 
-  // Data Terfilter Sinkron dengan klik di Card Overview
   const fullyFilteredData = useMemo(() => {
     return (data || []).filter((d) => {
       const matchStatus = selectedStatus === 'ALL' || d.status_final === selectedStatus;
@@ -179,7 +156,6 @@ export default function Dashboard() {
     });
   }, [data, selectedStatus, selectedRx, selectedKabupaten, selectedStoFilter, selectedWokFilter, selectedPortFilter]);
 
-  // Data untuk Kualitas Redaman (ikut tersinkron saat Status/Port di Overview ODP diklik)
   const rxFilteredData = useMemo(() => {
     return (data || []).filter((d) => {
       const matchStatus = selectedStatus === 'ALL' || d.status_final === selectedStatus;
@@ -190,22 +166,6 @@ export default function Dashboard() {
       return matchStatus && matchKab && matchSto && matchWok && matchPort;
     });
   }, [data, selectedStatus, selectedKabupaten, selectedStoFilter, selectedWokFilter, selectedPortFilter]);
-
-  const falloutMapMarkers = useMemo(() => {
-    return (ordersData || [])
-      .filter((o) => {
-        const fg = (o.funneling_group || o.process_state || '').trim().toUpperCase();
-        const isFallout = fg === 'FALLOUT';
-        const matchSto = selectedStoFilter === 'ALL' || o.sto_co === selectedStoFilter;
-        const matchWok = selectedWokFilter === 'ALL' || o.wok === selectedWokFilter;
-        return isFallout && matchSto && matchWok;
-      })
-      .map((o) => {
-        const coords = extractOrderCoordinates(o);
-        return coords ? { ...o, ...coords } : null;
-      })
-      .filter(Boolean);
-  }, [ordersData, selectedStoFilter, selectedWokFilter]);
 
   const filteredOrders = useMemo(() => {
     return (ordersData || []).filter((o) => {
@@ -233,7 +193,6 @@ export default function Dashboard() {
     return `*Cut Off Data until ${formatDateFormatted(latestDate)}`;
   }, [data]);
 
-  // STATS OVERVIEW GLOBAL (Angka Tetap Freeze Sebagai Global Reference)
   const statsOverview = useMemo(() => {
     let totalPort = 0, usedPort = 0, avaiPort = 0;
     let colorCounts = { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 };
@@ -252,7 +211,6 @@ export default function Dashboard() {
     return { totalPort, usedPort, avaiPort, colorCounts, colorPorts };
   }, [data]);
 
-  // STATS KUALITAS REDAMAN (Sync Dengan Pilihan di Overview ODP)
   const statsRxSync = useMemo(() => {
     let rxCounts = { RED: 0, ORANGE: 0, YELLOW: 0, GREEN: 0, NO_DATA: 0 };
     let rxPorts = { RED: 0, ORANGE: 0, YELLOW: 0, GREEN: 0, NO_DATA: 0 };
@@ -901,11 +859,11 @@ export default function Dashboard() {
 
           {/* ================= KOLOM KANAN ================= */}
           <div className="space-y-3 sm:space-y-4">
-            {/* MAPS LOKASI ODP & FALLOUT ORDER (TANPA DROPDOWN ORDER) */}
+            {/* MAPS LOKASI ODP (KHUSUS TITIK ODP) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm relative">
               <div className="bg-gradient-to-r from-[#1e3a8a] to-[#3a3575] text-white p-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-xs sm:text-sm">MAPS LOKASI ODP & FALLOUT</span>
+                  <span className="font-bold text-xs sm:text-sm">MAPS LOKASI ODP</span>
                   <button
                     type="button"
                     onClick={() => setShowMeasureModal(!showMeasureModal)}
@@ -991,7 +949,6 @@ export default function Dashboard() {
               <div className="h-[280px] sm:h-[350px] p-1 bg-gray-100">
                 <MapComponent
                   data={fullyFilteredData}
-                  falloutOrders={falloutMapMarkers}
                   focusLocation={focusedOdp}
                   manualMeasureLine={manualMeasureLine}
                   manualMeasureInfo={measureResult}
@@ -1424,13 +1381,11 @@ export default function Dashboard() {
                           <td className="p-1.5 border border-slate-200">{row.wok || '-'}</td>
                           <td className="p-1.5 border border-slate-200 font-bold text-blue-800">{row.odp_name || '-'}</td>
                           <td className="p-1.5 border border-slate-200">{row.product_commercial_name || '-'}</td>
-                          <td className="p-1.5 border border-slate-200 font-bold text-emerald-800">
-                            {row.order_duration_cat || row.aging_fallout || '-'}
-                          </td>
+                          <td className="p-1.5 border border-slate-200 font-bold text-emerald-800">{row.order_duration_cat || '-'}</td>
                           <td className="p-1.5 border border-slate-200 text-red-600 font-bold">
-                            {(row.symptom || row.fallout_category || row.fallout_reason_clean) ? (
+                            {row.fallout_reason_clean ? (
                               <span className="bg-red-50 px-1.5 py-0.5 rounded border border-red-200">
-                                {row.symptom || row.fallout_category || row.fallout_reason_clean}
+                                {row.fallout_reason_clean}
                               </span>
                             ) : '-'}
                           </td>
