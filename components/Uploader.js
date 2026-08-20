@@ -15,6 +15,34 @@ function detectDelimiter(firstLine) {
   return ',';
 }
 
+// Hitung Durasi Saklek: 3 HARI, 7 HARI, 30 HARI, 3 BULAN
+function calculateDurationCategory(proviDateStr, fallbackCat) {
+  if (proviDateStr) {
+    const proviDate = new Date(proviDateStr);
+    if (!isNaN(proviDate.getTime())) {
+      const today = new Date();
+      const diffTime = today.getTime() - proviDate.getTime();
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays <= 3) return '3 HARI';
+      if (diffDays <= 7) return '7 HARI';
+      if (diffDays <= 30) return '30 HARI';
+      return '3 BULAN';
+    }
+  }
+
+  // Fallback mapping jika kolom provi kosong tapi ada aging_fallout/duration_cat
+  if (fallbackCat) {
+    const str = String(fallbackCat).toUpperCase().trim();
+    if (str.includes('1 HARI') || str.includes('2-3') || str.includes('3 HARI')) return '3 HARI';
+    if (str.includes('4-7') || str.includes('7 HARI') || str.includes('7 HARI')) return '7 HARI';
+    if (str.includes('30 HARI') || str.includes('30')) return '30 HARI';
+    if (str.includes('>7') || str.includes('BULAN') || str.includes('3 BULAN')) return '3 BULAN';
+  }
+
+  return '3 HARI';
+}
+
 function normalizeOrderKeys(row) {
   const normalized = {};
   for (const [k, v] of Object.entries(row)) {
@@ -41,6 +69,10 @@ function normalizeOrderKeys(row) {
     }
   }
 
+  const proviVal = normalized.provi || normalized.order_ts || normalized.order_date || null;
+  const rawDuration = normalized.order_duration_cat || normalized.aging_fallout || null;
+  const finalDurationCat = calculateDurationCategory(proviVal, rawDuration);
+
   return {
     order_id: String(orderId).trim(),
     new_order_id: normalized.new_order_id ? String(normalized.new_order_id).trim() : null,
@@ -52,7 +84,7 @@ function normalizeOrderKeys(row) {
     wok: normalized.wok || null,
     odp_name: normalized.odp_name || normalized.odp || null,
     product_commercial_name: normalized.product_commercial_name || normalized.product_name || null,
-    order_duration_cat: normalized.order_duration_cat || normalized.aging_fallout || '3 HARI',
+    order_duration_cat: finalDurationCat,
     fallout_category: normalized.fallout_category || null,
     fallout_reason: normalized.fallout_reason || normalized.remark || null,
     symptom: normalized.symptom || null,
@@ -62,7 +94,7 @@ function normalizeOrderKeys(row) {
     pic_dept: normalized.pic_dept || null,
     remark: normalized.remark || null,
     price_package: normalized.price_package || normalized.price || null,
-    order_ts: normalized.order_ts || normalized.order_date || normalized.provi || null,
+    order_ts: proviVal,
     ps_ts: normalized.ps_ts || normalized.ps_date || null,
     sf_name: normalized.sf_name || null,
     address: normalized.address || normalized.alamat || null,
@@ -294,7 +326,7 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
           <p className="font-extrabold text-purple-950 text-[11px]">
             Drag &amp; Drop file Order di sini atau <span className="text-purple-600 underline">klik untuk browse</span>
           </p>
-          <span className="text-[9px] text-slate-500 mt-0.5 font-semibold">Support CSV &amp; Excel Fallout (.xlsx) Auto Upsert</span>
+          <span className="text-[9px] text-slate-500 mt-0.5 font-semibold">Auto Hitung Durasi Provi: 3 HARI, 7 HARI, 30 HARI, 3 BULAN</span>
           {uploadingOrder && <p className="text-[10px] text-purple-700 font-bold animate-pulse mt-1.5">{orderProgress}</p>}
           {!uploadingOrder && orderProgress && <p className="text-[10px] text-emerald-700 font-bold mt-1.5">{orderProgress}</p>}
         </div>
