@@ -178,13 +178,14 @@ export default function Dashboard() {
     });
   }, [data, selectedStatus, selectedRx, selectedKabupaten, selectedStoFilter, selectedWokFilter, selectedPortFilter]);
 
-  // List Semua Order dengan Koordinat Lengkap untuk Peta (Bisa diganti-ganti di peta)
-  const allMapOrders = useMemo(() => {
+  const falloutMapMarkers = useMemo(() => {
     return (ordersData || [])
       .filter((o) => {
+        const fg = (o.funneling_group || o.process_state || '').trim().toUpperCase();
+        const isFallout = fg === 'FALLOUT';
         const matchSto = selectedStoFilter === 'ALL' || o.sto_co === selectedStoFilter;
         const matchWok = selectedWokFilter === 'ALL' || o.wok === selectedWokFilter;
-        return matchSto && matchWok;
+        return isFallout && matchSto && matchWok;
       })
       .map((o) => {
         const coords = extractOrderCoordinates(o);
@@ -218,6 +219,7 @@ export default function Dashboard() {
     return `*Cut Off Data until ${formatDateFormatted(latestDate)}`;
   }, [data]);
 
+  // STATS OVERVIEW DI-FREEZE (Menggunakan data mentah global `data`, tidak ikut terfilter)
   const statsOverview = useMemo(() => {
     let totalPort = 0, usedPort = 0, avaiPort = 0;
     let colorCounts = { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 };
@@ -225,7 +227,7 @@ export default function Dashboard() {
     let rxCounts = { RED: 0, ORANGE: 0, YELLOW: 0, GREEN: 0, NO_DATA: 0 };
     let rxPorts = { RED: 0, ORANGE: 0, YELLOW: 0, GREEN: 0, NO_DATA: 0 };
 
-    fullyFilteredData.forEach(item => {
+    (data || []).forEach(item => {
       totalPort += item.is_total;
       usedPort += item.used;
       avaiPort += item.avai;
@@ -240,7 +242,7 @@ export default function Dashboard() {
     });
 
     return { totalPort, usedPort, avaiPort, colorCounts, colorPorts, rxCounts, rxPorts };
-  }, [fullyFilteredData]);
+  }, [data]);
 
   const statsFiltered = useMemo(() => {
     const kabMap = {}, flatStosMap = {};
@@ -380,6 +382,7 @@ export default function Dashboard() {
     return sortedBottomOrderData.slice(start, start + rowsPerPage);
   }, [sortedBottomOrderData, currentOrderPage]);
 
+  // Export ODP Terfilter
   const handleExportFilteredOdpCSV = () => {
     if (fullyFilteredData.length === 0) return alert('Tidak ada data ODP terfilter.');
     const clean = fullyFilteredData.map(({ parsed_date, ...rest }) => rest);
@@ -388,12 +391,28 @@ export default function Dashboard() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `odp_filtered_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `odp_filtered_${fullyFilteredData.length}_rows_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
+  // Export Semua ODP
+  const handleExportAllOdpCSV = () => {
+    if (!data || data.length === 0) return alert('Data ODP kosong.');
+    const clean = data.map(({ parsed_date, ...rest }) => rest);
+    const csv = Papa.unparse(clean);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `odp_all_${data.length}_rows_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Export Orders Terfilter
   const handleExportFilteredOrderCSV = () => {
     if (filteredOrders.length === 0) return alert('Tidak ada data Order.');
     const csv = Papa.unparse(filteredOrders);
@@ -401,7 +420,21 @@ export default function Dashboard() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `orders_export_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute('download', `orders_filtered_${filteredOrders.length}_rows_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Export Semua Orders
+  const handleExportAllOrderCSV = () => {
+    if (!ordersData || ordersData.length === 0) return alert('Data Order kosong.');
+    const csv = Papa.unparse(ordersData);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `orders_all_${ordersData.length}_rows_${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -477,10 +510,11 @@ export default function Dashboard() {
     setSelectedWokFilter('ALL');
   };
 
-  const totalOdp = fullyFilteredData.length;
-  const occTotal = statsOverview.totalPort > 0 ? ((statsOverview.usedPort / statsOverview.totalPort) * 100).toFixed(1) : '0.0';
-  const avaiTotal = statsOverview.totalPort > 0 ? ((statsOverview.avaiPort / statsOverview.totalPort) * 100).toFixed(1) : '0.0';
-  const totalRxValid = totalOdp - statsOverview.rxCounts.NO_DATA;
+  const totalOdpGlobal = (data || []).length;
+  const totalPortGlobal = statsOverview.totalPort;
+  const occGlobal = totalPortGlobal > 0 ? ((statsOverview.usedPort / totalPortGlobal) * 100).toFixed(1) : '0.0';
+  const avaiGlobal = totalPortGlobal > 0 ? ((statsOverview.avaiPort / totalPortGlobal) * 100).toFixed(1) : '0.0';
+  const totalRxValid = totalOdpGlobal - statsOverview.rxCounts.NO_DATA;
 
   const getAvailBg = (availPerc) => {
     if (availPerc <= 1) return 'bg-[#fca5a5] text-red-950 font-bold';
@@ -522,7 +556,7 @@ export default function Dashboard() {
             <button
               type="button"
               onClick={() => setShowUploader(!showUploader)}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded shadow transition"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded shadow transition cursor-pointer"
             >
               <svg
                 className={`w-4 h-4 transition-transform ${showUploader ? 'rotate-180' : ''}`}
@@ -541,23 +575,23 @@ export default function Dashboard() {
         <div className="bg-white px-3 sm:px-4 py-2 text-xs sm:text-[13px] border border-gray-200 shadow-sm rounded flex flex-col sm:flex-row justify-between sm:items-center gap-2">
           <div>
             Total <strong className="font-extrabold">jumlah ODP</strong> di Branch Palangkaraya adalah{' '}
-            <strong className="font-extrabold">{(totalOdp / 1000).toFixed(1)}K</strong> (
+            <strong className="font-extrabold">{(totalOdpGlobal / 1000).toFixed(1)}K</strong> (
             {(statsOverview.totalPort / 1000).toFixed(1)} K Port) dengan Occupancy{' '}
             <strong className="font-extrabold">
-              {(statsOverview.usedPort / 1000).toFixed(1)}K Port ({occTotal}%)
+              {(statsOverview.usedPort / 1000).toFixed(1)}K Port ({occGlobal}%)
             </strong>{' '}
             dan{' '}
             <strong className="font-extrabold">
-              {(statsOverview.avaiPort / 1000).toFixed(1)}K ({avaiTotal}%)
+              {(statsOverview.avaiPort / 1000).toFixed(1)}K ({avaiGlobal}%)
             </strong>{' '}
             port tersedia untuk <strong className="font-extrabold">penjualan baru.</strong>
           </div>
           {(selectedStatus !== 'ALL' || selectedRx !== 'ALL' || selectedKabupaten !== 'ALL' || selectedPortFilter !== 'ALL' || selectedStoFilter !== 'ALL' || selectedWokFilter !== 'ALL') && (
             <button
               onClick={resetAllFilters}
-              className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold whitespace-nowrap self-start sm:self-auto shadow"
+              className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold whitespace-nowrap self-start sm:self-auto shadow cursor-pointer"
             >
-              ✕ Reset Semua Filter ({selectedStoFilter !== 'ALL' ? `STO: ${selectedStoFilter}` : selectedWokFilter !== 'ALL' ? `WOK: ${selectedWokFilter}` : 'Aktif'})
+              ✕ Reset Semua Filter
             </button>
           )}
         </div>
@@ -575,63 +609,43 @@ export default function Dashboard() {
           {/* ================= KOLOM KIRI ================= */}
           <div className="space-y-3 sm:space-y-4">
             
-            {/* OVERVIEW ODP PROFILE */}
+            {/* 1. OVERVIEW ODP PROFILE (FREEZE / GLOBAL STATS TIDAK IKUT TERFILTER) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
-                <span className="font-extrabold text-xs sm:text-sm tracking-wide">OVERVIEW ODP PROFILE</span>
-                <span className="bg-white/20 hover:bg-white/30 text-white text-[9.5px] font-semibold px-2 py-0.5 rounded-full border border-white/20 backdrop-blur-sm">
-                  {selectedStatus !== 'ALL' ? `Filter: ${selectedStatus}` : 'Klik box untuk filter'}
+                <span className="font-extrabold text-xs sm:text-sm tracking-wide">OVERVIEW ODP PROFILE (GLOBAL STATS)</span>
+                <span className="bg-white/20 text-white text-[9.5px] font-semibold px-2 py-0.5 rounded-full border border-white/20">
+                  Frozen Data
                 </span>
               </div>
 
               <div className="p-2 sm:p-3 grid grid-cols-3 gap-2 sm:gap-3 text-center">
                 <div className="col-span-1 space-y-1.5 sm:space-y-2">
-                  <div
-                    onClick={() => setSelectedPortFilter('ALL')}
-                    className={`border p-1.5 sm:p-2 rounded cursor-pointer transition-transform hover:scale-105 ${
-                      selectedPortFilter === 'ALL' ? 'border-blue-300 bg-blue-50/70 shadow-sm' : 'border-slate-200 bg-slate-50'
-                    }`}
-                  >
+                  <div className="border border-slate-200 bg-slate-50 p-1.5 sm:p-2 rounded">
                     <p className="text-[8px] sm:text-[9px] font-bold text-blue-800 uppercase">TOTAL ODP (Port)</p>
                     <p className="text-sm sm:text-base font-extrabold text-slate-900 mt-0.5">
-                      {totalOdp.toLocaleString()}{' '}
+                      {totalOdpGlobal.toLocaleString()}{' '}
                       <span className="text-[10px] sm:text-xs font-bold text-slate-600">({(statsOverview.totalPort / 1000).toFixed(1)} K)</span>
                     </p>
                   </div>
 
-                  <div
-                    onClick={() => setSelectedPortFilter('USED')}
-                    className={`border p-1.5 sm:p-2 rounded cursor-pointer transition-transform hover:scale-105 ${
-                      selectedPortFilter === 'USED' ? 'border-emerald-600 bg-emerald-100 ring-2 ring-emerald-500 shadow' : 'border-emerald-300 bg-emerald-50/80 hover:bg-emerald-100'
-                    }`}
-                  >
+                  <div className="border border-emerald-300 bg-emerald-50/80 p-1.5 sm:p-2 rounded">
                     <p className="text-[8px] sm:text-[9px] font-black text-emerald-800 uppercase">USED PORT (Active)</p>
                     <p className="text-sm sm:text-base font-extrabold text-emerald-950 mt-0.5">
                       {(statsOverview.usedPort / 1000).toFixed(1)} K{' '}
-                      <span className="text-[10px] sm:text-xs font-bold text-emerald-800">({occTotal}%)</span>
+                      <span className="text-[10px] sm:text-xs font-bold text-emerald-800">({occGlobal}%)</span>
                     </p>
                   </div>
 
-                  <div
-                    onClick={() => setSelectedPortFilter('AVAI')}
-                    className={`border p-1.5 sm:p-2 rounded cursor-pointer transition-transform hover:scale-105 ${
-                      selectedPortFilter === 'AVAI' ? 'border-red-600 bg-red-100 ring-2 ring-red-500 shadow' : 'border-red-300 bg-red-50/80 hover:bg-red-100'
-                    }`}
-                  >
+                  <div className="border border-red-300 bg-red-50/80 p-1.5 sm:p-2 rounded">
                     <p className="text-[8px] sm:text-[9px] font-black text-red-800 uppercase">AVAI PORT (Non Active)</p>
                     <p className="text-sm sm:text-base font-extrabold text-red-950 mt-0.5">
                       {(statsOverview.avaiPort / 1000).toFixed(1)} K{' '}
-                      <span className="text-[10px] sm:text-xs font-bold text-red-800">({avaiTotal}%)</span>
+                      <span className="text-[10px] sm:text-xs font-bold text-red-800">({avaiGlobal}%)</span>
                     </p>
                   </div>
                 </div>
 
-                <div
-                  onClick={() => setSelectedStatus((p) => (p === 'BLACK' ? 'ALL' : 'BLACK'))}
-                  className={`col-span-1 border border-gray-400 p-2 shadow-inner flex flex-col justify-center cursor-pointer transition-transform hover:scale-105 rounded relative ${
-                    selectedStatus === 'BLACK' ? 'ring-3 ring-black bg-gray-100' : 'bg-white'
-                  }`}
-                >
+                <div className="col-span-1 border border-gray-400 p-2 shadow-inner flex flex-col justify-center rounded relative bg-white">
                   <div className="bg-black text-white text-[9px] font-bold px-2 py-0.5 w-max mx-auto border border-gray-400 absolute -top-2 left-0 right-0 rounded-sm">
                     BLACK ODP
                   </div>
@@ -639,7 +653,7 @@ export default function Dashboard() {
                     {statsOverview.colorCounts.BLACK.toLocaleString()}
                   </p>
                   <p className="text-xs font-bold text-slate-600 mt-0.5">
-                    {totalOdp > 0 ? ((statsOverview.colorCounts.BLACK / totalOdp) * 100).toFixed(1) : 0}%
+                    {totalOdpGlobal > 0 ? ((statsOverview.colorCounts.BLACK / totalOdpGlobal) * 100).toFixed(1) : 0}%
                   </p>
                   <p className="text-[10px] font-bold text-slate-700 mt-1">
                     {(statsOverview.colorPorts.BLACK / 1000).toFixed(1)} K Port ({statsOverview.colorPorts.BLACK.toLocaleString()})
@@ -647,64 +661,44 @@ export default function Dashboard() {
                 </div>
 
                 <div className="col-span-1 grid grid-cols-2 gap-1.5 sm:gap-2">
-                  <div
-                    onClick={() => setSelectedStatus((p) => (p === 'YELLOW' ? 'ALL' : 'YELLOW'))}
-                    className={`text-center cursor-pointer p-1 rounded transition-transform hover:scale-105 ${
-                      selectedStatus === 'YELLOW' ? 'ring-2 ring-yellow-500 bg-yellow-50 shadow' : 'bg-slate-50 border border-slate-200'
-                    }`}
-                  >
+                  <div className="text-center p-1 rounded bg-slate-50 border border-slate-200">
                     <div className="bg-[#facc15] text-slate-900 text-[8px] font-bold px-0.5 py-0.5 rounded-sm">YELLOW</div>
                     <p className="text-sm sm:text-base font-extrabold mt-0.5">{statsOverview.colorCounts.YELLOW.toLocaleString()}</p>
                     <p className="text-[10px] font-bold text-slate-600">
-                      {totalOdp > 0 ? ((statsOverview.colorCounts.YELLOW / totalOdp) * 100).toFixed(1) : 0}%
+                      {totalOdpGlobal > 0 ? ((statsOverview.colorCounts.YELLOW / totalOdpGlobal) * 100).toFixed(1) : 0}%
                     </p>
                     <p className="text-[9px] font-bold text-yellow-800">
                       {(statsOverview.colorPorts.YELLOW / 1000).toFixed(1)}K Port
                     </p>
                   </div>
 
-                  <div
-                    onClick={() => setSelectedStatus((p) => (p === 'GREEN' ? 'ALL' : 'GREEN'))}
-                    className={`text-center cursor-pointer p-1 rounded transition-transform hover:scale-105 ${
-                      selectedStatus === 'GREEN' ? 'ring-2 ring-green-600 bg-green-50 shadow' : 'bg-slate-50 border border-slate-200'
-                    }`}
-                  >
+                  <div className="text-center p-1 rounded bg-slate-50 border border-slate-200">
                     <div className="bg-[#16a34a] text-white text-[8px] font-bold px-0.5 py-0.5 rounded-sm">GREEN</div>
                     <p className="text-sm sm:text-base font-extrabold mt-0.5">{statsOverview.colorCounts.GREEN.toLocaleString()}</p>
                     <p className="text-[10px] font-bold text-emerald-700">
-                      {totalOdp > 0 ? ((statsOverview.colorCounts.GREEN / totalOdp) * 100).toFixed(1) : 0}%
+                      {totalOdpGlobal > 0 ? ((statsOverview.colorCounts.GREEN / totalOdpGlobal) * 100).toFixed(1) : 0}%
                     </p>
                     <p className="text-[9px] font-bold text-emerald-800">
                       {(statsOverview.colorPorts.GREEN / 1000).toFixed(1)}K Port
                     </p>
                   </div>
 
-                  <div
-                    onClick={() => setSelectedStatus((p) => (p === 'ORANGE' ? 'ALL' : 'ORANGE'))}
-                    className={`text-center cursor-pointer p-1 rounded transition-transform hover:scale-105 ${
-                      selectedStatus === 'ORANGE' ? 'ring-2 ring-orange-500 bg-orange-50 shadow' : 'bg-slate-50 border border-slate-200'
-                    }`}
-                  >
+                  <div className="text-center p-1 rounded bg-slate-50 border border-slate-200">
                     <div className="bg-[#ea580c] text-white text-[8px] font-bold px-0.5 py-0.5 rounded-sm">ORANGE</div>
                     <p className="text-sm sm:text-base font-extrabold mt-0.5">{statsOverview.colorCounts.ORANGE.toLocaleString()}</p>
                     <p className="text-[10px] font-bold text-slate-600">
-                      {totalOdp > 0 ? ((statsOverview.colorCounts.ORANGE / totalOdp) * 100).toFixed(1) : 0}%
+                      {totalOdpGlobal > 0 ? ((statsOverview.colorCounts.ORANGE / totalOdpGlobal) * 100).toFixed(1) : 0}%
                     </p>
                     <p className="text-[9px] font-bold text-orange-800">
                       {(statsOverview.colorPorts.ORANGE / 1000).toFixed(1)}K Port
                     </p>
                   </div>
 
-                  <div
-                    onClick={() => setSelectedStatus((p) => (p === 'RED' ? 'ALL' : 'RED'))}
-                    className={`text-center cursor-pointer p-1 rounded transition-transform hover:scale-105 ${
-                      selectedStatus === 'RED' ? 'ring-2 ring-red-600 bg-red-50 shadow' : 'bg-slate-50 border border-slate-200'
-                    }`}
-                  >
+                  <div className="text-center p-1 rounded bg-slate-50 border border-slate-200">
                     <div className="bg-[#ef4444] text-white text-[8px] font-bold px-0.5 py-0.5 rounded-sm">RED</div>
                     <p className="text-sm sm:text-base font-extrabold mt-0.5">{statsOverview.colorCounts.RED.toLocaleString()}</p>
                     <p className="text-[10px] font-bold text-red-600">
-                      {totalOdp > 0 ? ((statsOverview.colorCounts.RED / totalOdp) * 100).toFixed(1) : 0}%
+                      {totalOdpGlobal > 0 ? ((statsOverview.colorCounts.RED / totalOdpGlobal) * 100).toFixed(1) : 0}%
                     </p>
                     <p className="text-[9px] font-bold text-red-800">
                       {(statsOverview.colorPorts.RED / 1000).toFixed(1)}K Port
@@ -849,15 +843,15 @@ export default function Dashboard() {
 
           {/* ================= KOLOM KANAN ================= */}
           <div className="space-y-3 sm:space-y-4">
-            {/* MAPS LOKASI ODP & ORDERS */}
+            {/* MAPS LOKASI ODP & FALLOUT ORDER */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm relative">
               <div className="bg-gradient-to-r from-[#1e3a8a] to-[#3a3575] text-white p-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-xs sm:text-sm">MAPS LOKASI ODP & ORDER</span>
+                  <span className="font-bold text-xs sm:text-sm">MAPS LOKASI ODP & FALLOUT</span>
                   <button
                     type="button"
                     onClick={() => setShowMeasureModal(!showMeasureModal)}
-                    className="px-2 py-0.5 bg-blue-700 hover:bg-blue-600 text-white rounded text-[10px] font-semibold flex items-center gap-1 shadow"
+                    className="px-2 py-0.5 bg-blue-700 hover:bg-blue-600 text-white rounded text-[10px] font-semibold flex items-center gap-1 shadow cursor-pointer"
                   >
                     <span>🚗</span> Ukur Jarak Rute Darat
                   </button>
@@ -869,10 +863,10 @@ export default function Dashboard() {
                     placeholder="Cari ODP / STO / Kab..."
                     value={searchTerm}
                     onChange={handleSearchChange}
-                    className="w-full px-2.5 py-1 text-black rounded text-xs outline-none shadow-sm"
+                    className="w-full px-2.5 py-1 text-black rounded text-xs outline-none shadow-sm bg-white"
                   />
                   {suggestions.length > 0 && (
-                    <div className="absolute top-full left-0 w-full bg-white text-black mt-1 rounded shadow-xl border border-gray-300 overflow-hidden max-h-52 overflow-y-auto">
+                    <div className="absolute top-full left-0 w-full bg-white text-black mt-1 rounded shadow-xl border border-gray-300 overflow-hidden max-h-52 overflow-y-auto z-[2000]">
                       {suggestions.map((s, i) => (
                         <div
                           key={i}
@@ -923,7 +917,7 @@ export default function Dashboard() {
                       type="button"
                       disabled={isRouting}
                       onClick={handleCalculateRoadDistance}
-                      className="px-3 py-1 bg-blue-600 text-white font-bold rounded text-[11px] hover:bg-blue-700 shadow disabled:opacity-50"
+                      className="px-3 py-1 bg-blue-600 text-white font-bold rounded text-[11px] hover:bg-blue-700 shadow disabled:opacity-50 cursor-pointer"
                     >
                       {isRouting ? 'Menghitung Rute...' : '🚗 Hitung Jarak Jalan & Gambar di Peta'}
                     </button>
@@ -939,7 +933,7 @@ export default function Dashboard() {
               <div className="h-[280px] sm:h-[350px] p-1 bg-gray-100">
                 <MapComponent
                   data={fullyFilteredData}
-                  ordersData={allMapOrders}
+                  falloutOrders={falloutMapMarkers}
                   focusLocation={focusedOdp}
                   manualMeasureLine={manualMeasureLine}
                   manualMeasureInfo={measureResult}
@@ -1061,7 +1055,7 @@ export default function Dashboard() {
               <button
                 type="button"
                 onClick={() => setBottomActiveTab('ODP')}
-                className={`px-3 py-1 rounded text-xs font-black transition ${
+                className={`px-3 py-1 rounded text-xs font-black transition cursor-pointer ${
                   bottomActiveTab === 'ODP'
                     ? 'bg-blue-600 text-white shadow'
                     : 'bg-slate-700/60 text-slate-300 hover:bg-slate-700'
@@ -1072,7 +1066,7 @@ export default function Dashboard() {
               <button
                 type="button"
                 onClick={() => setBottomActiveTab('ORDER')}
-                className={`px-3 py-1 rounded text-xs font-black transition ${
+                className={`px-3 py-1 rounded text-xs font-black transition cursor-pointer ${
                   bottomActiveTab === 'ORDER'
                     ? 'bg-purple-600 text-white shadow'
                     : 'bg-slate-700/60 text-slate-300 hover:bg-slate-700'
@@ -1093,14 +1087,21 @@ export default function Dashboard() {
                       setTableSearch(e.target.value);
                       setCurrentPage(1);
                     }}
-                    className="px-2.5 py-1 text-black rounded text-xs outline-none w-full sm:w-48"
+                    className="px-2.5 py-1 text-black rounded text-xs outline-none w-full sm:w-44 bg-white"
                   />
                   <button
                     type="button"
                     onClick={handleExportFilteredOdpCSV}
-                    className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold shadow flex items-center gap-1 whitespace-nowrap transition"
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold shadow flex items-center gap-1 whitespace-nowrap transition cursor-pointer"
                   >
-                    <span>📥</span> Download CSV ODP
+                    <span>📥</span> Terfilter ({fullyFilteredData.length.toLocaleString()})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportAllOdpCSV}
+                    className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[11px] font-bold shadow flex items-center gap-1 whitespace-nowrap transition cursor-pointer"
+                  >
+                    <span>📥</span> Semua ({totalOdpGlobal.toLocaleString()})
                   </button>
                 </>
               ) : (
@@ -1113,14 +1114,21 @@ export default function Dashboard() {
                       setOrderTableSearch(e.target.value);
                       setCurrentOrderPage(1);
                     }}
-                    className="px-2.5 py-1 text-black rounded text-xs outline-none w-full sm:w-48"
+                    className="px-2.5 py-1 text-black rounded text-xs outline-none w-full sm:w-44 bg-white"
                   />
                   <button
                     type="button"
                     onClick={handleExportFilteredOrderCSV}
-                    className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-bold shadow flex items-center gap-1 whitespace-nowrap transition"
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold shadow flex items-center gap-1 whitespace-nowrap transition cursor-pointer"
                   >
-                    <span>📥</span> Download CSV Order
+                    <span>📥</span> Terfilter ({filteredOrders.length.toLocaleString()})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExportAllOrderCSV}
+                    className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[11px] font-bold shadow flex items-center gap-1 whitespace-nowrap transition cursor-pointer"
+                  >
+                    <span>📥</span> Semua ({ordersData.length.toLocaleString()})
                   </button>
                 </>
               )}
@@ -1262,7 +1270,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* TAB 2: TABEL DATA ORDER FULFILLMENT */}
+          {/* TAB 2: TABEL DETAIL ORDER FULFILLMENT */}
           {bottomActiveTab === 'ORDER' && (
             <div className="overflow-x-auto max-h-[460px] overflow-y-auto">
               <table className="w-full text-left border-collapse text-[10px] whitespace-nowrap">
@@ -1338,11 +1346,7 @@ export default function Dashboard() {
                         >
                           <td className="p-1.5 border border-slate-200 text-center font-bold text-slate-500">{rowNumber}</td>
                           <td className="p-1.5 border border-slate-200 font-black text-purple-900">{row.order_id}</td>
-                          <td
-                            className="p-1.5 border border-slate-200 font-bold text-slate-800 cursor-pointer hover:text-blue-700 hover:underline"
-                            onClick={() => setSelectedStatus((p) => (p === pState ? 'ALL' : pState))}
-                            title="Klik untuk filter Process State ini"
-                          >
+                          <td className="p-1.5 border border-slate-200 font-bold text-slate-800">
                             <span
                               className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
                                 pState === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' :
@@ -1358,20 +1362,8 @@ export default function Dashboard() {
                           </td>
                           <td className="p-1.5 border border-slate-200 font-semibold">{row.name || '-'}</td>
                           <td className="p-1.5 border border-slate-200 font-mono text-[9px]">{row.no_handphone || row.no_handphone_mask || '-'}</td>
-                          <td
-                            className="p-1.5 border border-slate-200 font-bold cursor-pointer hover:text-blue-700 hover:underline"
-                            onClick={() => setSelectedStoFilter((p) => (p === row.sto_co ? 'ALL' : row.sto_co))}
-                            title="Klik untuk filter STO ini"
-                          >
-                            {row.sto_co || '-'}
-                          </td>
-                          <td
-                            className="p-1.5 border border-slate-200 cursor-pointer hover:text-blue-700 hover:underline"
-                            onClick={() => setSelectedWokFilter((p) => (p === row.wok ? 'ALL' : row.wok))}
-                            title="Klik untuk filter WOK ini"
-                          >
-                            {row.wok || '-'}
-                          </td>
+                          <td className="p-1.5 border border-slate-200 font-bold text-slate-800">{row.sto_co || '-'}</td>
+                          <td className="p-1.5 border border-slate-200">{row.wok || '-'}</td>
                           <td className="p-1.5 border border-slate-200 font-bold text-blue-800">{row.odp_name || '-'}</td>
                           <td className="p-1.5 border border-slate-200">{row.product_commercial_name || '-'}</td>
                           <td className="p-1.5 border border-slate-200 font-bold text-emerald-800">{row.order_duration_cat || '-'}</td>
@@ -1398,7 +1390,7 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Pagination Controls */}
+          {/* Pagination */}
           <div className="bg-slate-50 p-2.5 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-2 text-xs font-semibold">
             {bottomActiveTab === 'ODP' ? (
               <>
@@ -1410,7 +1402,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentPage(1)}
                     disabled={currentPage === 1}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     &laquo; Pertama
                   </button>
@@ -1418,7 +1410,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     &lsaquo; Prev
                   </button>
@@ -1427,7 +1419,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentPage((p) => Math.min(totalOdpPages, p + 1))}
                     disabled={currentPage === totalOdpPages}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     Next &rsaquo;
                   </button>
@@ -1435,7 +1427,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentPage(totalOdpPages)}
                     disabled={currentPage === totalOdpPages}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     Terakhir &raquo;
                   </button>
@@ -1451,7 +1443,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentOrderPage(1)}
                     disabled={currentOrderPage === 1}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     &laquo; Pertama
                   </button>
@@ -1459,7 +1451,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentOrderPage((p) => Math.max(1, p - 1))}
                     disabled={currentOrderPage === 1}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     &lsaquo; Prev
                   </button>
@@ -1468,7 +1460,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentOrderPage((p) => Math.min(totalOrderPages, p + 1))}
                     disabled={currentOrderPage === totalOrderPages}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     Next &rsaquo;
                   </button>
@@ -1476,7 +1468,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentOrderPage(totalOrderPages)}
                     disabled={currentOrderPage === totalOrderPages}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs"
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     Terakhir &raquo;
                   </button>
