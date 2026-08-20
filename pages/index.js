@@ -1466,7 +1466,7 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={() => setCurrentPage(totalOdpPages)}
-                    disabled={currentPage === totalPages}
+                    disabled={currentPage === totalOdpPages}
                     className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     Terakhir &raquo;
