@@ -20,12 +20,18 @@ const ALLOWED_STOS = [
   'BNT', 'PLK', 'KKN', 'MTW', 'PPS', 'PYM', 'TML', 'AMP', 'KKP', 'KRI', 'KSO', 'PRC'
 ];
 
-const DURATION_ORDER = ['3 HARI', '7 HARI', '30 HARI', '3 BULAN'];
+// Order urutan durasi (mendukung format hari baru maupun format lama)
+const DURATION_PRIORITY = [
+  '1 hari', '1 HARI',
+  '2-3 hari', '2-3 HARI', '3 HARI',
+  '4-7 hari', '4-7 HARI', '7 HARI',
+  '>7 hari', '>7 HARI', '30 HARI', '3 BULAN'
+];
 
 function sortDurationColumns(cols = []) {
   return [...cols].sort((a, b) => {
-    const idxA = DURATION_ORDER.indexOf(a);
-    const idxB = DURATION_ORDER.indexOf(b);
+    const idxA = DURATION_PRIORITY.indexOf(a);
+    const idxB = DURATION_PRIORITY.indexOf(b);
     if (idxA !== -1 && idxB !== -1) return idxA - idxB;
     if (idxA !== -1) return -1;
     if (idxB !== -1) return 1;
@@ -34,8 +40,13 @@ function sortDurationColumns(cols = []) {
 }
 
 const DURATION_COLORS = {
+  '1 hari': '#10b981',
+  '1 HARI': '#10b981',
+  '2-3 hari': '#22c55e',
   '3 HARI': '#22c55e',
+  '4-7 hari': '#f97316',
   '7 HARI': '#f97316',
+  '>7 hari': '#ef4444',
   '30 HARI': '#3b82f6',
   '3 BULAN': '#a855f7',
   DEFAULT: '#64748b',
@@ -54,30 +65,6 @@ function formatFullDateTime(d) {
   const hours = String(d.getHours()).padStart(2, '0');
   const mins = String(d.getMinutes()).padStart(2, '0');
   return `${day} ${month} ${year} ${hours}:${mins}`;
-}
-
-const FALLOUT_KEYWORDS = [
-  'ODP BELUM GO LIVE', 'ODP FULL', 'ODP JAUH', 'ODP LOSS', 'ODP RETI', 'ODP RUSAK', 'TIDAK ADA ODP',
-  'KENDALA JALUR/RUTE TARIKAN', 'KENDALA IKR/IKG', 'KENDALA IZIN', 'KENDALA MATERIAL/NTE', 'KENDALA PERANGKAT',
-  'ALAMAT TIDAK DITEMUKAN', 'INDIKASI CABUT PASANG', 'PELANGGAN MASIH RAGU', 'PELANGGAN TIDAK MERASA PASANG',
-  'RUMAH KOSONG', 'CROSS JALAN', 'DOUBLE INPUT', 'GANTI PAKET', 'LIMITASI ONU', 'TIANG', 'BATAL',
-  'PENDING', 'SYSTEM', 'ACTIVATION', 'DATA', 'RNA', 'ODP', 'LAINNYA',
-];
-
-function normalizeFalloutReason(rawVal) {
-  if (!rawVal || String(rawVal).trim() === '' || String(rawVal).toLowerCase() === 'nan' || String(rawVal).toLowerCase() === 'null') {
-    return null;
-  }
-  const cleanStr = String(rawVal).toUpperCase().replace(/_/g, ' ');
-  for (const kw of FALLOUT_KEYWORDS) {
-    const kwClean = kw.toUpperCase().replace(/_/g, ' ');
-    const escaped = kwClean.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-    const regex = new RegExp(`(?<![A-Z0-9])${escaped}(?![A-Z0-9])`, 'i');
-    if (regex.test(cleanStr)) {
-      return kwClean;
-    }
-  }
-  return 'LAINNYA';
 }
 
 function MultiSelectDropdown({ options = [], selected = [], onChange, badgeColor = 'bg-slate-800 text-emerald-300' }) {
@@ -194,25 +181,18 @@ export default function OrdersPage() {
   const [selectedDuration, setSelectedDuration] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [selectedFallout, setSelectedFallout] = useState('ALL');
-  
-  // Scope interaktif untuk tabel bawah ('ALL' by default agar tabel bawah menampilkan SEMUA DATA)
   const [activeSubgroupScope, setActiveSubgroupScope] = useState('ALL');
 
-  // Multiselect Filters untuk Card Pivot Atas (Default: PROVISION_ISSUED & INPROGRESS_PC)
   const [selectedPivotSubgroups, setSelectedPivotSubgroups] = useState([
     'PROVISION_ISSUED',
     'INPROGRESS_PC'
   ]);
-
-  // Multiselect Filters untuk Card Fallout Bawah (Default: FALLOUT)
   const [selectedFalloutStates, setSelectedFalloutStates] = useState(['FALLOUT']);
 
-  // Pivot Sorting States
   const [pivot1Sort, setPivot1Sort] = useState({ key: 'total', direction: 'desc' });
   const [pivot2Sort, setPivot2Sort] = useState({ key: 'total', direction: 'desc' });
   const [pivotFalloutSort, setPivotFalloutSort] = useState({ key: 'count', direction: 'desc' });
 
-  // Bottom Table States
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [sortConfig, setSortConfig] = useState({ key: 'order_ts', direction: 'desc' });
@@ -270,7 +250,6 @@ export default function OrdersPage() {
     return `*Cut Off Data (${formatFullDateTime(earliest)} - ${formatFullDateTime(latest)})`;
   }, [orders]);
 
-  // Data Tabel Bawah (By Default Tampilkan SEMUA DATA, hanya terfilter jika ada filter aktif atau sel pivot diklik)
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
       if (!o) return false;
@@ -292,7 +271,8 @@ export default function OrdersPage() {
 
       const matchWok = selectedWok === 'ALL' || o.wok === selectedWok;
       const matchSto = selectedSto === 'ALL' || o.sto_co === selectedSto;
-      const matchDur = selectedDuration === 'ALL' || o.order_duration_cat === selectedDuration;
+      const durVal = o.order_duration_cat || o.aging_fallout || 'LAINNYA';
+      const matchDur = selectedDuration === 'ALL' || durVal === selectedDuration;
       
       const processState = (o.process_state || 'UNKNOWN').trim().toUpperCase();
       const matchStat = selectedStatus === 'ALL' || processState === selectedStatus;
@@ -305,12 +285,12 @@ export default function OrdersPage() {
         matchSubgroup = subGroup === activeSubgroupScope;
       }
       
-      const matchFallout = selectedFallout === 'ALL' || o.fallout_reason_clean === selectedFallout;
+      const rVal = o.symptom || o.fallout_category || o.fallout_reason_clean || 'LAINNYA';
+      const matchFallout = selectedFallout === 'ALL' || rVal === selectedFallout;
       return matchMonth && matchWok && matchSto && matchDur && matchStat && matchSubgroup && matchFallout;
     });
   }, [orders, selectedMonth, selectedWok, selectedSto, selectedDuration, selectedStatus, activeSubgroupScope, selectedFallout]);
 
-  // Data Basis Khusus Pivot 1 & Pivot 2 (Mengikuti Multiselect Subgroups di Card Atas)
   const pivotBaseOrders = useMemo(() => {
     return orders.filter((o) => {
       if (!o) return false;
@@ -333,7 +313,7 @@ export default function OrdersPage() {
     });
   }, [orders, selectedMonth, selectedWok, selectedSto, selectedPivotSubgroups]);
 
-  // Pivot 1: WOK & STO vs Duration
+  // Pivot 1: WOK & STO vs Duration (Dinamis mencakup durasi baru)
   const pivotDuration = useMemo(() => {
     const durColumnsSet = new Set();
     const map = {};
@@ -341,7 +321,7 @@ export default function OrdersPage() {
     pivotBaseOrders.forEach((o) => {
       const wok = o.wok || 'PALANGKARAYA';
       const sto = o.sto_co || 'UNKNOWN';
-      const dur = o.order_duration_cat || 'LAINNYA';
+      const dur = o.order_duration_cat || o.aging_fallout || 'LAINNYA';
       durColumnsSet.add(dur);
 
       if (!map[wok]) map[wok] = { name: wok, total: 0, stos: {}, colCounts: {} };
@@ -423,7 +403,7 @@ export default function OrdersPage() {
     return { sortedWoks, columns, grandColTotals, totalAll };
   }, [pivotBaseOrders, pivot2Sort]);
 
-  // Pivot 3: Duration vs Fallout (Mengikuti Multiselect Status pada Section Fallout)
+  // Pivot 3: Duration vs Fallout
   const pivotFallout = useMemo(() => {
     const tree = {};
     let totalAll = 0;
@@ -446,8 +426,8 @@ export default function OrdersPage() {
     });
 
     baseOrders.forEach((o) => {
-      const dur = o.order_duration_cat || 'LAINNYA';
-      const r = o.fallout_reason_clean || 'LAINNYA';
+      const dur = o.order_duration_cat || o.aging_fallout || 'LAINNYA';
+      const r = o.symptom || o.fallout_category || o.fallout_reason_clean || 'LAINNYA';
 
       if (!tree[dur]) tree[dur] = { name: dur, total: 0, reasons: {} };
       tree[dur].total++;
@@ -458,7 +438,8 @@ export default function OrdersPage() {
     return { tree, totalAll };
   }, [orders, selectedMonth, selectedWok, selectedSto, selectedFalloutStates]);
 
-  const { chartData, dividerIndices } = useMemo(() => {
+  // Chart Data (Duration Fallout)
+  const { chartData, dividerIndices, activeDurations } = useMemo(() => {
     const list = [];
     const dividers = [];
     
@@ -490,7 +471,7 @@ export default function OrdersPage() {
       }
     });
 
-    return { chartData: list, dividerIndices: dividers };
+    return { chartData: list, dividerIndices: dividers, activeDurations: sortedDurKeys };
   }, [pivotFallout, selectedDuration]);
 
   // Sorting Handlers
@@ -530,6 +511,7 @@ export default function OrdersPage() {
           (o.sto_co && o.sto_co.toLowerCase().includes(s)) ||
           (o.process_state && o.process_state.toLowerCase().includes(s)) ||
           (o.funneling_subgroup && o.funneling_subgroup.toLowerCase().includes(s)) ||
+          (o.symptom && o.symptom.toLowerCase().includes(s)) ||
           (o.fallout_reason_clean && o.fallout_reason_clean.toLowerCase().includes(s))
       );
     }
@@ -631,7 +613,7 @@ export default function OrdersPage() {
               onClick={() => setShowUploader(!showUploader)}
               className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded shadow transition cursor-pointer"
             >
-              {showUploader ? 'Tutup Upload' : 'Upload Data Baru'}
+              {showUploader ? 'Tutup Upload' : 'Upload Data'}
             </button>
           </div>
         </div>
@@ -718,7 +700,7 @@ export default function OrdersPage() {
           </div>
         )}
 
-        {/* ================= SECTION ATAS: 2 PIVOT TABLE ================= */}
+        {/* SECTION ATAS: 2 PIVOT TABLE */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
           
           {/* PIVOT 1: DURATION */}
@@ -726,7 +708,6 @@ export default function OrdersPage() {
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase flex-wrap gap-1">
               <span>Count of order_id &bull; Duration SLA</span>
               
-              {/* Multiselect Subgroups Dropdown */}
               <div className="flex items-center gap-1.5">
                 <span className="text-[9px] text-slate-300 font-bold">Subgroup:</span>
                 <MultiSelectDropdown
@@ -751,12 +732,11 @@ export default function OrdersPage() {
                     {pivotDuration.columns.map((c) => (
                       <th
                         key={c}
-                        className={`p-1.5 border border-slate-600 cursor-pointer hover:opacity-80 ${
-                          c === '3 HARI' ? 'bg-[#bbf7d0] text-emerald-950 font-black' :
-                          c === '7 HARI' ? 'bg-[#fed7aa] text-orange-950 font-black' :
-                          c === '30 HARI' ? 'bg-[#bfdbfe] text-blue-950 font-black' :
-                          c === '3 BULAN' ? 'bg-[#e9d5ff] text-purple-950 font-black' : 'bg-slate-700'
-                        }`}
+                        className="p-1.5 border border-slate-600 cursor-pointer hover:opacity-80 bg-slate-700 font-black text-slate-100"
+                        style={{
+                          backgroundColor: DURATION_COLORS[c] ? `${DURATION_COLORS[c]}33` : '#334155',
+                          color: DURATION_COLORS[c] || '#ffffff'
+                        }}
                         onClick={() => {
                           setActiveSubgroupScope(selectedPivotSubgroups);
                           setSelectedStatus('ALL');
@@ -1138,7 +1118,7 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        {/* ================= SECTION TENGAH: PIVOT FALLOUT & DURATION FALLOUT CHART ================= */}
+        {/* SECTION TENGAH: PIVOT FALLOUT & DURATION FALLOUT CHART */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4">
           
           {/* PIVOT 3: FALLOUT */}
@@ -1146,7 +1126,6 @@ export default function OrdersPage() {
             <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase flex-wrap gap-1">
               <span>Fallout</span>
               
-              {/* Multiselect Status Dropdown Section Fallout */}
               <div className="flex items-center gap-1.5">
                 <span className="text-[9px] text-slate-300 font-bold">Status:</span>
                 <MultiSelectDropdown
@@ -1196,11 +1175,10 @@ export default function OrdersPage() {
                         <tr
                           className={`font-black text-slate-900 border-b border-slate-300 cursor-pointer ${
                             durIdx > 0 ? 'border-t-2 border-t-slate-400' : ''
-                          } ${
-                            dur.name === '3 HARI' ? 'bg-emerald-100 hover:bg-emerald-200' :
-                            dur.name === '7 HARI' ? 'bg-orange-100 hover:bg-orange-200' :
-                            dur.name === '30 HARI' ? 'bg-blue-100 hover:bg-blue-200' : 'bg-purple-100 hover:bg-purple-200'
                           }`}
+                          style={{
+                            backgroundColor: DURATION_COLORS[dur.name] ? `${DURATION_COLORS[dur.name]}25` : '#f1f5f9',
+                          }}
                           onClick={() => {
                             setActiveSubgroupScope('ALL');
                             if (selectedFalloutStates.length === 1) {
@@ -1386,24 +1364,21 @@ export default function OrdersPage() {
               )}
             </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-4 text-[10px] font-bold text-slate-600 mt-2 border-t pt-1.5">
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 bg-[#22c55e] rounded-xs inline-block"></span> 3 HARI
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 bg-[#f97316] rounded-xs inline-block"></span> 7 HARI
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 bg-[#3b82f6] rounded-xs inline-block"></span> 30 HARI
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 bg-[#a855f7] rounded-xs inline-block"></span> 3 BULAN
-              </span>
+            <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] font-bold text-slate-600 mt-2 border-t pt-1.5">
+              {activeDurations.map((dur) => (
+                <span key={dur} className="flex items-center gap-1">
+                  <span
+                    className="w-3 h-3 rounded-xs inline-block"
+                    style={{ backgroundColor: DURATION_COLORS[dur] || DURATION_COLORS.DEFAULT }}
+                  ></span>
+                  {dur}
+                </span>
+              ))}
             </div>
           </div>
         </div>
 
-        {/* ================= BOTTOM RAW DATA TABLE DENGAN OPSI DEFAULT ALL DATA & SYNC PADA KLIK ================= */}
+        {/* BOTTOM RAW DATA TABLE */}
         <div className="bg-white border border-slate-300 shadow-xs rounded overflow-hidden mt-4">
           <div className="bg-gradient-to-r from-[#0f172a] via-[#1e293b] to-[#334155] text-white p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <div>
@@ -1428,7 +1403,6 @@ export default function OrdersPage() {
                 className="px-2.5 py-1 text-black rounded text-xs outline-none w-full sm:w-52"
               />
               
-              {/* Tombol Download Terfilter */}
               <button
                 type="button"
                 onClick={handleExportFilteredCSV}
@@ -1438,7 +1412,6 @@ export default function OrdersPage() {
                 <span>📥</span> Terfilter ({filteredOrders.length.toLocaleString()})
               </button>
 
-              {/* Tombol Download Semua Data */}
               <button
                 type="button"
                 onClick={handleExportAllCSV}
@@ -1566,25 +1539,28 @@ export default function OrdersPage() {
                         <td className="p-1.5 border border-slate-200">{row.product_commercial_name || '-'}</td>
                         <td
                           className="p-1.5 border border-slate-200 font-bold text-emerald-800 cursor-pointer hover:text-blue-700 hover:underline"
-                          onClick={() => setSelectedDuration((p) => (p === row.order_duration_cat ? 'ALL' : row.order_duration_cat))}
+                          onClick={() => {
+                            const dur = row.order_duration_cat || row.aging_fallout;
+                            setSelectedDuration((p) => (p === dur ? 'ALL' : dur));
+                          }}
                           title="Klik untuk filter durasi ini"
                         >
-                          {row.order_duration_cat || '-'}
+                          {row.order_duration_cat || row.aging_fallout || '-'}
                         </td>
                         <td
                           className="p-1.5 border border-slate-200 text-red-600 font-bold cursor-pointer hover:underline"
                           onClick={() => {
-                            setActiveSubgroupScope('ALL');
+                            const r = row.symptom || row.fallout_category || row.fallout_reason_clean;
                             if (selectedFalloutStates.length === 1) {
                               setSelectedStatus(selectedFalloutStates[0]);
                             }
-                            row.fallout_reason_clean && setSelectedFallout((p) => (p === row.fallout_reason_clean ? 'ALL' : row.fallout_reason_clean));
+                            r && setSelectedFallout((p) => (p === r ? 'ALL' : r));
                           }}
                           title="Klik untuk filter fallout ini"
                         >
-                          {row.fallout_reason_clean ? (
+                          {(row.symptom || row.fallout_category || row.fallout_reason_clean) ? (
                             <span className="bg-red-50 px-1.5 py-0.5 rounded border border-red-200">
-                              {row.fallout_reason_clean}
+                              {row.symptom || row.fallout_category || row.fallout_reason_clean}
                             </span>
                           ) : '-'}
                         </td>
