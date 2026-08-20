@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import {
   MapContainer,
   TileLayer,
@@ -75,14 +75,18 @@ export default function AnalysisMap({
           <button
             type="button"
             onClick={() => setMapType('street')}
-            className={`px-2.5 py-1 transition ${mapType === 'street' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
+            className={`px-2.5 py-1 transition cursor-pointer ${
+              mapType === 'street' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'
+            }`}
           >
             Peta
           </button>
           <button
             type="button"
             onClick={() => setMapType('satellite')}
-            className={`px-2.5 py-1 transition ${mapType === 'satellite' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
+            className={`px-2.5 py-1 transition cursor-pointer ${
+              mapType === 'satellite' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'
+            }`}
           >
             Satelit
           </button>
@@ -108,10 +112,9 @@ export default function AnalysisMap({
 
         <MapAutoCenter selectedTarget={selectedTarget} radiusLimit={radiusLimit} />
 
-        {/* ================= 1. BORDER LINGKARAN RADIUS 250M ================= */}
+        {/* Lingkaran Radius 250M */}
         {selectedTarget && selectedTarget.lat && selectedTarget.lon && (
           <>
-            {/* Lingkaran Luar Border Solid */}
             <Circle
               center={[selectedTarget.lat, selectedTarget.lon]}
               radius={radiusLimit}
@@ -123,7 +126,6 @@ export default function AnalysisMap({
                 fillOpacity: 0.12,
               }}
             />
-            {/* Titik Inti Pusat Animasi Pulse */}
             <CircleMarker
               center={[selectedTarget.lat, selectedTarget.lon]}
               radius={8}
@@ -137,7 +139,7 @@ export default function AnalysisMap({
           </>
         )}
 
-        {/* ================= 2. MARKER ODP (HOVER & CLICK TO TARGET) ================= */}
+        {/* Marker ODP */}
         {odpData.map((odp, idx) => {
           if (!odp.latitude || !odp.longitude) return null;
           const color = getColor(odp.status_final);
@@ -165,7 +167,7 @@ export default function AnalysisMap({
               pathOptions={{
                 fillColor: isSelected ? '#2563eb' : color,
                 fillOpacity: 0.95,
-                color: isSelected ? '#ffffff' : '#ffffff',
+                color: '#ffffff',
                 weight: isSelected ? 2.5 : 1,
               }}
             >
@@ -185,7 +187,7 @@ export default function AnalysisMap({
           );
         })}
 
-        {/* ================= 3. MARKER ORDER (CLICK POPUP & CLICK TO TARGET) ================= */}
+        {/* Marker Order */}
         {ordersData.map((ord, idx) => {
           if (!ord.lat || !ord.lon) return null;
           const pState = (ord.process_state || 'UNKNOWN').toUpperCase();
