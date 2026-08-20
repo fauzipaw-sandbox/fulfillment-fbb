@@ -1,6 +1,18 @@
 import React, { useState } from 'react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
+import { createClient } from '@supabase/supabase-js';
+
+// Inisialisasi Supabase Client langsung dari Environment Variables
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+function getSupabaseClient() {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Konfigurasi Supabase (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY) belum ada di Environment Variables.');
+  }
+  return createClient(supabaseUrl, supabaseAnonKey);
+}
 
 function detectDelimiter(firstLine) {
   if (!firstLine) return ',';
@@ -43,7 +55,7 @@ function normalizeOrderKeys(row) {
 
   return {
     order_id: String(orderId).trim(),
-    new_order_id: normalized.new_order_id || null,
+    new_order_id: normalized.new_order_id ? String(normalized.new_order_id).trim() : null,
     process_state: normalized.process_state || normalized.order_status || 'FALLOUT',
     funneling_subgroup: normalized.funneling_subgroup || normalized.subgroup || 'FALLOUT',
     name: normalized.name || normalized.customer_name || normalized.nama_pelanggan || null,
@@ -71,6 +83,41 @@ function normalizeOrderKeys(row) {
   };
 }
 
+function normalizeOdpKeys(row) {
+  const normalized = {};
+  for (const [k, v] of Object.entries(row)) {
+    const cleanKey = k.trim().toLowerCase().replace(/[\s\-\/\.]+/g, '_');
+    normalized[cleanKey] = v;
+  }
+
+  const odpName = normalized.odp_name || normalized.odp || normalized.name;
+  if (!odpName) return null;
+
+  return {
+    odp_name: String(odpName).trim(),
+    sto: normalized.sto || null,
+    sto_desc: normalized.sto_desc || null,
+    wok: normalized.wok || null,
+    witel: normalized.witel || null,
+    datel: normalized.datel || null,
+    regional: normalized.regional || null,
+    kabupaten: normalized.kabupaten || null,
+    kecamatan: normalized.kecamatan || null,
+    desa: normalized.desa || null,
+    latitude: normalized.latitude ? parseFloat(normalized.latitude) : null,
+    longitude: normalized.longitude ? parseFloat(normalized.longitude) : null,
+    avai: normalized.avai !== undefined && normalized.avai !== null ? parseInt(normalized.avai, 10) : 0,
+    used: normalized.used !== undefined && normalized.used !== null ? parseInt(normalized.used, 10) : 0,
+    rsv: normalized.rsv !== undefined && normalized.rsv !== null ? parseInt(normalized.rsv, 10) : 0,
+    rsk: normalized.rsk !== undefined && normalized.rsk !== null ? parseInt(normalized.rsk, 10) : 0,
+    is_total: normalized.is_total !== undefined && normalized.is_total !== null ? parseInt(normalized.is_total, 10) : 0,
+    status: normalized.status || null,
+    status_final: normalized.status_final || 'BLACK',
+    ont_rx_level: normalized.ont_rx_level !== undefined && normalized.ont_rx_level !== null && normalized.ont_rx_level !== '' ? parseFloat(normalized.ont_rx_level) : null,
+    event_date: normalized.event_date || null,
+  };
+}
+
 export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
   const [uploadingOdp, setUploadingOdp] = useState(false);
   const [uploadingOrder, setUploadingOrder] = useState(false);
@@ -79,8 +126,9 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
   const [isDragOverOdp, setIsDragOverOdp] = useState(false);
   const [isDragOverOrder, setIsDragOverOrder] = useState(false);
 
-  // Helper pengiriman data per batch (500 baris per request agar tidak tembus limit Vercel)
-  const uploadInBatches = async (endpoint, rows, setProgressMessage, label) => {
+  // Upload langsung ke Supabase per Batch (500 baris)
+  const uploadDirectToSupabase = async (tableName, rows, conflictKey, setProgressMessage, label) => {
+    const supabase = getSupabaseClient();
     const chunkSize = 500;
     const totalChunks = Math.ceil(rows.length / chunkSize);
 
@@ -89,23 +137,12 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
       const chunk = rows.slice(start, start + chunkSize);
       setProgressMessage(`Mengunggah ${label} batch ${i + 1} dari ${totalChunks} (${Math.min(start + chunkSize, rows.length)}/${rows.length})...`);
 
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ data: chunk }),
-      });
+      const { error } = await supabase
+        .from(tableName)
+        .upsert(chunk, { onConflict: conflictKey });
 
-      const contentType = res.headers.get('content-type') || '';
-      let json = {};
-      if (contentType.includes('application/json')) {
-        json = await res.json();
-      } else {
-        const textError = await res.text();
-        throw new Error(`Server mengembalikan error (${res.status}): ${textError.slice(0, 150)}`);
-      }
-
-      if (!res.ok) {
-        throw new Error(json.error || `Gagal upload pada batch ${i + 1}`);
+      if (error) {
+        throw new Error(error.message);
       }
     }
   };
@@ -135,14 +172,15 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
         rawRows = parsed.data || [];
       }
 
-      if (rawRows.length === 0) {
-        alert('File ODP kosong!');
+      const cleaned = rawRows.map(normalizeOdpKeys).filter(Boolean);
+      if (cleaned.length === 0) {
+        alert('File ODP kosong atau format tidak sesuai!');
         setUploadingOdp(false);
         return;
       }
 
-      await uploadInBatches('/api/upload-odp', rawRows, setOdpProgress, 'ODP');
-      setOdpProgress(`✅ Sukses mengunggah ${rawRows.length.toLocaleString()} data ODP!`);
+      await uploadDirectToSupabase('odp_kalimantan', cleaned, 'odp_name', setOdpProgress, 'ODP');
+      setOdpProgress(`✅ Sukses mengunggah ${cleaned.length.toLocaleString()} data ODP!`);
       if (onUploadOdpSuccess) onUploadOdpSuccess();
     } catch (err) {
       alert(`Gagal upload ODP: ${err.message}`);
@@ -184,8 +222,8 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
         return;
       }
 
-      await uploadInBatches('/api/upload-orders', cleaned, setOrderProgress, 'Order');
-      setOrderProgress(`✅ Sukses mengunggah ${cleaned.length.toLocaleString()} data Order!`);
+      await uploadDirectToSupabase('orders_kalimantan', cleaned, 'order_id', setOrderProgress, 'Order');
+      setOrderProgress(`✅ Sukses mengunggah & upsert ${cleaned.length.toLocaleString()} data Order!`);
       if (onUploadOrderSuccess) onUploadOrderSuccess();
     } catch (err) {
       alert(`Gagal upload Order: ${err.message}`);
