@@ -20,18 +20,13 @@ const ALLOWED_STOS = [
   'BNT', 'PLK', 'KKN', 'MTW', 'PPS', 'PYM', 'TML', 'AMP', 'KKP', 'KRI', 'KSO', 'PRC'
 ];
 
-// Order urutan durasi (mendukung format hari baru maupun format lama)
-const DURATION_PRIORITY = [
-  '1 hari', '1 HARI',
-  '2-3 hari', '2-3 HARI', '3 HARI',
-  '4-7 hari', '4-7 HARI', '7 HARI',
-  '>7 hari', '>7 HARI', '30 HARI', '3 BULAN'
-];
+// Saklek 4 Kategori Durasi
+const DURATION_ORDER = ['3 HARI', '7 HARI', '30 HARI', '3 BULAN'];
 
 function sortDurationColumns(cols = []) {
   return [...cols].sort((a, b) => {
-    const idxA = DURATION_PRIORITY.indexOf(a);
-    const idxB = DURATION_PRIORITY.indexOf(b);
+    const idxA = DURATION_ORDER.indexOf(a);
+    const idxB = DURATION_ORDER.indexOf(b);
     if (idxA !== -1 && idxB !== -1) return idxA - idxB;
     if (idxA !== -1) return -1;
     if (idxB !== -1) return 1;
@@ -40,13 +35,8 @@ function sortDurationColumns(cols = []) {
 }
 
 const DURATION_COLORS = {
-  '1 hari': '#10b981',
-  '1 HARI': '#10b981',
-  '2-3 hari': '#22c55e',
   '3 HARI': '#22c55e',
-  '4-7 hari': '#f97316',
   '7 HARI': '#f97316',
-  '>7 hari': '#ef4444',
   '30 HARI': '#3b82f6',
   '3 BULAN': '#a855f7',
   DEFAULT: '#64748b',
@@ -65,6 +55,31 @@ function formatFullDateTime(d) {
   const hours = String(d.getHours()).padStart(2, '0');
   const mins = String(d.getMinutes()).padStart(2, '0');
   return `${day} ${month} ${year} ${hours}:${mins}`;
+}
+
+// Fungsi Normalisasi Durasi Saklek Realtime jika ada data lama/baru
+function getSaklekDurationCategory(order) {
+  if (order.order_ts || order.provi) {
+    const proviDate = new Date(order.order_ts || order.provi);
+    if (!isNaN(proviDate.getTime())) {
+      const today = new Date();
+      const diffTime = today.getTime() - proviDate.getTime();
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays <= 3) return '3 HARI';
+      if (diffDays <= 7) return '7 HARI';
+      if (diffDays <= 30) return '30 HARI';
+      return '3 BULAN';
+    }
+  }
+
+  const raw = String(order.order_duration_cat || order.aging_fallout || '').toUpperCase().trim();
+  if (raw.includes('1 HARI') || raw.includes('2-3') || raw.includes('3 HARI')) return '3 HARI';
+  if (raw.includes('4-7') || raw.includes('7 HARI')) return '7 HARI';
+  if (raw.includes('30 HARI') || raw.includes('30')) return '30 HARI';
+  if (raw.includes('>7') || raw.includes('BULAN') || raw.includes('3 BULAN')) return '3 BULAN';
+
+  return '3 HARI';
 }
 
 function MultiSelectDropdown({ options = [], selected = [], onChange, badgeColor = 'bg-slate-800 text-emerald-300' }) {
@@ -271,7 +286,7 @@ export default function OrdersPage() {
 
       const matchWok = selectedWok === 'ALL' || o.wok === selectedWok;
       const matchSto = selectedSto === 'ALL' || o.sto_co === selectedSto;
-      const durVal = o.order_duration_cat || o.aging_fallout || 'LAINNYA';
+      const durVal = getSaklekDurationCategory(o);
       const matchDur = selectedDuration === 'ALL' || durVal === selectedDuration;
       
       const processState = (o.process_state || 'UNKNOWN').trim().toUpperCase();
@@ -313,15 +328,15 @@ export default function OrdersPage() {
     });
   }, [orders, selectedMonth, selectedWok, selectedSto, selectedPivotSubgroups]);
 
-  // Pivot 1: WOK & STO vs Duration (Dinamis mencakup durasi baru)
+  // Pivot 1: WOK & STO vs Duration Saklek
   const pivotDuration = useMemo(() => {
-    const durColumnsSet = new Set();
+    const durColumnsSet = new Set(DURATION_ORDER);
     const map = {};
 
     pivotBaseOrders.forEach((o) => {
       const wok = o.wok || 'PALANGKARAYA';
       const sto = o.sto_co || 'UNKNOWN';
-      const dur = o.order_duration_cat || o.aging_fallout || 'LAINNYA';
+      const dur = getSaklekDurationCategory(o);
       durColumnsSet.add(dur);
 
       if (!map[wok]) map[wok] = { name: wok, total: 0, stos: {}, colCounts: {} };
@@ -403,7 +418,7 @@ export default function OrdersPage() {
     return { sortedWoks, columns, grandColTotals, totalAll };
   }, [pivotBaseOrders, pivot2Sort]);
 
-  // Pivot 3: Duration vs Fallout
+  // Pivot 3: Duration vs Fallout Saklek
   const pivotFallout = useMemo(() => {
     const tree = {};
     let totalAll = 0;
@@ -426,7 +441,7 @@ export default function OrdersPage() {
     });
 
     baseOrders.forEach((o) => {
-      const dur = o.order_duration_cat || o.aging_fallout || 'LAINNYA';
+      const dur = getSaklekDurationCategory(o);
       const r = o.symptom || o.fallout_category || o.fallout_reason_clean || 'LAINNYA';
 
       if (!tree[dur]) tree[dur] = { name: dur, total: 0, reasons: {} };
@@ -438,13 +453,12 @@ export default function OrdersPage() {
     return { tree, totalAll };
   }, [orders, selectedMonth, selectedWok, selectedSto, selectedFalloutStates]);
 
-  // Chart Data (Duration Fallout)
-  const { chartData, dividerIndices, activeDurations } = useMemo(() => {
+  const { chartData, dividerIndices } = useMemo(() => {
     const list = [];
     const dividers = [];
     
     const durKeys = selectedDuration !== 'ALL' 
-      ? [selectedDuration].filter(k => pivotFallout.tree[k]) 
+      ? [selectedDuration].filter((k) => pivotFallout.tree[k]) 
       : Object.keys(pivotFallout.tree);
     
     const sortedDurKeys = sortDurationColumns(durKeys);
@@ -471,10 +485,9 @@ export default function OrdersPage() {
       }
     });
 
-    return { chartData: list, dividerIndices: dividers, activeDurations: sortedDurKeys };
+    return { chartData: list, dividerIndices: dividers };
   }, [pivotFallout, selectedDuration]);
 
-  // Sorting Handlers
   const handlePivot1Sort = (key) => {
     let direction = 'desc';
     if (pivot1Sort.key === key && pivot1Sort.direction === 'desc') direction = 'asc';
@@ -663,7 +676,7 @@ export default function OrdersPage() {
               className="p-1 border rounded font-semibold text-slate-700 bg-slate-50 text-[11px]"
             >
               <option value="ALL">Semua Durasi</option>
-              {pivotDuration.columns.map((d) => (
+              {DURATION_ORDER.map((d) => (
                 <option key={d} value={d}>{d}</option>
               ))}
             </select>
@@ -732,11 +745,12 @@ export default function OrdersPage() {
                     {pivotDuration.columns.map((c) => (
                       <th
                         key={c}
-                        className="p-1.5 border border-slate-600 cursor-pointer hover:opacity-80 bg-slate-700 font-black text-slate-100"
-                        style={{
-                          backgroundColor: DURATION_COLORS[c] ? `${DURATION_COLORS[c]}33` : '#334155',
-                          color: DURATION_COLORS[c] || '#ffffff'
-                        }}
+                        className={`p-1.5 border border-slate-600 cursor-pointer hover:opacity-80 font-black ${
+                          c === '3 HARI' ? 'bg-[#bbf7d0] text-emerald-950' :
+                          c === '7 HARI' ? 'bg-[#fed7aa] text-orange-950' :
+                          c === '30 HARI' ? 'bg-[#bfdbfe] text-blue-950' :
+                          c === '3 BULAN' ? 'bg-[#e9d5ff] text-purple-950' : 'bg-slate-700'
+                        }`}
                         onClick={() => {
                           setActiveSubgroupScope(selectedPivotSubgroups);
                           setSelectedStatus('ALL');
@@ -1175,10 +1189,11 @@ export default function OrdersPage() {
                         <tr
                           className={`font-black text-slate-900 border-b border-slate-300 cursor-pointer ${
                             durIdx > 0 ? 'border-t-2 border-t-slate-400' : ''
+                          } ${
+                            dur.name === '3 HARI' ? 'bg-emerald-100 hover:bg-emerald-200' :
+                            dur.name === '7 HARI' ? 'bg-orange-100 hover:bg-orange-200' :
+                            dur.name === '30 HARI' ? 'bg-blue-100 hover:bg-blue-200' : 'bg-purple-100 hover:bg-purple-200'
                           }`}
-                          style={{
-                            backgroundColor: DURATION_COLORS[dur.name] ? `${DURATION_COLORS[dur.name]}25` : '#f1f5f9',
-                          }}
                           onClick={() => {
                             setActiveSubgroupScope('ALL');
                             if (selectedFalloutStates.length === 1) {
@@ -1364,16 +1379,19 @@ export default function OrdersPage() {
               )}
             </div>
 
-            <div className="flex flex-wrap items-center justify-center gap-3 text-[10px] font-bold text-slate-600 mt-2 border-t pt-1.5">
-              {activeDurations.map((dur) => (
-                <span key={dur} className="flex items-center gap-1">
-                  <span
-                    className="w-3 h-3 rounded-xs inline-block"
-                    style={{ backgroundColor: DURATION_COLORS[dur] || DURATION_COLORS.DEFAULT }}
-                  ></span>
-                  {dur}
-                </span>
-              ))}
+            <div className="flex flex-wrap items-center justify-center gap-4 text-[10px] font-bold text-slate-600 mt-2 border-t pt-1.5">
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-3 bg-[#22c55e] rounded-xs inline-block"></span> 3 HARI
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-3 bg-[#f97316] rounded-xs inline-block"></span> 7 HARI
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-3 bg-[#3b82f6] rounded-xs inline-block"></span> 30 HARI
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-3 h-3 bg-[#a855f7] rounded-xs inline-block"></span> 3 BULAN
+              </span>
             </div>
           </div>
         </div>
@@ -1489,6 +1507,7 @@ export default function OrdersPage() {
                   paginatedData.map((row, idx) => {
                     const rowNumber = (currentPage - 1) * rowsPerPage + idx + 1;
                     const pState = (row.process_state || 'UNKNOWN').trim().toUpperCase();
+                    const saklekDur = getSaklekDurationCategory(row);
 
                     return (
                       <tr
@@ -1539,13 +1558,10 @@ export default function OrdersPage() {
                         <td className="p-1.5 border border-slate-200">{row.product_commercial_name || '-'}</td>
                         <td
                           className="p-1.5 border border-slate-200 font-bold text-emerald-800 cursor-pointer hover:text-blue-700 hover:underline"
-                          onClick={() => {
-                            const dur = row.order_duration_cat || row.aging_fallout;
-                            setSelectedDuration((p) => (p === dur ? 'ALL' : dur));
-                          }}
+                          onClick={() => setSelectedDuration((p) => (p === saklekDur ? 'ALL' : saklekDur))}
                           title="Klik untuk filter durasi ini"
                         >
-                          {row.order_duration_cat || row.aging_fallout || '-'}
+                          {saklekDur}
                         </td>
                         <td
                           className="p-1.5 border border-slate-200 text-red-600 font-bold cursor-pointer hover:underline"
