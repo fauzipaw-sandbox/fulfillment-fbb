@@ -1,18 +1,6 @@
 import React, { useState } from 'react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
-import { createClient } from '@supabase/supabase-js';
-
-// Inisialisasi Supabase Client langsung dari Environment Variables
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-function getSupabaseClient() {
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Konfigurasi Supabase (NEXT_PUBLIC_SUPABASE_URL / ANON_KEY) belum ada di Environment Variables.');
-  }
-  return createClient(supabaseUrl, supabaseAnonKey);
-}
 
 function detectDelimiter(firstLine) {
   if (!firstLine) return ',';
@@ -126,9 +114,7 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
   const [isDragOverOdp, setIsDragOverOdp] = useState(false);
   const [isDragOverOrder, setIsDragOverOrder] = useState(false);
 
-  // Upload langsung ke Supabase per Batch (500 baris)
-  const uploadDirectToSupabase = async (tableName, rows, conflictKey, setProgressMessage, label) => {
-    const supabase = getSupabaseClient();
+  const uploadInBatches = async (endpoint, rows, setProgressMessage, label) => {
     const chunkSize = 500;
     const totalChunks = Math.ceil(rows.length / chunkSize);
 
@@ -137,12 +123,23 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
       const chunk = rows.slice(start, start + chunkSize);
       setProgressMessage(`Mengunggah ${label} batch ${i + 1} dari ${totalChunks} (${Math.min(start + chunkSize, rows.length)}/${rows.length})...`);
 
-      const { error } = await supabase
-        .from(tableName)
-        .upsert(chunk, { onConflict: conflictKey });
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: chunk }),
+      });
 
-      if (error) {
-        throw new Error(error.message);
+      const contentType = res.headers.get('content-type') || '';
+      let json = {};
+      if (contentType.includes('application/json')) {
+        json = await res.json();
+      } else {
+        const textError = await res.text();
+        throw new Error(`Server error (${res.status}): ${textError.slice(0, 120)}`);
+      }
+
+      if (!res.ok) {
+        throw new Error(json.error || `Gagal upload pada batch ${i + 1}`);
       }
     }
   };
@@ -179,7 +176,7 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
         return;
       }
 
-      await uploadDirectToSupabase('odp_kalimantan', cleaned, 'odp_name', setOdpProgress, 'ODP');
+      await uploadInBatches('/api/upload-odp', cleaned, setOdpProgress, 'ODP');
       setOdpProgress(`✅ Sukses mengunggah ${cleaned.length.toLocaleString()} data ODP!`);
       if (onUploadOdpSuccess) onUploadOdpSuccess();
     } catch (err) {
@@ -222,8 +219,8 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
         return;
       }
 
-      await uploadDirectToSupabase('orders_kalimantan', cleaned, 'order_id', setOrderProgress, 'Order');
-      setOrderProgress(`✅ Sukses mengunggah & upsert ${cleaned.length.toLocaleString()} data Order!`);
+      await uploadInBatches('/api/upload-orders', cleaned, setOrderProgress, 'Order');
+      setOrderProgress(`✅ Sukses mengunggah ${cleaned.length.toLocaleString()} data Order!`);
       if (onUploadOrderSuccess) onUploadOrderSuccess();
     } catch (err) {
       alert(`Gagal upload Order: ${err.message}`);
