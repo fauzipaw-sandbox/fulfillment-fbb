@@ -20,23 +20,6 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-const createTriangleIcon = (color = '#e11d48') => {
-  return L.divIcon({
-    className: 'custom-triangle-marker',
-    html: `
-      <div style="filter: drop-shadow(0 2px 3px rgba(0,0,0,0.45)); display: flex; align-items: center; justify-content: center; cursor: pointer;">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="${color}" stroke="#ffffff" stroke-width="2">
-          <path d="M12 2L1 21h22L12 2z" />
-          <circle cx="12" cy="14" r="1.5" fill="#ffffff"/>
-        </svg>
-      </div>
-    `,
-    iconSize: [15, 15],
-    iconAnchor: [7.5, 7.5],
-    popupAnchor: [0, -10],
-  });
-};
-
 function calculateDistance(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -98,8 +81,6 @@ function MapClickHandler({ measureMode, onMapClick }) {
 
 export default function Map({
   data = [],
-  falloutOrders = [],
-  ordersData = [],
   focusLocation,
   manualMeasureLine,
   manualMeasureInfo,
@@ -113,9 +94,6 @@ export default function Map({
   const [measureActive, setMeasureActive] = useState(false);
   const [mapType, setMapType] = useState('street');
   const [isFullscreen, setIsFullscreen] = useState(false);
-
-  // List order yang ditampilkan di peta (murni fallout orders)
-  const displayOrders = falloutOrders.length > 0 ? falloutOrders : ordersData;
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -194,24 +172,6 @@ export default function Map({
     return acc + calculateDistance(prev[0], prev[1], curr[0], curr[1]);
   }, 0);
 
-  const findNearestOdp = (lat, lon) => {
-    if (!lat || !lon || !data || data.length === 0) return null;
-    let minDistance = Infinity;
-    let nearest = null;
-
-    data.forEach((odp) => {
-      if (odp.latitude && odp.longitude) {
-        const dist = calculateDistance(lat, lon, odp.latitude, odp.longitude);
-        if (dist < minDistance) {
-          minDistance = dist;
-          nearest = odp;
-        }
-      }
-    });
-
-    return nearest ? { ...nearest, distanceKm: minDistance } : null;
-  };
-
   return (
     <div
       ref={containerRef}
@@ -219,7 +179,6 @@ export default function Map({
         isFullscreen ? 'fixed inset-0 z-[99999] w-screen h-screen bg-slate-900' : 'rounded'
       }`}
     >
-      {/* Control Buttons (Tanpa Dropdown Order) */}
       <div className="absolute top-2.5 right-2.5 z-[1000] flex items-center gap-1.5 flex-wrap justify-end">
         {/* Toggle Peta / Satelit */}
         <div className="bg-white rounded shadow border border-slate-300 overflow-hidden flex text-[10px] font-bold">
@@ -357,7 +316,7 @@ export default function Map({
           />
         ))}
 
-        {/* 1. Marker ODP */}
+        {/* Marker ODP (Khusus Titik ODP Saja) */}
         {data.map((odp, idx) => {
           if (!odp.latitude || !odp.longitude) return null;
           const color = getColor(odp.status_final);
@@ -436,133 +395,6 @@ export default function Map({
                 </div>
               </LeafletTooltip>
             </CircleMarker>
-          );
-        })}
-
-        {/* 2. Marker Fallout Orders (Segitiga Merah 🔺) */}
-        {displayOrders.map((fo, fIdx) => {
-          if (!fo.lat || !fo.lon) return null;
-          const nearestOdp = findNearestOdp(fo.lat, fo.lon);
-          const nearestColor = nearestOdp ? getColor(nearestOdp.status_final) : '#64748b';
-          const nearestOcc = nearestOdp && nearestOdp.is_total > 0
-            ? Math.round((nearestOdp.used / nearestOdp.is_total) * 100)
-            : 0;
-
-          const pState = (fo.process_state || 'FALLOUT').toUpperCase();
-          const icon = createTriangleIcon('#e11d48');
-          const remarksRaw = fo.fallout_reason || fo.remark || fo.order_status_desc || '';
-
-          return (
-            <Marker
-              key={`fo-${fo.order_id}-${fIdx}`}
-              position={[fo.lat, fo.lon]}
-              icon={icon}
-            >
-              <Popup
-                autoPan={true}
-                minWidth={250}
-                maxWidth={320}
-              >
-                <div className="bg-white p-1 text-slate-800 space-y-1.5 font-sans select-text">
-                  <div className="border-b border-slate-200 pb-1 flex items-center justify-between gap-1">
-                    <span className="font-black text-[11px] truncate flex items-center gap-1 text-rose-600">
-                      <span>🔺</span> {pState}
-                    </span>
-                    <span className="bg-slate-100 text-slate-700 font-bold px-1.5 py-0.5 rounded text-[8.5px] whitespace-nowrap">
-                      {fo.order_duration_cat || fo.aging_fallout || '3 HARI'}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[9.5px]">
-                    <div className="col-span-2">
-                      <span className="text-slate-400 block text-[7.5px] uppercase font-bold">ORDER ID</span>
-                      <span className="font-mono font-black text-purple-900 block select-all cursor-text">
-                        {fo.order_id}
-                      </span>
-                    </div>
-
-                    <div>
-                      <span className="text-slate-400 block text-[7.5px] uppercase font-bold">PELANGGAN</span>
-                      <span className="font-bold text-slate-800 block truncate" title={fo.name}>
-                        {fo.name || '-'}
-                      </span>
-                    </div>
-
-                    <div>
-                      <span className="text-slate-400 block text-[7.5px] uppercase font-bold">NO HP</span>
-                      <span className="font-mono text-slate-700 block select-all cursor-text">
-                        {fo.no_handphone || fo.no_handphone_mask || '-'}
-                      </span>
-                    </div>
-
-                    <div>
-                      <span className="text-slate-400 block text-[7.5px] uppercase font-bold">STO</span>
-                      <span className="font-bold text-slate-700 block truncate">{fo.sto_co || '-'}</span>
-                    </div>
-
-                    <div>
-                      <span className="text-slate-400 block text-[7.5px] uppercase font-bold">WOK</span>
-                      <span className="font-bold text-slate-700 block truncate">{fo.wok || '-'}</span>
-                    </div>
-
-                    {fo.address && fo.address !== '-' && (
-                      <div className="col-span-2">
-                        <span className="text-slate-400 block text-[7.5px] uppercase font-bold">ALAMAT</span>
-                        <span className="text-slate-600 block text-[8.5px] leading-tight select-text" title={fo.address}>
-                          {fo.address}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="bg-red-50 p-1.5 rounded border border-red-200 text-[9px] text-red-900 space-y-0.5">
-                    <span className="text-red-700 font-black block text-[8px] uppercase tracking-wide">
-                      REMARKS / FALLOUT REASON:
-                    </span>
-                    <p className="font-bold text-red-800 leading-tight select-text">
-                      {fo.symptom || fo.fallout_category || fo.fallout_reason_clean || 'FALLOUT'}
-                    </p>
-                    {remarksRaw && (
-                      <div className="text-[8.5px] text-slate-700 leading-snug break-words pt-1 border-t border-red-200 font-mono bg-white p-1 rounded select-all cursor-text">
-                        {remarksRaw}
-                      </div>
-                    )}
-                  </div>
-
-                  {nearestOdp && (
-                    <div className="bg-slate-50 p-1.5 rounded border border-slate-200 text-[9px] space-y-0.5">
-                      <div className="flex justify-between items-center border-b border-slate-200 pb-0.5">
-                        <span className="font-black text-slate-700 text-[8px] uppercase">📍 ODP TERDEKAT</span>
-                        <span className="font-bold text-blue-700 text-[8.5px]">
-                          {nearestOdp.distanceKm >= 1
-                            ? `${nearestOdp.distanceKm.toFixed(2)} km`
-                            : `${Math.round(nearestOdp.distanceKm * 1000)} m`}
-                        </span>
-                      </div>
-                      <p className="font-extrabold text-blue-900 truncate select-text" title={nearestOdp.odp_name}>
-                        {nearestOdp.odp_name}
-                      </p>
-                      <div className="flex items-center justify-between pt-0.5">
-                        <span>
-                          Port: <strong>{nearestOdp.used}/{nearestOdp.is_total}</strong> ({nearestOcc}%)
-                        </span>
-                        <span
-                          className="text-white px-1.5 py-0.2 rounded text-[7.5px] font-black uppercase"
-                          style={{ backgroundColor: nearestColor }}
-                        >
-                          {nearestOdp.status_final}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="text-[8px] text-slate-400 font-mono pt-1 border-t border-slate-100 flex justify-between select-all cursor-text">
-                    <span>Sumber: {fo.coordSource || 'ROW'}</span>
-                    <span>{fo.lat?.toFixed(5)}, {fo.lon?.toFixed(5)}</span>
-                  </div>
-                </div>
-              </Popup>
-            </Marker>
           );
         })}
       </MapContainer>
