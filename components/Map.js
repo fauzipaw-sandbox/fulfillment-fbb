@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   MapContainer,
   TileLayer,
@@ -98,6 +98,7 @@ function MapClickHandler({ measureMode, onMapClick }) {
 
 export default function Map({
   data = [],
+  falloutOrders = [],
   ordersData = [],
   focusLocation,
   manualMeasureLine,
@@ -112,7 +113,9 @@ export default function Map({
   const [measureActive, setMeasureActive] = useState(false);
   const [mapType, setMapType] = useState('street');
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [selectedOrderState, setSelectedOrderState] = useState('FALLOUT');
+
+  // List order yang ditampilkan di peta (murni fallout orders)
+  const displayOrders = falloutOrders.length > 0 ? falloutOrders : ordersData;
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -140,7 +143,6 @@ export default function Map({
 
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
-
     if (!isFullscreen) {
       if (containerRef.current.requestFullscreen) {
         containerRef.current.requestFullscreen().catch(() => setIsFullscreen(true));
@@ -159,25 +161,6 @@ export default function Map({
       }
     }
   };
-
-  const availableProcessStates = useMemo(() => {
-    const set = new Set();
-    (ordersData || []).forEach((o) => {
-      const ps = (o.process_state || '').trim().toUpperCase();
-      if (ps) set.add(ps);
-    });
-    return Array.from(set).sort();
-  }, [ordersData]);
-
-  const visibleOrders = useMemo(() => {
-    if (selectedOrderState === 'NONE') return [];
-    return (ordersData || []).filter((o) => {
-      if (!o.lat || !o.lon) return false;
-      const ps = (o.process_state || '').trim().toUpperCase();
-      if (selectedOrderState === 'ALL') return true;
-      return ps === selectedOrderState;
-    });
-  }, [ordersData, selectedOrderState]);
 
   const getColor = (status) => {
     const s = (status || '').toUpperCase();
@@ -236,46 +219,25 @@ export default function Map({
         isFullscreen ? 'fixed inset-0 z-[99999] w-screen h-screen bg-slate-900' : 'rounded'
       }`}
     >
-      {/* Map Control Buttons Top Right */}
+      {/* Control Buttons (Tanpa Dropdown Order) */}
       <div className="absolute top-2.5 right-2.5 z-[1000] flex items-center gap-1.5 flex-wrap justify-end">
-        {/* Dropdown Filter Order */}
-        <div className="bg-white/95 backdrop-blur px-2 py-1 rounded shadow border border-slate-300 flex items-center gap-1.5 text-[10.5px]">
-          <span className="font-bold text-slate-700 flex items-center gap-1">
-            <span className="inline-block w-2.5 h-2.5 bg-rose-600 rounded-xs"></span>
-            Order:
-          </span>
-          <select
-            value={selectedOrderState}
-            onChange={(e) => setSelectedOrderState(e.target.value)}
-            className="p-0.5 border border-slate-300 rounded font-black text-rose-800 bg-rose-50 text-[10px] outline-none cursor-pointer"
-          >
-            <option value="FALLOUT">FALLOUT ({ordersData.filter(o => (o.process_state||'').toUpperCase() === 'FALLOUT').length})</option>
-            <option value="ALL">SEMUA STATUS ({ordersData.length})</option>
-            {availableProcessStates.filter(ps => ps !== 'FALLOUT').map((ps) => {
-              const count = ordersData.filter(o => (o.process_state||'').toUpperCase() === ps).length;
-              return (
-                <option key={ps} value={ps}>
-                  {ps} ({count})
-                </option>
-              );
-            })}
-            <option value="NONE">-- Sembunyikan Order --</option>
-          </select>
-        </div>
-
-        {/* Map Type Toggle */}
+        {/* Toggle Peta / Satelit */}
         <div className="bg-white rounded shadow border border-slate-300 overflow-hidden flex text-[10px] font-bold">
           <button
             type="button"
             onClick={() => setMapType('street')}
-            className={`px-2 py-1 transition ${mapType === 'street' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
+            className={`px-2 py-1 transition cursor-pointer ${
+              mapType === 'street' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'
+            }`}
           >
             Peta
           </button>
           <button
             type="button"
             onClick={() => setMapType('satellite')}
-            className={`px-2 py-1 transition ${mapType === 'satellite' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'}`}
+            className={`px-2 py-1 transition cursor-pointer ${
+              mapType === 'satellite' ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'
+            }`}
           >
             Satelit
           </button>
@@ -288,7 +250,7 @@ export default function Map({
             setMeasureActive(!measureActive);
             if (measureActive) resetClickMeasure();
           }}
-          className={`px-2 py-1 text-[10px] font-bold rounded shadow border transition ${
+          className={`px-2 py-1 text-[10px] font-bold rounded shadow border transition cursor-pointer ${
             measureActive
               ? 'bg-amber-500 text-white border-amber-600'
               : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
@@ -326,7 +288,7 @@ export default function Map({
               <button
                 type="button"
                 onClick={() => setClickPoints([])}
-                className="text-[9px] text-red-600 underline font-semibold"
+                className="text-[9px] text-red-600 underline font-semibold cursor-pointer"
               >
                 Reset
               </button>
@@ -369,12 +331,12 @@ export default function Map({
         {manualMeasureLine && manualMeasureLine.length === 2 && (
           <>
             <Marker position={manualMeasureLine[0]}>
-              <Popup><div className="text-[10px] font-bold text-blue-700">Titik A</div></Popup>
+              <Popup><div className="text-[10px] font-bold text-blue-700">Titik A: {manualMeasureInfo?.from || 'Start'}</div></Popup>
             </Marker>
             <Marker position={manualMeasureLine[1]}>
               <Popup>
                 <div className="text-[10px] font-sans">
-                  <p className="font-bold text-emerald-700">Titik B</p>
+                  <p className="font-bold text-emerald-700">Titik B: {manualMeasureInfo?.to || 'End'}</p>
                   <p className="font-bold text-blue-900 mt-0.5">Jarak: {manualMeasureInfo?.km} km</p>
                 </div>
               </Popup>
@@ -395,7 +357,7 @@ export default function Map({
           />
         ))}
 
-        {/* 1. MARKER LINGKARAN ODP */}
+        {/* 1. Marker ODP */}
         {data.map((odp, idx) => {
           if (!odp.latitude || !odp.longitude) return null;
           const color = getColor(odp.status_final);
@@ -477,8 +439,8 @@ export default function Map({
           );
         })}
 
-        {/* 2. MARKER SEGITIGA ORDER (KLIK POPUP DENGAN REMARKS UNTUK SEMUA ORDER) */}
-        {visibleOrders.map((fo, fIdx) => {
+        {/* 2. Marker Fallout Orders (Segitiga Merah 🔺) */}
+        {displayOrders.map((fo, fIdx) => {
           if (!fo.lat || !fo.lon) return null;
           const nearestOdp = findNearestOdp(fo.lat, fo.lon);
           const nearestColor = nearestOdp ? getColor(nearestOdp.status_final) : '#64748b';
@@ -486,17 +448,13 @@ export default function Map({
             ? Math.round((nearestOdp.used / nearestOdp.is_total) * 100)
             : 0;
 
-          const pState = (fo.process_state || 'UNKNOWN').toUpperCase();
-          const markerColor = pState === 'FALLOUT' ? '#e11d48' : pState === 'COMPLETED' ? '#16a34a' : pState.includes('CANCEL') ? '#ea580c' : '#8b5cf6';
-          const icon = createTriangleIcon(markerColor);
-
-          // Ambil remarks dari fallout_reason atau fallback order_status_desc
-          const remarksRaw = fo.fallout_reason || fo.order_status_desc || '';
-          const remarksTitle = fo.fallout_reason_clean || pState;
+          const pState = (fo.process_state || 'FALLOUT').toUpperCase();
+          const icon = createTriangleIcon('#e11d48');
+          const remarksRaw = fo.fallout_reason || fo.remark || fo.order_status_desc || '';
 
           return (
             <Marker
-              key={`order-${fo.order_id}-${fIdx}`}
+              key={`fo-${fo.order_id}-${fIdx}`}
               position={[fo.lat, fo.lon]}
               icon={icon}
             >
@@ -506,21 +464,19 @@ export default function Map({
                 maxWidth={320}
               >
                 <div className="bg-white p-1 text-slate-800 space-y-1.5 font-sans select-text">
-                  {/* Header Badge */}
                   <div className="border-b border-slate-200 pb-1 flex items-center justify-between gap-1">
-                    <span className="font-black text-[11px] truncate flex items-center gap-1" style={{ color: markerColor }}>
+                    <span className="font-black text-[11px] truncate flex items-center gap-1 text-rose-600">
                       <span>🔺</span> {pState}
                     </span>
                     <span className="bg-slate-100 text-slate-700 font-bold px-1.5 py-0.5 rounded text-[8.5px] whitespace-nowrap">
-                      {fo.order_duration_cat || '3 HARI'}
+                      {fo.order_duration_cat || fo.aging_fallout || '3 HARI'}
                     </span>
                   </div>
 
-                  {/* Order Details Grid */}
                   <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[9.5px]">
                     <div className="col-span-2">
                       <span className="text-slate-400 block text-[7.5px] uppercase font-bold">ORDER ID</span>
-                      <span className="font-mono font-black text-purple-900 block select-all cursor-text" title="Klik untuk seleksi Order ID">
+                      <span className="font-mono font-black text-purple-900 block select-all cursor-text">
                         {fo.order_id}
                       </span>
                     </div>
@@ -559,21 +515,21 @@ export default function Map({
                     )}
                   </div>
 
-                  {/* Remarks Box Lengkap untuk SEMUA ORDER */}
-                  <div className="bg-slate-50 p-1.5 rounded border border-slate-200 text-[9px] space-y-0.5">
-                    <span className="text-slate-500 font-black block text-[8px] uppercase tracking-wide">
-                      REMARKS / STATUS REASON:
+                  <div className="bg-red-50 p-1.5 rounded border border-red-200 text-[9px] text-red-900 space-y-0.5">
+                    <span className="text-red-700 font-black block text-[8px] uppercase tracking-wide">
+                      REMARKS / FALLOUT REASON:
                     </span>
-                    <p className="font-bold text-slate-800 leading-tight">
-                      {remarksTitle}
+                    <p className="font-bold text-red-800 leading-tight select-text">
+                      {fo.symptom || fo.fallout_category || fo.fallout_reason_clean || 'FALLOUT'}
                     </p>
-                    <div className="text-[8.5px] text-slate-600 leading-snug break-words pt-1 border-t border-slate-200 font-mono bg-white p-1 rounded select-all cursor-text">
-                      {remarksRaw || 'Tidak ada catatan tambahan (No remarks available).'}
-                    </div>
+                    {remarksRaw && (
+                      <div className="text-[8.5px] text-slate-700 leading-snug break-words pt-1 border-t border-red-200 font-mono bg-white p-1 rounded select-all cursor-text">
+                        {remarksRaw}
+                      </div>
+                    )}
                   </div>
 
-                  {/* Nearest ODP Analysis */}
-                  {nearestOdp ? (
+                  {nearestOdp && (
                     <div className="bg-slate-50 p-1.5 rounded border border-slate-200 text-[9px] space-y-0.5">
                       <div className="flex justify-between items-center border-b border-slate-200 pb-0.5">
                         <span className="font-black text-slate-700 text-[8px] uppercase">📍 ODP TERDEKAT</span>
@@ -598,11 +554,8 @@ export default function Map({
                         </span>
                       </div>
                     </div>
-                  ) : (
-                    <p className="text-slate-400 italic text-[8.5px]">Tidak ada ODP terdekat terdeteksi</p>
                   )}
 
-                  {/* Coordinate Footer (Bisa Double Click Copas) */}
                   <div className="text-[8px] text-slate-400 font-mono pt-1 border-t border-slate-100 flex justify-between select-all cursor-text">
                     <span>Sumber: {fo.coordSource || 'ROW'}</span>
                     <span>{fo.lat?.toFixed(5)}, {fo.lon?.toFixed(5)}</span>
