@@ -50,7 +50,7 @@ export default function AnalysisPage() {
   const [selectedSto, setSelectedSto] = useState('ALL');
   const [selectedWok, setSelectedWok] = useState('ALL');
   const [radiusLimit, setRadiusLimit] = useState(250);
-  const [selectedOrderState, setSelectedOrderState] = useState('FALLOUT');
+  const [selectedOrderStates, setSelectedOrderStates] = useState(['FALLOUT']);
 
   // Search & Target Terpilih
   const [searchInput, setSearchInput] = useState('');
@@ -95,14 +95,16 @@ export default function AnalysisPage() {
       .filter((o) => {
         const matchSto = selectedSto === 'ALL' || o.sto_co === selectedSto;
         const matchWok = selectedWok === 'ALL' || o.wok === selectedWok;
-        return matchSto && matchWok;
+        const ps = (o.process_state || '').trim().toUpperCase();
+        const matchState = selectedOrderStates.length === 0 || selectedOrderStates.includes(ps);
+        return matchSto && matchWok && matchState;
       })
       .map((o) => {
         const coords = extractOrderCoordinates(o);
         return coords ? { ...o, ...coords } : null;
       })
       .filter(Boolean);
-  }, [rawOrdersData, selectedSto, selectedWok]);
+  }, [rawOrdersData, selectedSto, selectedWok, selectedOrderStates]);
 
   const handleSearchChange = (e) => {
     const val = e.target.value;
@@ -132,7 +134,6 @@ export default function AnalysisPage() {
     setCurrentPage(1);
   };
 
-  // Parser Titik A dan B untuk Pengukuran Jarak Jalan Darat
   const parsePoint = (input) => {
     if (!input) return null;
     const clean = input.trim();
@@ -235,7 +236,7 @@ export default function AnalysisPage() {
           customerName: ord.name || '-',
           phone: ord.no_handphone || ord.no_handphone_mask || '-',
           address: ord.address || '-',
-          remarks: ord.fallout_reason_clean || ord.fallout_reason || ord.order_status_desc || '-',
+          remarks: ord.symptom || ord.fallout_category || ord.fallout_reason_clean || ord.fallout_reason || ord.order_status_desc || '-',
           latitude: ord.lat,
           longitude: ord.lon,
           isCenterTarget: isSelf,
@@ -530,8 +531,8 @@ export default function AnalysisPage() {
             selectedTarget={selectedTarget}
             radiusLimit={radiusLimit}
             onSelectTarget={handleSelectTarget}
-            selectedOrderState={selectedOrderState}
-            setSelectedOrderState={setSelectedOrderState}
+            selectedOrderStates={selectedOrderStates}
+            setSelectedOrderStates={setSelectedOrderStates}
             availableProcessStates={availableProcessStates}
             manualMeasureLine={manualMeasureLine}
             manualMeasureInfo={measureResult}
