@@ -219,7 +219,7 @@ export default function Dashboard() {
     return `*Cut Off Data until ${formatDateFormatted(latestDate)}`;
   }, [data]);
 
-  // STATS OVERVIEW DI-FREEZE (Menggunakan data mentah global `data`, tidak ikut terfilter)
+  // STATS OVERVIEW GLOBAL DI-FREEZE ANGKANYA
   const statsOverview = useMemo(() => {
     let totalPort = 0, usedPort = 0, avaiPort = 0;
     let colorCounts = { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 };
@@ -526,7 +526,7 @@ export default function Dashboard() {
   return (
     <Sidebar>
       <Head>
-        <title>ODP Profile & Utilization</title>
+        <title>ODP Profile &amp; Utilization</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
       </Head>
 
@@ -545,7 +545,7 @@ export default function Dashboard() {
         <div className="bg-gradient-to-r from-[#211c47] to-[#3a3575] text-white p-3 sm:p-4 flex flex-col md:flex-row justify-between items-start md:items-center border-b-4 border-purple-500 rounded-t-lg shadow-sm gap-2">
           <div>
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-wide uppercase italic">
-              ODP PROFILE & UTILIZATION
+              ODP PROFILE &amp; UTILIZATION
             </h1>
             <p className="text-[10px] sm:text-xs font-semibold mt-0.5 opacity-90 text-yellow-300">
               {headerCutoffText}
@@ -566,7 +566,7 @@ export default function Dashboard() {
               >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
-              {showUploader ? 'Tutup Upload' : 'Upload Data (ODP & Order)'}
+              {showUploader ? 'Tutup Upload' : 'Upload Data (ODP &amp; Order)'}
             </button>
           </div>
         </div>
@@ -609,18 +609,23 @@ export default function Dashboard() {
           {/* ================= KOLOM KIRI ================= */}
           <div className="space-y-3 sm:space-y-4">
             
-            {/* 1. OVERVIEW ODP PROFILE (FREEZE / GLOBAL STATS TIDAK IKUT TERFILTER) */}
+            {/* 1. OVERVIEW ODP PROFILE (BERSIH & BISA DIKLIK UNTUK FILTER) */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
-                <span className="font-extrabold text-xs sm:text-sm tracking-wide">OVERVIEW ODP PROFILE (GLOBAL STATS)</span>
-                <span className="bg-white/20 text-white text-[9.5px] font-semibold px-2 py-0.5 rounded-full border border-white/20">
-                  Frozen Data
+                <span className="font-extrabold text-xs sm:text-sm tracking-wide">OVERVIEW ODP PROFILE</span>
+                <span className="text-white text-[9.5px] font-semibold opacity-90">
+                  {selectedStatus !== 'ALL' ? `Filter Status: ${selectedStatus}` : selectedPortFilter !== 'ALL' ? `Filter Port: ${selectedPortFilter}` : 'Klik box untuk filter'}
                 </span>
               </div>
 
               <div className="p-2 sm:p-3 grid grid-cols-3 gap-2 sm:gap-3 text-center">
                 <div className="col-span-1 space-y-1.5 sm:space-y-2">
-                  <div className="border border-slate-200 bg-slate-50 p-1.5 sm:p-2 rounded">
+                  <div
+                    onClick={() => setSelectedPortFilter('ALL')}
+                    className={`border p-1.5 sm:p-2 rounded cursor-pointer transition-transform hover:scale-105 ${
+                      selectedPortFilter === 'ALL' ? 'border-blue-500 bg-blue-100/70 shadow-xs' : 'border-slate-200 bg-slate-50'
+                    }`}
+                  >
                     <p className="text-[8px] sm:text-[9px] font-bold text-blue-800 uppercase">TOTAL ODP (Port)</p>
                     <p className="text-sm sm:text-base font-extrabold text-slate-900 mt-0.5">
                       {totalOdpGlobal.toLocaleString()}{' '}
@@ -628,7 +633,12 @@ export default function Dashboard() {
                     </p>
                   </div>
 
-                  <div className="border border-emerald-300 bg-emerald-50/80 p-1.5 sm:p-2 rounded">
+                  <div
+                    onClick={() => setSelectedPortFilter((p) => (p === 'USED' ? 'ALL' : 'USED'))}
+                    className={`border p-1.5 sm:p-2 rounded cursor-pointer transition-transform hover:scale-105 ${
+                      selectedPortFilter === 'USED' ? 'border-emerald-600 bg-emerald-100 ring-2 ring-emerald-500 shadow' : 'border-emerald-300 bg-emerald-50/80 hover:bg-emerald-100'
+                    }`}
+                  >
                     <p className="text-[8px] sm:text-[9px] font-black text-emerald-800 uppercase">USED PORT (Active)</p>
                     <p className="text-sm sm:text-base font-extrabold text-emerald-950 mt-0.5">
                       {(statsOverview.usedPort / 1000).toFixed(1)} K{' '}
@@ -636,7 +646,12 @@ export default function Dashboard() {
                     </p>
                   </div>
 
-                  <div className="border border-red-300 bg-red-50/80 p-1.5 sm:p-2 rounded">
+                  <div
+                    onClick={() => setSelectedPortFilter((p) => (p === 'AVAI' ? 'ALL' : 'AVAI'))}
+                    className={`border p-1.5 sm:p-2 rounded cursor-pointer transition-transform hover:scale-105 ${
+                      selectedPortFilter === 'AVAI' ? 'border-red-600 bg-red-100 ring-2 ring-red-500 shadow' : 'border-red-300 bg-red-50/80 hover:bg-red-100'
+                    }`}
+                  >
                     <p className="text-[8px] sm:text-[9px] font-black text-red-800 uppercase">AVAI PORT (Non Active)</p>
                     <p className="text-sm sm:text-base font-extrabold text-red-950 mt-0.5">
                       {(statsOverview.avaiPort / 1000).toFixed(1)} K{' '}
@@ -645,7 +660,12 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="col-span-1 border border-gray-400 p-2 shadow-inner flex flex-col justify-center rounded relative bg-white">
+                <div
+                  onClick={() => setSelectedStatus((p) => (p === 'BLACK' ? 'ALL' : 'BLACK'))}
+                  className={`col-span-1 border border-gray-400 p-2 shadow-inner flex flex-col justify-center rounded relative bg-white cursor-pointer transition-transform hover:scale-105 ${
+                    selectedStatus === 'BLACK' ? 'ring-3 ring-black bg-gray-100' : 'bg-white'
+                  }`}
+                >
                   <div className="bg-black text-white text-[9px] font-bold px-2 py-0.5 w-max mx-auto border border-gray-400 absolute -top-2 left-0 right-0 rounded-sm">
                     BLACK ODP
                   </div>
@@ -661,7 +681,12 @@ export default function Dashboard() {
                 </div>
 
                 <div className="col-span-1 grid grid-cols-2 gap-1.5 sm:gap-2">
-                  <div className="text-center p-1 rounded bg-slate-50 border border-slate-200">
+                  <div
+                    onClick={() => setSelectedStatus((p) => (p === 'YELLOW' ? 'ALL' : 'YELLOW'))}
+                    className={`text-center p-1 rounded cursor-pointer transition-transform hover:scale-105 ${
+                      selectedStatus === 'YELLOW' ? 'ring-2 ring-yellow-500 bg-yellow-50 shadow' : 'bg-slate-50 border border-slate-200'
+                    }`}
+                  >
                     <div className="bg-[#facc15] text-slate-900 text-[8px] font-bold px-0.5 py-0.5 rounded-sm">YELLOW</div>
                     <p className="text-sm sm:text-base font-extrabold mt-0.5">{statsOverview.colorCounts.YELLOW.toLocaleString()}</p>
                     <p className="text-[10px] font-bold text-slate-600">
@@ -672,7 +697,12 @@ export default function Dashboard() {
                     </p>
                   </div>
 
-                  <div className="text-center p-1 rounded bg-slate-50 border border-slate-200">
+                  <div
+                    onClick={() => setSelectedStatus((p) => (p === 'GREEN' ? 'ALL' : 'GREEN'))}
+                    className={`text-center p-1 rounded cursor-pointer transition-transform hover:scale-105 ${
+                      selectedStatus === 'GREEN' ? 'ring-2 ring-green-600 bg-green-50 shadow' : 'bg-slate-50 border border-slate-200'
+                    }`}
+                  >
                     <div className="bg-[#16a34a] text-white text-[8px] font-bold px-0.5 py-0.5 rounded-sm">GREEN</div>
                     <p className="text-sm sm:text-base font-extrabold mt-0.5">{statsOverview.colorCounts.GREEN.toLocaleString()}</p>
                     <p className="text-[10px] font-bold text-emerald-700">
@@ -683,7 +713,12 @@ export default function Dashboard() {
                     </p>
                   </div>
 
-                  <div className="text-center p-1 rounded bg-slate-50 border border-slate-200">
+                  <div
+                    onClick={() => setSelectedStatus((p) => (p === 'ORANGE' ? 'ALL' : 'ORANGE'))}
+                    className={`text-center p-1 rounded cursor-pointer transition-transform hover:scale-105 ${
+                      selectedStatus === 'ORANGE' ? 'ring-2 ring-orange-500 bg-orange-50 shadow' : 'bg-slate-50 border border-slate-200'
+                    }`}
+                  >
                     <div className="bg-[#ea580c] text-white text-[8px] font-bold px-0.5 py-0.5 rounded-sm">ORANGE</div>
                     <p className="text-sm sm:text-base font-extrabold mt-0.5">{statsOverview.colorCounts.ORANGE.toLocaleString()}</p>
                     <p className="text-[10px] font-bold text-slate-600">
@@ -694,7 +729,12 @@ export default function Dashboard() {
                     </p>
                   </div>
 
-                  <div className="text-center p-1 rounded bg-slate-50 border border-slate-200">
+                  <div
+                    onClick={() => setSelectedStatus((p) => (p === 'RED' ? 'ALL' : 'RED'))}
+                    className={`text-center p-1 rounded cursor-pointer transition-transform hover:scale-105 ${
+                      selectedStatus === 'RED' ? 'ring-2 ring-red-600 bg-red-50 shadow' : 'bg-slate-50 border border-slate-200'
+                    }`}
+                  >
                     <div className="bg-[#ef4444] text-white text-[8px] font-bold px-0.5 py-0.5 rounded-sm">RED</div>
                     <p className="text-sm sm:text-base font-extrabold mt-0.5">{statsOverview.colorCounts.RED.toLocaleString()}</p>
                     <p className="text-[10px] font-bold text-red-600">
@@ -847,7 +887,7 @@ export default function Dashboard() {
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm relative">
               <div className="bg-gradient-to-r from-[#1e3a8a] to-[#3a3575] text-white p-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-xs sm:text-sm">MAPS LOKASI ODP & FALLOUT</span>
+                  <span className="font-bold text-xs sm:text-sm">MAPS LOKASI ODP &amp; FALLOUT</span>
                   <button
                     type="button"
                     onClick={() => setShowMeasureModal(!showMeasureModal)}
@@ -919,7 +959,7 @@ export default function Dashboard() {
                       onClick={handleCalculateRoadDistance}
                       className="px-3 py-1 bg-blue-600 text-white font-bold rounded text-[11px] hover:bg-blue-700 shadow disabled:opacity-50 cursor-pointer"
                     >
-                      {isRouting ? 'Menghitung Rute...' : '🚗 Hitung Jarak Jalan & Gambar di Peta'}
+                      {isRouting ? 'Menghitung Rute...' : '🚗 Hitung Jarak Jalan &amp; Gambar di Peta'}
                     </button>
                     {measureResult && (
                       <p className="font-bold text-blue-900 text-xs">
@@ -945,7 +985,7 @@ export default function Dashboard() {
             {/* OCCUPANCY & AVAILABLE PORT */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
-                <span className="font-extrabold text-xs sm:text-sm tracking-wide">OCCUPANCY & AVAILABLE PORT</span>
+                <span className="font-extrabold text-xs sm:text-sm tracking-wide">OCCUPANCY &amp; AVAILABLE PORT</span>
                 <span className="bg-white/20 hover:bg-white/30 text-white text-[9.5px] font-semibold px-2 py-0.5 rounded-full border border-white/20 backdrop-blur-sm">
                   {selectedStoFilter !== 'ALL' ? `STO: ${selectedStoFilter}` : selectedWokFilter !== 'ALL' ? `WOK: ${selectedWokFilter}` : 'Klik STO / WOK untuk filter'}
                 </span>
@@ -1426,7 +1466,7 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={() => setCurrentPage(totalOdpPages)}
-                    disabled={currentPage === totalOdpPages}
+                    disabled={currentPage === totalPages}
                     className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     Terakhir &raquo;
