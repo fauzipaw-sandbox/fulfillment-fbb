@@ -25,12 +25,11 @@ function normalizeOrderKeys(row) {
   const orderId = normalized.order_id || normalized.orderid || normalized.order_no || normalized.id;
   if (!orderId) return null;
 
-  // Handle LongLat string format "lon, lat" or "lat, lon"
   let lat = normalized.latitude || normalized.lat;
   let lon = normalized.longitude || normalized.lon || normalized.long;
 
   if ((!lat || !lon) && normalized.longlat) {
-    const parts = String(normalized.longlat).split(',').map(s => parseFloat(s.trim()));
+    const parts = String(normalized.longlat).split(',').map((s) => parseFloat(s.trim()));
     if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
       if (parts[0] > 90) {
         lon = parts[0];
@@ -80,62 +79,77 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
   const [isDragOverOdp, setIsDragOverOdp] = useState(false);
   const [isDragOverOrder, setIsDragOverOrder] = useState(false);
 
+  // Helper pengiriman data per batch (500 baris per request agar tidak tembus limit Vercel)
+  const uploadInBatches = async (endpoint, rows, setProgressMessage, label) => {
+    const chunkSize = 500;
+    const totalChunks = Math.ceil(rows.length / chunkSize);
+
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * chunkSize;
+      const chunk = rows.slice(start, start + chunkSize);
+      setProgressMessage(`Mengunggah ${label} batch ${i + 1} dari ${totalChunks} (${Math.min(start + chunkSize, rows.length)}/${rows.length})...`);
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: chunk }),
+      });
+
+      const contentType = res.headers.get('content-type') || '';
+      let json = {};
+      if (contentType.includes('application/json')) {
+        json = await res.json();
+      } else {
+        const textError = await res.text();
+        throw new Error(`Server mengembalikan error (${res.status}): ${textError.slice(0, 150)}`);
+      }
+
+      if (!res.ok) {
+        throw new Error(json.error || `Gagal upload pada batch ${i + 1}`);
+      }
+    }
+  };
+
   const processOdpFile = async (file) => {
     if (!file) return;
     setUploadingOdp(true);
     setOdpProgress('Membaca file ODP...');
 
     try {
+      let rawRows = [];
       if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
         const buffer = await file.arrayBuffer();
         const wb = XLSX.read(buffer, { type: 'array' });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, { defval: null });
-        await sendOdpData(rows);
+        rawRows = XLSX.utils.sheet_to_json(ws, { defval: null });
       } else {
-        const sampleText = await file.slice(0, 4096).text();
-        const firstLine = sampleText.split('\n')[0];
+        const text = await file.text();
+        const firstLine = text.split('\n')[0];
         const autoDelimiter = detectDelimiter(firstLine);
 
-        Papa.parse(file, {
+        const parsed = Papa.parse(text, {
           header: true,
           delimiter: autoDelimiter,
           skipEmptyLines: true,
-          complete: async (results) => {
-            await sendOdpData(results.data);
-          },
-          error: (err) => {
-            alert('Error parsing CSV: ' + err.message);
-            setUploadingOdp(false);
-          },
         });
+        rawRows = parsed.data || [];
       }
-    } catch (err) {
-      alert('Error membaca file: ' + err.message);
-      setUploadingOdp(false);
-    }
-  };
 
-  const sendOdpData = async (rows) => {
-    if (!rows || rows.length === 0) {
-      alert('Data kosong!');
-      setUploadingOdp(false);
-      return;
-    }
-    setOdpProgress(`Mengunggah ${rows.length.toLocaleString()} data ODP ke database...`);
-    const res = await fetch('/api/upload-odp', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data: rows }),
-    });
-    if (res.ok) {
-      setOdpProgress(`✅ Sukses mengunggah ${rows.length.toLocaleString()} data ODP!`);
+      if (rawRows.length === 0) {
+        alert('File ODP kosong!');
+        setUploadingOdp(false);
+        return;
+      }
+
+      await uploadInBatches('/api/upload-odp', rawRows, setOdpProgress, 'ODP');
+      setOdpProgress(`✅ Sukses mengunggah ${rawRows.length.toLocaleString()} data ODP!`);
       if (onUploadOdpSuccess) onUploadOdpSuccess();
-    } else {
-      const json = await res.json();
-      alert('Gagal upload ODP: ' + (json.error || 'Terjadi kesalahan'));
+    } catch (err) {
+      alert(`Gagal upload ODP: ${err.message}`);
+      setOdpProgress(`❌ Gagal: ${err.message}`);
+    } finally {
+      setUploadingOdp(false);
     }
-    setUploadingOdp(false);
   };
 
   const processOrderFile = async (file) => {
@@ -150,54 +164,35 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
         const wb = XLSX.read(buffer, { type: 'array' });
         const ws = wb.Sheets[wb.SheetNames[0]];
         rawRows = XLSX.utils.sheet_to_json(ws, { defval: null });
-        await sendOrderData(rawRows);
       } else {
-        const sampleText = await file.slice(0, 4096).text();
-        const firstLine = sampleText.split('\n')[0];
+        const text = await file.text();
+        const firstLine = text.split('\n')[0];
         const autoDelimiter = detectDelimiter(firstLine);
 
-        Papa.parse(file, {
+        const parsed = Papa.parse(text, {
           header: true,
           delimiter: autoDelimiter,
           skipEmptyLines: true,
-          complete: async (results) => {
-            await sendOrderData(results.data);
-          },
-          error: (err) => {
-            alert('Error parsing CSV: ' + err.message);
-            setUploadingOrder(false);
-          },
         });
+        rawRows = parsed.data || [];
       }
-    } catch (err) {
-      alert('Error membaca file: ' + err.message);
-      setUploadingOrder(false);
-    }
-  };
 
-  const sendOrderData = async (rawRows) => {
-    const cleaned = rawRows.map(normalizeOrderKeys).filter(Boolean);
-    if (cleaned.length === 0) {
-      alert('Tidak ada baris data Order yang valid!');
-      setUploadingOrder(false);
-      return;
-    }
+      const cleaned = rawRows.map(normalizeOrderKeys).filter(Boolean);
+      if (cleaned.length === 0) {
+        alert('Tidak ada baris data Order yang valid!');
+        setUploadingOrder(false);
+        return;
+      }
 
-    setOrderProgress(`Mengunggah & upsert ${cleaned.length.toLocaleString()} data Order...`);
-    const res = await fetch('/api/upload-orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data: cleaned }),
-    });
-
-    if (res.ok) {
+      await uploadInBatches('/api/upload-orders', cleaned, setOrderProgress, 'Order');
       setOrderProgress(`✅ Sukses mengunggah ${cleaned.length.toLocaleString()} data Order!`);
       if (onUploadOrderSuccess) onUploadOrderSuccess();
-    } else {
-      const json = await res.json();
-      alert('Gagal upload Order: ' + (json.error || 'Terjadi kesalahan'));
+    } catch (err) {
+      alert(`Gagal upload Order: ${err.message}`);
+      setOrderProgress(`❌ Gagal: ${err.message}`);
+    } finally {
+      setUploadingOrder(false);
     }
-    setUploadingOrder(false);
   };
 
   return (
