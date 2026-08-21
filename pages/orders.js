@@ -20,7 +20,7 @@ const ALLOWED_STOS = [
   'BNT', 'PLK', 'KKN', 'MTW', 'PPS', 'PYM', 'TML', 'AMP', 'KKP', 'KRI', 'KSO', 'PRC'
 ];
 
-// Saklek 5 Kategori Durasi Baru
+// 5 Kategori Durasi Saklek
 const DURATION_ORDER = ['> 0 HARI', '> 3 HARI', '> 7 HARI', '> 1 BULAN', '> 3 BULAN'];
 
 function sortDurationColumns(cols = []) {
@@ -34,12 +34,13 @@ function sortDurationColumns(cols = []) {
   });
 }
 
+// Warna Kontras Tinggi & Tidak Nyaru
 const DURATION_COLORS = {
-  '> 0 HARI': '#10b981',
-  '> 3 HARI': '#22c55e',
-  '> 7 HARI': '#f97316',
-  '> 1 BULAN': '#3b82f6',
-  '> 3 BULAN': '#a855f7',
+  '> 0 HARI': '#06b6d4', // Cyan Terang
+  '> 3 HARI': '#22c55e', // Hijau Segar
+  '> 7 HARI': '#f97316', // Oranye
+  '> 1 BULAN': '#3b82f6', // Biru
+  '> 3 BULAN': '#a855f7', // Ungu
   DEFAULT: '#64748b',
 };
 
@@ -233,7 +234,7 @@ export default function OrdersPage() {
 
   const [showUploader, setShowUploader] = useState(false);
 
-  // Normalisasi Data Orders Secara Real-time (Provi -> Order Date & 5 Durasi Saklek)
+  // Normalisasi Data Orders Secara Real-time
   const orders = useMemo(() => {
     return rawOrders.map((o) => {
       const pureProvi = extractPureDateString(o.provi || o.order_ts || o.order_date);
@@ -393,7 +394,7 @@ export default function OrdersPage() {
     });
   }, [orders, selectedMonth, selectedWok, selectedSto, selectedPivotSubgroups]);
 
-  // Pivot 1: WOK & STO vs Duration (5 Kategori Saklek)
+  // Pivot 1: WOK & STO vs Duration
   const pivotDuration = useMemo(() => {
     const columns = [...DURATION_ORDER];
     const map = {};
@@ -481,7 +482,7 @@ export default function OrdersPage() {
     return { sortedWoks, columns, grandColTotals, totalAll };
   }, [pivotBaseOrders, pivot2Sort]);
 
-  // Pivot 3: Duration vs Fallout (5 Kategori Saklek)
+  // Pivot 3: Duration vs Fallout
   const pivotFallout = useMemo(() => {
     const tree = {};
     DURATION_ORDER.forEach((k) => {
@@ -781,13 +782,13 @@ export default function OrdersPage() {
           </div>
         )}
 
-        {/* SECTION ATAS: 2 PIVOT TABLE */}
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4">
+        {/* SECTION ATAS: 2 PIVOT TABLE (FULL HEIGHT - RAPI UNTUK SCREENSHOT REPORT) */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4 items-start">
           
-          {/* PIVOT 1: DURATION (SAKLEK 5 KATEGORI) */}
-          <div className="bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
-            <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase flex-wrap gap-1">
-              <span>Count of order_id &bull; Duration SLA</span>
+          {/* PIVOT 1: DURATION */}
+          <div className="bg-white border-2 border-slate-300 shadow-sm rounded overflow-hidden">
+            <div className="bg-[#0f172a] text-white p-2 px-3 flex justify-between items-center text-xs font-black uppercase flex-wrap gap-1 border-b-2 border-slate-800">
+              <span className="tracking-wide">Count of order_id &bull; Duration SLA</span>
               
               <div className="flex items-center gap-1.5">
                 <span className="text-[9px] text-slate-300 font-bold">Subgroup:</span>
@@ -800,12 +801,12 @@ export default function OrdersPage() {
               </div>
             </div>
 
-            <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
+            <div className="overflow-x-auto w-full">
               <table className="w-full text-center border-collapse text-[10.5px]">
-                <thead className="bg-[#1e293b] text-white sticky top-0 z-10 shadow-xs select-none">
+                <thead className="bg-[#1e293b] text-white select-none">
                   <tr>
                     <th
-                      className="p-1.5 border border-slate-600 text-left pl-3 cursor-pointer hover:bg-slate-700"
+                      className="p-1.5 border border-slate-600 text-left pl-3 cursor-pointer hover:bg-slate-700 font-extrabold"
                       onClick={() => handlePivot1Sort('name')}
                     >
                       Row Labels {pivot1Sort.key === 'name' ? (pivot1Sort.direction === 'asc' ? '↑' : '↓') : '↕'}
@@ -814,11 +815,11 @@ export default function OrdersPage() {
                       <th
                         key={c}
                         className={`p-1.5 border border-slate-600 cursor-pointer hover:opacity-80 font-black ${
-                          c === '> 0 HARI' ? 'bg-[#a7f3d0] text-emerald-950' :
-                          c === '> 3 HARI' ? 'bg-[#bbf7d0] text-emerald-950' :
-                          c === '> 7 HARI' ? 'bg-[#fed7aa] text-orange-950' :
-                          c === '> 1 BULAN' ? 'bg-[#bfdbfe] text-blue-950' :
-                          c === '> 3 BULAN' ? 'bg-[#e9d5ff] text-purple-950' : 'bg-slate-700'
+                          c === '> 0 HARI' ? 'bg-[#06b6d4] text-slate-950' :
+                          c === '> 3 HARI' ? 'bg-[#22c55e] text-slate-950' :
+                          c === '> 7 HARI' ? 'bg-[#f97316] text-slate-950' :
+                          c === '> 1 BULAN' ? 'bg-[#3b82f6] text-white' :
+                          c === '> 3 BULAN' ? 'bg-[#a855f7] text-white' : 'bg-slate-700'
                         }`}
                         onClick={() => {
                           setActiveSubgroupScope(selectedPivotSubgroups);
@@ -955,7 +956,7 @@ export default function OrdersPage() {
                     })
                   )}
 
-                  <tr className="bg-[#0f172a] text-white font-black sticky bottom-0 z-10 shadow cursor-pointer">
+                  <tr className="bg-[#0f172a] text-white font-black border-t-2 border-slate-700 cursor-pointer">
                     <td
                       className="p-2 border border-slate-700 text-left pl-3 uppercase hover:text-yellow-300"
                       onClick={() => {
@@ -1005,19 +1006,19 @@ export default function OrdersPage() {
           </div>
 
           {/* PIVOT 2: PROCESS_STATE */}
-          <div className="bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
-            <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase flex-wrap gap-1">
-              <span>Count of order_id &bull; Process State</span>
+          <div className="bg-white border-2 border-slate-300 shadow-sm rounded overflow-hidden">
+            <div className="bg-[#0f172a] text-white p-2 px-3 flex justify-between items-center text-xs font-black uppercase flex-wrap gap-1 border-b-2 border-slate-800">
+              <span className="tracking-wide">Count of order_id &bull; Process State</span>
               <span className="text-[9.5px] text-blue-300 font-semibold bg-white/10 px-1.5 py-0.5 rounded">
                 Sinkron Subgroup
               </span>
             </div>
-            <div className="overflow-x-auto max-h-[360px] overflow-y-auto">
+            <div className="overflow-x-auto w-full">
               <table className="w-full text-center border-collapse text-[10.5px]">
-                <thead className="bg-[#1e293b] text-white sticky top-0 z-10 shadow-xs select-none">
+                <thead className="bg-[#1e293b] text-white select-none">
                   <tr>
                     <th
-                      className="p-1.5 border border-slate-600 text-left pl-3 cursor-pointer hover:bg-slate-700 min-w-[120px]"
+                      className="p-1.5 border border-slate-600 text-left pl-3 cursor-pointer hover:bg-slate-700 min-w-[120px] font-extrabold"
                       onClick={() => handlePivot2Sort('name')}
                     >
                       Row Labels {pivot2Sort.key === 'name' ? (pivot2Sort.direction === 'asc' ? '↑' : '↓') : '↕'}
@@ -1025,7 +1026,7 @@ export default function OrdersPage() {
                     {pivotStatus.columns.map((st) => (
                       <th
                         key={st}
-                        className="p-1.5 border border-slate-600 font-bold bg-[#e0f2fe] text-blue-950 cursor-pointer hover:opacity-80 min-w-[100px] max-w-[140px] whitespace-normal break-words leading-tight"
+                        className="p-1.5 border border-slate-600 font-bold bg-[#e0f2fe] text-blue-950 cursor-pointer hover:opacity-80 min-w-[95px] max-w-[130px] whitespace-normal break-words leading-tight"
                         title={st}
                         onClick={() => {
                           setActiveSubgroupScope(selectedPivotSubgroups);
@@ -1154,7 +1155,7 @@ export default function OrdersPage() {
                     })
                   )}
 
-                  <tr className="bg-[#0f172a] text-white font-black sticky bottom-0 z-10 shadow cursor-pointer">
+                  <tr className="bg-[#0f172a] text-white font-black border-t-2 border-slate-700 cursor-pointer">
                     <td
                       className="p-2 border border-slate-700 text-left pl-3 uppercase hover:text-yellow-300"
                       onClick={() => {
@@ -1202,12 +1203,12 @@ export default function OrdersPage() {
         </div>
 
         {/* SECTION TENGAH: PIVOT FALLOUT & DURATION FALLOUT CHART */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4 items-start">
           
-          {/* PIVOT 3: FALLOUT (5 KATEGORI SAKLEK) */}
-          <div className="xl:col-span-1 bg-white border border-slate-300 shadow-xs rounded overflow-hidden">
-            <div className="bg-[#0f172a] text-white p-2 flex justify-between items-center text-xs font-black uppercase flex-wrap gap-1">
-              <span>Fallout</span>
+          {/* PIVOT 3: FALLOUT (FULL HEIGHT - RAPI UNTUK SCREENSHOT) */}
+          <div className="xl:col-span-1 bg-white border-2 border-slate-300 shadow-sm rounded overflow-hidden">
+            <div className="bg-[#0f172a] text-white p-2 px-3 flex justify-between items-center text-xs font-black uppercase flex-wrap gap-1 border-b-2 border-slate-800">
+              <span className="tracking-wide">Fallout</span>
               
               <div className="flex items-center gap-1.5">
                 <span className="text-[9px] text-slate-300 font-bold">Status:</span>
@@ -1220,18 +1221,18 @@ export default function OrdersPage() {
               </div>
             </div>
 
-            <div className="overflow-x-auto max-h-[340px] overflow-y-auto">
+            <div className="overflow-x-auto w-full">
               <table className="w-full text-left border-collapse text-[10.5px]">
-                <thead className="bg-[#1e293b] text-white sticky top-0 z-10 shadow-xs select-none">
+                <thead className="bg-[#1e293b] text-white select-none">
                   <tr>
                     <th
-                      className="p-2 border border-slate-600 cursor-pointer hover:bg-slate-700"
+                      className="p-2 border border-slate-600 cursor-pointer hover:bg-slate-700 font-extrabold"
                       onClick={() => handlePivotFalloutSort('reason')}
                     >
                       Fallout {pivotFalloutSort.key === 'reason' ? (pivotFalloutSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
                     <th
-                      className="p-2 border border-slate-600 text-right pr-4 cursor-pointer hover:bg-slate-700"
+                      className="p-2 border border-slate-600 text-right pr-4 cursor-pointer hover:bg-slate-700 font-extrabold"
                       onClick={() => handlePivotFalloutSort('count')}
                     >
                       Count of order_id {pivotFalloutSort.key === 'count' ? (pivotFalloutSort.direction === 'asc' ? '↑' : '↓') : '↕'}
@@ -1259,10 +1260,10 @@ export default function OrdersPage() {
                           className={`font-black text-slate-900 border-b border-slate-300 cursor-pointer ${
                             durIdx > 0 ? 'border-t-2 border-t-slate-400' : ''
                           } ${
-                            dur.name === '> 0 HARI' ? 'bg-emerald-100 hover:bg-emerald-200' :
-                            dur.name === '> 3 HARI' ? 'bg-emerald-200/70 hover:bg-emerald-200' :
-                            dur.name === '> 7 HARI' ? 'bg-orange-100 hover:bg-orange-200' :
-                            dur.name === '> 1 BULAN' ? 'bg-blue-100 hover:bg-blue-200' : 'bg-purple-100 hover:bg-purple-200'
+                            dur.name === '> 0 HARI' ? 'bg-[#cffafe] hover:bg-[#a5f3fc]' :
+                            dur.name === '> 3 HARI' ? 'bg-[#dcfce7] hover:bg-[#bbf7d0]' :
+                            dur.name === '> 7 HARI' ? 'bg-[#ffedd5] hover:bg-[#fed7aa]' :
+                            dur.name === '> 1 BULAN' ? 'bg-[#dbeafe] hover:bg-[#bfdbfe]' : 'bg-[#f3e8ff] hover:bg-[#e9d5ff]'
                           }`}
                           onClick={() => {
                             setActiveSubgroupScope('ALL');
@@ -1308,7 +1309,7 @@ export default function OrdersPage() {
                     );
                   })}
 
-                  <tr className="bg-[#0f172a] text-white font-black sticky bottom-0 z-10 shadow cursor-pointer">
+                  <tr className="bg-[#0f172a] text-white font-black border-t-2 border-slate-700 cursor-pointer">
                     <td
                       className="p-2 border border-slate-700 uppercase hover:text-yellow-300"
                       onClick={() => {
@@ -1344,7 +1345,7 @@ export default function OrdersPage() {
           </div>
 
           {/* DIAGRAM BATANG DURATION FALLOUT */}
-          <div className="xl:col-span-2 bg-white border border-slate-300 shadow-xs rounded p-3">
+          <div className="xl:col-span-2 bg-white border-2 border-slate-300 shadow-sm rounded p-3">
             <div className="flex items-center justify-between border-b pb-1.5 mb-2 flex-wrap gap-1">
               <h4 className="font-extrabold text-slate-800 text-xs sm:text-sm tracking-wide uppercase">
                 DURATION FALLOUT
@@ -1354,7 +1355,7 @@ export default function OrdersPage() {
               </span>
             </div>
 
-            <div className="h-72 w-full">
+            <div className="h-80 w-full">
               {chartData.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-slate-400 font-bold text-xs">
                   Tidak ada data Fallout pada filter yang dipilih.
@@ -1450,20 +1451,20 @@ export default function OrdersPage() {
             </div>
 
             <div className="flex flex-wrap items-center justify-center gap-4 text-[10px] font-bold text-slate-600 mt-2 border-t pt-1.5">
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 bg-[#10b981] rounded-xs inline-block"></span> &gt; 0 HARI
+              <span className="flex items-center gap-1.5">
+                <span className="w-3.5 h-3.5 bg-[#06b6d4] rounded-xs inline-block shadow-xs"></span> &gt; 0 HARI
               </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 bg-[#22c55e] rounded-xs inline-block"></span> &gt; 3 HARI
+              <span className="flex items-center gap-1.5">
+                <span className="w-3.5 h-3.5 bg-[#22c55e] rounded-xs inline-block shadow-xs"></span> &gt; 3 HARI
               </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 bg-[#f97316] rounded-xs inline-block"></span> &gt; 7 HARI
+              <span className="flex items-center gap-1.5">
+                <span className="w-3.5 h-3.5 bg-[#f97316] rounded-xs inline-block shadow-xs"></span> &gt; 7 HARI
               </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 bg-[#3b82f6] rounded-xs inline-block"></span> &gt; 1 BULAN
+              <span className="flex items-center gap-1.5">
+                <span className="w-3.5 h-3.5 bg-[#3b82f6] rounded-xs inline-block shadow-xs"></span> &gt; 1 BULAN
               </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 bg-[#a855f7] rounded-xs inline-block"></span> &gt; 3 BULAN
+              <span className="flex items-center gap-1.5">
+                <span className="w-3.5 h-3.5 bg-[#a855f7] rounded-xs inline-block shadow-xs"></span> &gt; 3 BULAN
               </span>
             </div>
           </div>
