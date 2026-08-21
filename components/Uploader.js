@@ -197,7 +197,7 @@ export default function Uploader({ onUploadOdpSuccess, onUploadOrderSuccess }) {
   const [isDragOverOrder, setIsDragOverOrder] = useState(false);
 
   const uploadInBatches = async (endpoint, rows, setProgressMessage, label) => {
-    const chunkSize = 500;
+    const chunkSize = 1000;
     const totalChunks = Math.ceil(rows.length / chunkSize);
 
     for (let i = 0; i < totalChunks; i++) {
