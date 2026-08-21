@@ -26,6 +26,23 @@ function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+function parseRawCoordinate(input) {
+  if (!input) return null;
+  const clean = String(input).trim();
+  const match = clean.match(/^(-?\d+\.?\d*)[,\s\t]+(-?\d+\.?\d*)$/);
+  if (match && match[1] && match[2]) {
+    let num1 = parseFloat(match[1]);
+    let num2 = parseFloat(match[2]);
+    if (!isNaN(num1) && !isNaN(num2)) {
+      if (num1 > 90 || (num1 > 0 && num2 < 0)) {
+        return { lat: num2, lon: num1 };
+      }
+      return { lat: num1, lon: num2 };
+    }
+  }
+  return null;
+}
+
 function extractOrderCoordinates(order) {
   if (!order) return null;
   const reason = String(order.fallout_reason || '');
@@ -61,6 +78,8 @@ export default function AnalysisPage() {
   const [showMeasureModal, setShowMeasureModal] = useState(false);
   const [pointAInput, setPointAInput] = useState('');
   const [pointBInput, setPointBInput] = useState('');
+  const [pointASuggestions, setPointASuggestions] = useState([]);
+  const [pointBSuggestions, setPointBSuggestions] = useState([]);
   const [isRouting, setIsRouting] = useState(false);
   const [measureResult, setMeasureResult] = useState(null);
   const [manualMeasureLine, setManualMeasureLine] = useState(null);
@@ -75,7 +94,7 @@ export default function AnalysisPage() {
   const availableProcessStates = useMemo(() => {
     const set = new Set();
     (rawOrdersData || []).forEach((o) => {
-      const ps = (o.process_state || '').trim().toUpperCase();
+      const ps = String(o.process_state || '').trim().toUpperCase();
       if (ps) set.add(ps);
     });
     return Array.from(set).sort();
@@ -95,7 +114,7 @@ export default function AnalysisPage() {
       .filter((o) => {
         const matchSto = selectedSto === 'ALL' || o.sto_co === selectedSto;
         const matchWok = selectedWok === 'ALL' || o.wok === selectedWok;
-        const ps = (o.process_state || '').trim().toUpperCase();
+        const ps = String(o.process_state || '').trim().toUpperCase();
         const matchState = selectedOrderStates.length === 0 || selectedOrderStates.includes(ps);
         return matchSto && matchWok && matchState;
       })
@@ -111,6 +130,18 @@ export default function AnalysisPage() {
     setSearchInput(val);
     if (val.trim().length >= 2) {
       const q = val.toLowerCase();
+      const coordParsed = parseRawCoordinate(val);
+      const results = [];
+
+      if (coordParsed) {
+        results.push({
+          targetType: 'KOORDINAT',
+          displayName: `📍 Koordinat: ${coordParsed.lat.toFixed(5)}, ${coordParsed.lon.toFixed(5)}`,
+          lat: coordParsed.lat,
+          lon: coordParsed.lon,
+        });
+      }
+
       const matchedOdps = cleanOdpList
         .filter((d) => (d.odp_name && d.odp_name.toLowerCase().includes(q)) || (d.sto && d.sto.toLowerCase().includes(q)))
         .slice(0, 6)
@@ -121,9 +152,23 @@ export default function AnalysisPage() {
         .slice(0, 6)
         .map((o) => ({ ...o, targetType: 'ORDER', displayName: `${o.order_id} - ${o.name || 'Pelanggan'}`, lat: o.lat, lon: o.lon }));
 
-      setSuggestions([...matchedOdps, ...matchedOrders]);
+      setSuggestions([...results, ...matchedOdps, ...matchedOrders]);
     } else {
       setSuggestions([]);
+    }
+  };
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      const coord = parseRawCoordinate(searchInput);
+      if (coord) {
+        handleSelectTarget({
+          targetType: 'KOORDINAT',
+          displayName: `📍 Koordinat: ${coord.lat.toFixed(5)}, ${coord.lon.toFixed(5)}`,
+          lat: coord.lat,
+          lon: coord.lon,
+        });
+      }
     }
   };
 
@@ -134,19 +179,49 @@ export default function AnalysisPage() {
     setCurrentPage(1);
   };
 
+  const getPointsSuggestions = (input) => {
+    if (!input || input.trim().length < 3) return [];
+    const q = input.trim().toLowerCase();
+    const list = [];
+    const coordParsed = parseRawCoordinate(input);
+    if (coordParsed) {
+      list.push({
+        displayName: `${coordParsed.lat.toFixed(5)}, ${coordParsed.lon.toFixed(5)}`,
+        lat: coordParsed.lat,
+        lon: coordParsed.lon,
+      });
+    }
+
+    cleanOdpList.forEach((d) => {
+      if (d.odp_name && d.odp_name.toLowerCase().includes(q)) {
+        list.push({ displayName: d.odp_name, lat: d.latitude, lon: d.longitude, type: 'ODP' });
+      }
+    });
+
+    cleanOrderList.forEach((o) => {
+      if (o.order_id && o.order_id.toLowerCase().includes(q)) {
+        list.push({ displayName: o.order_id, lat: o.lat, lon: o.lon, type: 'ORDER' });
+      }
+    });
+
+    return list.slice(0, 6);
+  };
+
   const parsePoint = (input) => {
     if (!input) return null;
-    const clean = input.trim();
-    if (clean.includes(',')) {
-      const parts = clean.split(',').map((p) => parseFloat(p.trim()));
-      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) return { name: clean, lat: parts[0], lon: parts[1] };
+    const clean = String(input).trim();
+    const coord = parseRawCoordinate(clean);
+    if (coord) {
+      return { name: `${coord.lat.toFixed(5)}, ${coord.lon.toFixed(5)}`, lat: coord.lat, lon: coord.lon };
     }
     const foundOdp = cleanOdpList.find((d) => d.odp_name && d.odp_name.toLowerCase() === clean.toLowerCase());
-    if (foundOdp && foundOdp.latitude && foundOdp.longitude) return { name: foundOdp.odp_name, lat: foundOdp.latitude, lon: foundOdp.longitude };
-
+    if (foundOdp && foundOdp.latitude && foundOdp.longitude) {
+      return { name: foundOdp.odp_name, lat: foundOdp.latitude, lon: foundOdp.longitude };
+    }
     const foundOrd = cleanOrderList.find((o) => o.order_id && o.order_id.toLowerCase() === clean.toLowerCase());
-    if (foundOrd && foundOrd.lat && foundOrd.lon) return { name: foundOrd.order_id, lat: foundOrd.lat, lon: foundOrd.lon };
-
+    if (foundOrd && foundOrd.lat && foundOrd.lon) {
+      return { name: foundOrd.order_id, lat: foundOrd.lat, lon: foundOrd.lon };
+    }
     return null;
   };
 
@@ -154,7 +229,7 @@ export default function AnalysisPage() {
     const pA = parsePoint(pointAInput);
     const pB = parsePoint(pointBInput);
     if (!pA || !pB) {
-      alert('Masukkan Titik A dan B yang valid (Nama ODP, Order ID, atau format Latitude,Longitude)!');
+      alert('Masukkan Titik A dan B yang valid (Ketik ODP Name, Order ID, atau Koordinat Lat, Lon)!');
       return;
     }
     setIsRouting(true);
@@ -204,7 +279,7 @@ export default function AnalysisPage() {
           used: odp.used || 0,
           avai: odp.avai || 0,
           occPerc: odp.is_total > 0 ? ((odp.used / odp.is_total) * 100).toFixed(1) : '0.0',
-          rxLevel: odp.ont_rx_level !== null ? `${Number(odp.ont_rx_level).toFixed(2)} dBm` : '-',
+          rxLevel: odp.ont_rx_level !== null && odp.ont_rx_level !== undefined ? `${Number(odp.ont_rx_level).toFixed(2)} dBm` : '-',
           customerName: '-',
           phone: '-',
           address: odp.sto_desc || odp.desa || '-',
@@ -236,7 +311,7 @@ export default function AnalysisPage() {
           customerName: ord.name || '-',
           phone: ord.no_handphone || ord.no_handphone_mask || '-',
           address: ord.address || '-',
-          remarks: ord.symptom || ord.fallout_category || ord.fallout_reason_clean || ord.fallout_reason || ord.order_status_desc || '-',
+          remarks: ord.fallout_reason_clean || ord.fallout_reason || ord.symptom || ord.order_status_desc || '-',
           latitude: ord.lat,
           longitude: ord.lon,
           isCenterTarget: isSelf,
@@ -254,11 +329,11 @@ export default function AnalysisPage() {
       const q = tableSearch.toLowerCase();
       list = list.filter(
         (r) =>
-          (r.id && r.id.toLowerCase().includes(q)) ||
-          (r.customerName && r.customerName.toLowerCase().includes(q)) ||
-          (r.sto && r.sto.toLowerCase().includes(q)) ||
-          (r.statusLabel && r.statusLabel.toLowerCase().includes(q)) ||
-          (r.remarks && r.remarks.toLowerCase().includes(q))
+          (r.id && String(r.id).toLowerCase().includes(q)) ||
+          (r.customerName && String(r.customerName).toLowerCase().includes(q)) ||
+          (r.sto && String(r.sto).toLowerCase().includes(q)) ||
+          (r.statusLabel && String(r.statusLabel).toLowerCase().includes(q)) ||
+          (r.remarks && String(r.remarks).toLowerCase().includes(q))
       );
     }
 
@@ -319,7 +394,7 @@ export default function AnalysisPage() {
         </div>
       )}
 
-      <div className="max-w-[1450px] mx-auto space-y-3">
+      <div className="max-w-[1550px] mx-auto space-y-3">
         {/* Header Bar */}
         <div className="bg-gradient-to-r from-[#1e3a8a] via-[#3b0764] to-[#0f172a] text-white p-3 sm:p-4 rounded-lg flex flex-col md:flex-row justify-between items-start md:items-center shadow gap-2">
           <div>
@@ -327,7 +402,7 @@ export default function AnalysisPage() {
               ODP &amp; FULFILLMENT ORDER ANALYSIS
             </h1>
             <p className="text-[10px] sm:text-xs font-semibold text-yellow-300 mt-0.5">
-              Pemetaan Radius Presisi &bull; Analisis Relasi Titik Order &amp; ODP Terdekat (&lt;{radiusLimit}m) &bull; Rute Darat
+              Pemetaan Radius Presisi &bull; Bebas Input Koordinat &bull; Analisis Relasi Titik Order &amp; ODP Terdekat (&lt;{radiusLimit}m)
             </p>
           </div>
 
@@ -390,9 +465,10 @@ export default function AnalysisPage() {
             <div className="flex items-center gap-1">
               <input
                 type="text"
-                placeholder="Cari ODP (e.g. ODP-PLK-FAA/01) / Order ID..."
+                placeholder="Cari ODP, Order ID, atau Koordinat (-2.21, 113.91)..."
                 value={searchInput}
                 onChange={handleSearchChange}
+                onKeyDown={handleSearchKeyDown}
                 className="w-full px-2.5 py-1.5 text-black border border-slate-300 rounded text-xs outline-none shadow-xs font-semibold focus:border-blue-500"
               />
               {selectedTarget && (
@@ -411,20 +487,23 @@ export default function AnalysisPage() {
               <div className="absolute top-full left-0 w-full bg-white text-black mt-1 rounded-lg shadow-2xl border border-slate-300 overflow-hidden max-h-60 overflow-y-auto z-[2000]">
                 {suggestions.map((s, idx) => (
                   <div
-                    key={`${s.targetType}-${s.id || s.odp_name}-${idx}`}
+                    key={`${s.targetType}-${s.id || s.displayName}-${idx}`}
                     onClick={() => handleSelectTarget(s)}
                     className="p-2 border-b border-slate-100 hover:bg-blue-50 cursor-pointer text-[10.5px] transition flex items-center justify-between"
                   >
                     <div className="truncate">
                       <span className="font-extrabold text-blue-900 block truncate">
-                        {s.targetType === 'ODP' ? `📍 ${s.odp_name}` : `🔺 ${s.order_id} (${s.name || 'Pelanggan'})`}
+                        {s.displayName}
                       </span>
-                      <span className="text-[9px] text-slate-500 font-semibold">
-                        {s.sto || s.sto_co} &bull; {s.wok} &bull; {s.status_final || s.process_state}
-                      </span>
+                      {s.sto && (
+                        <span className="text-[9px] text-slate-500 font-semibold">
+                          {s.sto || s.sto_co} &bull; {s.wok}
+                        </span>
+                      )}
                     </div>
                     <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${
-                      s.targetType === 'ODP' ? 'bg-blue-100 text-blue-900' : 'bg-rose-100 text-rose-900'
+                      s.targetType === 'ODP' ? 'bg-blue-100 text-blue-900' :
+                      s.targetType === 'KOORDINAT' ? 'bg-emerald-100 text-emerald-900' : 'bg-rose-100 text-rose-900'
                     }`}>
                       {s.targetType}
                     </span>
@@ -435,12 +514,12 @@ export default function AnalysisPage() {
           </div>
         </div>
 
-        {/* Modal Perhitungan Jarak Rute Darat (OSRM Driving) */}
+        {/* Modal Perhitungan Jarak Rute Darat dengan Suggestion 3 Digit */}
         {showMeasureModal && (
           <div className="bg-slate-50 p-2.5 border border-slate-300 rounded shadow-xs text-xs space-y-2">
             <div className="flex items-center justify-between border-b border-slate-200 pb-1">
               <p className="font-bold text-slate-800 text-[11px] flex items-center gap-1">
-                <span>🚗</span> Hitung Jarak Rute Darat (Jalan Raya) Berdasarkan ODP Name / Order ID / Koordinat:
+                <span>🚗</span> Hitung Jarak Rute Darat (OSRM Road) - Ketik 3 Digit untuk Suggestion:
               </p>
               <button
                 type="button"
@@ -452,25 +531,64 @@ export default function AnalysisPage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div>
+              <div className="relative">
                 <label className="text-[10px] text-slate-500 font-semibold">Titik A (Start):</label>
                 <input
                   type="text"
-                  placeholder="Contoh: ODP-PLK-FAA/01 atau Order ID atau -2.21,113.91"
+                  placeholder="Contoh: ODP-PLK-FAA/01, Order ID, atau Tikor"
                   value={pointAInput}
-                  onChange={(e) => setPointAInput(e.target.value)}
+                  onChange={(e) => {
+                    setPointAInput(e.target.value);
+                    setPointASuggestions(getPointsSuggestions(e.target.value));
+                  }}
                   className="w-full p-1.5 border rounded text-xs mt-0.5 bg-white font-semibold"
                 />
+                {pointASuggestions.length > 0 && (
+                  <div className="absolute top-full left-0 w-full bg-white border border-slate-300 shadow-xl rounded z-[3000] max-h-40 overflow-y-auto">
+                    {pointASuggestions.map((s, idx) => (
+                      <div
+                        key={`suggA-${idx}`}
+                        onClick={() => {
+                          setPointAInput(s.displayName);
+                          setPointASuggestions([]);
+                        }}
+                        className="p-1.5 text-[10px] hover:bg-blue-50 cursor-pointer border-b font-semibold text-slate-700"
+                      >
+                        {s.displayName}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div>
+
+              <div className="relative">
                 <label className="text-[10px] text-slate-500 font-semibold">Titik B (End):</label>
                 <input
                   type="text"
-                  placeholder="Contoh: ODP-PLK-FAA/05 atau Order ID atau -2.22,113.92"
+                  placeholder="Contoh: ODP-PLK-FAA/05, Order ID, atau Tikor"
                   value={pointBInput}
-                  onChange={(e) => setPointBInput(e.target.value)}
+                  onChange={(e) => {
+                    setPointBInput(e.target.value);
+                    setPointBSuggestions(getPointsSuggestions(e.target.value));
+                  }}
                   className="w-full p-1.5 border rounded text-xs mt-0.5 bg-white font-semibold"
                 />
+                {pointBSuggestions.length > 0 && (
+                  <div className="absolute top-full left-0 w-full bg-white border border-slate-300 shadow-xl rounded z-[3000] max-h-40 overflow-y-auto">
+                    {pointBSuggestions.map((s, idx) => (
+                      <div
+                        key={`suggB-${idx}`}
+                        onClick={() => {
+                          setPointBInput(s.displayName);
+                          setPointBSuggestions([]);
+                        }}
+                        className="p-1.5 text-[10px] hover:bg-blue-50 cursor-pointer border-b font-semibold text-slate-700"
+                      >
+                        {s.displayName}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -497,7 +615,7 @@ export default function AnalysisPage() {
           <div className="bg-blue-50 border-l-4 border-blue-600 p-2.5 rounded shadow-xs text-xs flex flex-col sm:flex-row justify-between sm:items-center gap-2">
             <div>
               <p className="font-extrabold text-blue-950 flex items-center gap-1.5 text-xs sm:text-[13px]">
-                <span>{selectedTarget.targetType === 'ODP' ? '📍 ODP Pusat:' : '🔺 Order Pusat:'}</span>
+                <span>{selectedTarget.targetType === 'ODP' ? '📍 ODP Pusat:' : selectedTarget.targetType === 'KOORDINAT' ? '📍 Titik Koordinat:' : '🔺 Order Pusat:'}</span>
                 <span className="text-purple-900">{selectedTarget.displayName || selectedTarget.odp_name || selectedTarget.order_id}</span>
                 <span className="bg-blue-600 text-white text-[9px] font-bold px-2 py-0.2 rounded-full">
                   Radius &lt; {radiusLimit} Meter
@@ -519,7 +637,7 @@ export default function AnalysisPage() {
           </div>
         ) : (
           <div className="bg-slate-100 border border-slate-300 p-2 rounded text-[11px] text-slate-600 font-semibold">
-            💡 <strong>Tips:</strong> Ketik nama ODP / Order ID di kotak pencarian atau klik titik marker pada peta untuk membuat <strong>lingkaran radius &lt; {radiusLimit}m</strong> dan melihat ODP terdekat serta jaraknya ke pelanggan.
+            💡 <strong>Tips:</strong> Masukkan koordinat (contoh: <code>-2.2145, 113.9213</code>) atau ketik ODP / Order ID untuk langsung membuat <strong>lingkaran radius &lt; {radiusLimit}m</strong>.
           </div>
         )}
 
@@ -616,7 +734,7 @@ export default function AnalysisPage() {
                     <td colSpan={16} className="p-4 text-center text-slate-400 font-bold">
                       {selectedTarget
                         ? `Tidak ada entitas ODP atau Order lain dalam radius < ${radiusLimit}m.`
-                        : 'Silakan cari ODP atau Order pada peta di atas untuk memulai analisis radius.'}
+                        : 'Silakan cari ODP, Order ID, atau Koordinat pada peta di atas untuk memulai analisis radius.'}
                     </td>
                   </tr>
                 ) : (
