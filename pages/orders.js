@@ -20,7 +20,7 @@ const ALLOWED_STOS = [
   'BNT', 'PLK', 'KKN', 'MTW', 'PPS', 'PYM', 'TML', 'AMP', 'KKP', 'KRI', 'KSO', 'PRC'
 ];
 
-// 5 Kategori Durasi Saklek
+// Saklek 5 Kategori Durasi
 const DURATION_ORDER = ['> 0 HARI', '> 3 HARI', '> 7 HARI', '> 1 BULAN', '> 3 BULAN'];
 
 function sortDurationColumns(cols = []) {
@@ -34,7 +34,7 @@ function sortDurationColumns(cols = []) {
   });
 }
 
-// Warna Kontras Tinggi & Tidak Nyaru
+// Warna Kontras Tinggi & Presisi
 const DURATION_COLORS = {
   '> 0 HARI': '#06b6d4', // Cyan Terang
   '> 3 HARI': '#22c55e', // Hijau Segar
@@ -169,10 +169,10 @@ function MultiSelectDropdown({ options = [], selected = [], onChange, badgeColor
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className={`${badgeColor} border border-slate-600 rounded px-2 py-0.5 text-[9.5px] font-bold flex items-center gap-1.5 shadow-sm hover:opacity-90 transition cursor-pointer`}
+        className={`${badgeColor} border border-slate-600 rounded px-2 py-0.5 text-[9px] font-bold flex items-center gap-1.5 shadow-sm hover:opacity-90 transition cursor-pointer`}
       >
-        <span className="truncate max-w-[160px]">{displayText}</span>
-        <span className="text-[7.5px] text-slate-400">▼</span>
+        <span className="truncate max-w-[140px]">{displayText}</span>
+        <span className="text-[7px] text-slate-400">▼</span>
       </button>
 
       {open && (
@@ -437,7 +437,7 @@ export default function OrdersPage() {
     return { sortedWoks, columns, grandColTotals, totalAll };
   }, [pivotBaseOrders, pivot1Sort]);
 
-  // Pivot 2: WOK & STO vs Process State
+  // Pivot 2: WOK & STO vs Process State (Auto-fit No Scroll)
   const pivotStatus = useMemo(() => {
     const statusSet = new Set();
     const map = {};
@@ -677,7 +677,7 @@ export default function OrdersPage() {
         </div>
       )}
 
-      <div className="max-w-[1450px] mx-auto space-y-3">
+      <div className="max-w-[1550px] mx-auto space-y-3">
         {/* Header Bar */}
         <div className="bg-gradient-to-r from-[#211c47] to-[#4c1d95] text-white p-3 sm:p-4 rounded-lg flex flex-col md:flex-row justify-between items-start md:items-center shadow gap-2">
           <div>
@@ -701,7 +701,7 @@ export default function OrdersPage() {
         </div>
 
         {/* Global Filter Bar */}
-        <div className="bg-white p-2.5 rounded shadow-xs border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div className="bg-white p-2 rounded shadow-xs border border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-bold text-slate-600 text-[11px]">Filter:</span>
 
@@ -768,7 +768,7 @@ export default function OrdersPage() {
               onClick={resetFilters}
               className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded font-bold text-[10px] shadow cursor-pointer"
             >
-              ✕ Reset Filter (Tampilkan Semua)
+              ✕ Reset Filter
             </button>
           )}
         </div>
@@ -782,7 +782,206 @@ export default function OrdersPage() {
           </div>
         )}
 
-        {/* SECTION ATAS: 2 PIVOT TABLE (FULL HEIGHT - RAPI UNTUK SCREENSHOT REPORT) */}
+        {/* 1. TABEL UTAMA FULL WIDTH: COUNT OF ORDER_ID • PROCESS STATE (ZERO SCROLLBAR, TAMPIL PENUH & RAPI) */}
+        <div className="bg-white border-2 border-slate-300 shadow-sm rounded overflow-hidden">
+          <div className="bg-[#0f172a] text-white p-2 px-3 flex justify-between items-center text-xs font-black uppercase flex-wrap gap-1 border-b-2 border-slate-800">
+            <span className="tracking-wide flex items-center gap-1.5">
+              <span>📊</span> Count of order_id &bull; Process State
+            </span>
+            <span className="text-[9px] text-blue-300 font-semibold bg-white/10 px-2 py-0.5 rounded">
+              Sinkron Subgroup ({selectedPivotSubgroups.length === availableSubgroupOptions.length ? 'Semua' : selectedPivotSubgroups.join(', ')})
+            </span>
+          </div>
+
+          <div className="w-full">
+            <table className="w-full table-auto text-center border-collapse text-[9.5px]">
+              <thead className="bg-[#1e293b] text-white select-none">
+                <tr>
+                  <th
+                    className="p-1 border border-slate-600 text-left pl-2.5 cursor-pointer hover:bg-slate-700 font-extrabold w-[130px]"
+                    onClick={() => handlePivot2Sort('name')}
+                  >
+                    Row Labels {pivot2Sort.key === 'name' ? (pivot2Sort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                  </th>
+                  {pivotStatus.columns.map((st) => (
+                    <th
+                      key={st}
+                      className="p-1 border border-slate-600 font-bold bg-[#e0f2fe] text-blue-950 cursor-pointer hover:opacity-80 leading-tight break-words text-[8.5px]"
+                      title={`Filter ${st}`}
+                      onClick={() => {
+                        setActiveSubgroupScope(selectedPivotSubgroups);
+                        setSelectedFallout('ALL');
+                        setSelectedStatus(st);
+                      }}
+                    >
+                      {st} {pivot2Sort.key === st ? (pivot2Sort.direction === 'asc' ? '↑' : '↓') : ''}
+                    </th>
+                  ))}
+                  <th
+                    className="p-1 border border-slate-600 bg-[#0f172a] text-yellow-300 font-black cursor-pointer hover:bg-slate-800 w-[75px]"
+                    onClick={() => handlePivot2Sort('total')}
+                    title="Klik untuk sort Grand Total"
+                  >
+                    Grand Total {pivot2Sort.key === 'total' ? (pivot2Sort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {pivotStatus.sortedWoks.length === 0 ? (
+                  <tr>
+                    <td colSpan={pivotStatus.columns.length + 2} className="p-3 text-slate-400 font-bold text-center">
+                      Tidak ada data pada subgroup yang dipilih.
+                    </td>
+                  </tr>
+                ) : (
+                  pivotStatus.sortedWoks.map((wok) => {
+                    const sortedStos = Object.values(wok.stos).sort((a, b) => {
+                      let valA = pivot2Sort.key === 'total' ? a.total : (a.colCounts[pivot2Sort.key] || 0);
+                      let valB = pivot2Sort.key === 'total' ? b.total : (b.colCounts[pivot2Sort.key] || 0);
+                      if (pivot2Sort.key === 'name') {
+                        return pivot2Sort.direction === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
+                      }
+                      return pivot2Sort.direction === 'asc' ? valA - valB : valB - valA;
+                    });
+
+                    return (
+                      <React.Fragment key={wok.name}>
+                        <tr className="bg-slate-100 font-black text-slate-800 border-b border-slate-300">
+                          <td
+                            className="p-1 border border-slate-300 text-left pl-2 cursor-pointer hover:text-blue-700"
+                            onClick={() => {
+                              setActiveSubgroupScope(selectedPivotSubgroups);
+                              setSelectedFallout('ALL');
+                              setSelectedWok((prev) => (prev === wok.name ? 'ALL' : wok.name));
+                            }}
+                          >
+                            &oplus; {wok.name}
+                          </td>
+                          {pivotStatus.columns.map((st) => (
+                            <td
+                              key={st}
+                              className="p-0.5 border border-slate-300 cursor-pointer hover:bg-blue-100 font-semibold"
+                              onClick={() => {
+                                setActiveSubgroupScope(selectedPivotSubgroups);
+                                setSelectedFallout('ALL');
+                                setSelectedWok(wok.name);
+                                setSelectedStatus(st);
+                              }}
+                              title={`Klik untuk filter WOK ${wok.name} - Status ${st}`}
+                            >
+                              {wok.colCounts[st] || ''}
+                            </td>
+                          ))}
+                          <td
+                            className="p-1 border border-slate-300 font-extrabold bg-slate-200 cursor-pointer hover:bg-yellow-100"
+                            onClick={() => {
+                              setActiveSubgroupScope(selectedPivotSubgroups);
+                              setSelectedFallout('ALL');
+                              setSelectedWok(wok.name);
+                              setSelectedStatus('ALL');
+                            }}
+                            title="Klik Grand Total WOK"
+                          >
+                            {wok.total}
+                          </td>
+                        </tr>
+
+                        {sortedStos.map((sto) => (
+                          <tr
+                            key={sto.name}
+                            className="border-b border-slate-200 hover:bg-blue-50/70 transition bg-white"
+                          >
+                            <td
+                              className="p-0.5 border border-slate-200 text-left pl-5 font-semibold text-slate-700 cursor-pointer hover:text-blue-700"
+                              onClick={() => {
+                                setActiveSubgroupScope(selectedPivotSubgroups);
+                                setSelectedFallout('ALL');
+                                setSelectedSto((prev) => (prev === sto.name ? 'ALL' : sto.name));
+                              }}
+                            >
+                              {sto.name}
+                            </td>
+                            {pivotStatus.columns.map((st) => (
+                              <td
+                                key={st}
+                                className="p-0.5 border border-slate-200 text-slate-600 cursor-pointer hover:bg-blue-100 font-semibold"
+                                onClick={() => {
+                                  setActiveSubgroupScope(selectedPivotSubgroups);
+                                  setSelectedFallout('ALL');
+                                  setSelectedSto(sto.name);
+                                  setSelectedStatus(st);
+                                }}
+                                title={`Klik untuk filter STO ${sto.name} - Status ${st}`}
+                              >
+                                {sto.colCounts[st] || ''}
+                              </td>
+                            ))}
+                            <td
+                              className="p-0.5 border border-slate-200 font-bold text-slate-800 bg-slate-50 cursor-pointer hover:bg-yellow-100"
+                              onClick={() => {
+                                setActiveSubgroupScope(selectedPivotSubgroups);
+                                setSelectedFallout('ALL');
+                                setSelectedSto(sto.name);
+                                setSelectedStatus('ALL');
+                              }}
+                              title="Klik Grand Total STO"
+                            >
+                              {sto.total}
+                            </td>
+                          </tr>
+                        ))}
+                      </React.Fragment>
+                    );
+                  })
+                )}
+
+                <tr className="bg-[#0f172a] text-white font-black border-t-2 border-slate-700 cursor-pointer">
+                  <td
+                    className="p-1.5 border border-slate-700 text-left pl-2.5 uppercase hover:text-yellow-300"
+                    onClick={() => {
+                      setActiveSubgroupScope(selectedPivotSubgroups);
+                      setSelectedFallout('ALL');
+                      setSelectedWok('ALL');
+                      setSelectedSto('ALL');
+                    }}
+                    title="Klik untuk filter semua data WOK & STO"
+                  >
+                    Grand Total
+                  </td>
+                  {pivotStatus.columns.map((st) => (
+                    <td
+                      key={st}
+                      className="p-1 border border-slate-700 hover:bg-slate-800"
+                      onClick={() => {
+                        setActiveSubgroupScope(selectedPivotSubgroups);
+                        setSelectedFallout('ALL');
+                        setSelectedStatus(st);
+                      }}
+                      title={`Klik untuk filter status ${st}`}
+                    >
+                      {pivotStatus.grandColTotals[st] || 0}
+                    </td>
+                  ))}
+                  <td
+                    className="p-1.5 border border-slate-700 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
+                    onClick={() => {
+                      setActiveSubgroupScope(selectedPivotSubgroups);
+                      setSelectedFallout('ALL');
+                      setSelectedWok('ALL');
+                      setSelectedSto('ALL');
+                      setSelectedStatus('ALL');
+                    }}
+                    title="Klik untuk filter total data subgroup"
+                  >
+                    {pivotStatus.totalAll}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* 2. SECTION PIVOT DURATION & PIVOT FALLOUT BERDAMPINGAN SECARA PRESISI */}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 sm:gap-4 items-start">
           
           {/* PIVOT 1: DURATION */}
@@ -801,8 +1000,8 @@ export default function OrdersPage() {
               </div>
             </div>
 
-            <div className="overflow-x-auto w-full">
-              <table className="w-full text-center border-collapse text-[10.5px]">
+            <div className="w-full">
+              <table className="w-full table-auto text-center border-collapse text-[10px]">
                 <thead className="bg-[#1e293b] text-white select-none">
                   <tr>
                     <th
@@ -833,7 +1032,7 @@ export default function OrdersPage() {
                       </th>
                     ))}
                     <th
-                      className="p-1.5 border border-slate-600 bg-[#0f172a] text-yellow-300 font-black cursor-pointer hover:bg-slate-800"
+                      className="p-1.5 border border-slate-600 bg-[#0f172a] text-yellow-300 font-black cursor-pointer hover:bg-slate-800 w-[80px]"
                       onClick={() => handlePivot1Sort('total')}
                       title="Klik untuk sort Grand Total"
                     >
@@ -863,7 +1062,7 @@ export default function OrdersPage() {
                         <React.Fragment key={wok.name}>
                           <tr className="bg-slate-100 font-black text-slate-800 border-b border-slate-300">
                             <td
-                              className="p-1.5 border border-slate-300 text-left pl-2 cursor-pointer hover:text-blue-700"
+                              className="p-1 border border-slate-300 text-left pl-2 cursor-pointer hover:text-blue-700"
                               onClick={() => {
                                 setActiveSubgroupScope(selectedPivotSubgroups);
                                 setSelectedStatus('ALL');
@@ -876,7 +1075,7 @@ export default function OrdersPage() {
                             {pivotDuration.columns.map((c) => (
                               <td
                                 key={c}
-                                className="p-1.5 border border-slate-300 cursor-pointer hover:bg-emerald-100 font-semibold"
+                                className="p-1 border border-slate-300 cursor-pointer hover:bg-emerald-100 font-semibold"
                                 onClick={() => {
                                   setActiveSubgroupScope(selectedPivotSubgroups);
                                   setSelectedStatus('ALL');
@@ -890,7 +1089,7 @@ export default function OrdersPage() {
                               </td>
                             ))}
                             <td
-                              className="p-1.5 border border-slate-300 font-extrabold bg-slate-200 cursor-pointer hover:bg-yellow-100"
+                              className="p-1 border border-slate-300 font-extrabold bg-slate-200 cursor-pointer hover:bg-yellow-100"
                               onClick={() => {
                                 setActiveSubgroupScope(selectedPivotSubgroups);
                                 setSelectedStatus('ALL');
@@ -910,7 +1109,7 @@ export default function OrdersPage() {
                               className="border-b border-slate-200 hover:bg-blue-50/70 transition bg-white"
                             >
                               <td
-                                className="p-1 border border-slate-200 text-left pl-6 font-semibold text-slate-700 cursor-pointer hover:text-blue-700"
+                                className="p-0.5 border border-slate-200 text-left pl-6 font-semibold text-slate-700 cursor-pointer hover:text-blue-700"
                                 onClick={() => {
                                   setActiveSubgroupScope(selectedPivotSubgroups);
                                   setSelectedStatus('ALL');
@@ -923,7 +1122,7 @@ export default function OrdersPage() {
                               {pivotDuration.columns.map((c) => (
                                 <td
                                   key={c}
-                                  className="p-1 border border-slate-200 text-slate-600 cursor-pointer hover:bg-blue-100 font-semibold"
+                                  className="p-0.5 border border-slate-200 text-slate-600 cursor-pointer hover:bg-blue-100 font-semibold"
                                   onClick={() => {
                                     setActiveSubgroupScope(selectedPivotSubgroups);
                                     setSelectedStatus('ALL');
@@ -937,7 +1136,7 @@ export default function OrdersPage() {
                                 </td>
                               ))}
                               <td
-                                className="p-1 border border-slate-200 font-bold text-slate-800 bg-slate-50 cursor-pointer hover:bg-yellow-100"
+                                className="p-0.5 border border-slate-200 font-bold text-slate-800 bg-slate-50 cursor-pointer hover:bg-yellow-100"
                                 onClick={() => {
                                   setActiveSubgroupScope(selectedPivotSubgroups);
                                   setSelectedStatus('ALL');
@@ -958,7 +1157,7 @@ export default function OrdersPage() {
 
                   <tr className="bg-[#0f172a] text-white font-black border-t-2 border-slate-700 cursor-pointer">
                     <td
-                      className="p-2 border border-slate-700 text-left pl-3 uppercase hover:text-yellow-300"
+                      className="p-1.5 border border-slate-700 text-left pl-3 uppercase hover:text-yellow-300"
                       onClick={() => {
                         setActiveSubgroupScope(selectedPivotSubgroups);
                         setSelectedStatus('ALL');
@@ -973,7 +1172,7 @@ export default function OrdersPage() {
                     {pivotDuration.columns.map((c) => (
                       <td
                         key={c}
-                        className="p-2 border border-slate-700 hover:bg-slate-800"
+                        className="p-1.5 border border-slate-700 hover:bg-slate-800"
                         onClick={() => {
                           setActiveSubgroupScope(selectedPivotSubgroups);
                           setSelectedStatus('ALL');
@@ -986,7 +1185,7 @@ export default function OrdersPage() {
                       </td>
                     ))}
                     <td
-                      className="p-2 border border-slate-700 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
+                      className="p-1.5 border border-slate-700 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
                       onClick={() => {
                         setActiveSubgroupScope(selectedPivotSubgroups);
                         setSelectedStatus('ALL');
@@ -1005,208 +1204,8 @@ export default function OrdersPage() {
             </div>
           </div>
 
-          {/* PIVOT 2: PROCESS_STATE */}
+          {/* PIVOT 3: FALLOUT */}
           <div className="bg-white border-2 border-slate-300 shadow-sm rounded overflow-hidden">
-            <div className="bg-[#0f172a] text-white p-2 px-3 flex justify-between items-center text-xs font-black uppercase flex-wrap gap-1 border-b-2 border-slate-800">
-              <span className="tracking-wide">Count of order_id &bull; Process State</span>
-              <span className="text-[9.5px] text-blue-300 font-semibold bg-white/10 px-1.5 py-0.5 rounded">
-                Sinkron Subgroup
-              </span>
-            </div>
-            <div className="overflow-x-auto w-full">
-              <table className="w-full text-center border-collapse text-[10.5px]">
-                <thead className="bg-[#1e293b] text-white select-none">
-                  <tr>
-                    <th
-                      className="p-1.5 border border-slate-600 text-left pl-3 cursor-pointer hover:bg-slate-700 min-w-[120px] font-extrabold"
-                      onClick={() => handlePivot2Sort('name')}
-                    >
-                      Row Labels {pivot2Sort.key === 'name' ? (pivot2Sort.direction === 'asc' ? '↑' : '↓') : '↕'}
-                    </th>
-                    {pivotStatus.columns.map((st) => (
-                      <th
-                        key={st}
-                        className="p-1.5 border border-slate-600 font-bold bg-[#e0f2fe] text-blue-950 cursor-pointer hover:opacity-80 min-w-[95px] max-w-[130px] whitespace-normal break-words leading-tight"
-                        title={st}
-                        onClick={() => {
-                          setActiveSubgroupScope(selectedPivotSubgroups);
-                          setSelectedFallout('ALL');
-                          setSelectedStatus(st);
-                        }}
-                      >
-                        {st} {pivot2Sort.key === st ? (pivot2Sort.direction === 'asc' ? '↑' : '↓') : ''}
-                      </th>
-                    ))}
-                    <th
-                      className="p-1.5 border border-slate-600 bg-[#0f172a] text-yellow-300 font-black cursor-pointer hover:bg-slate-800 min-w-[90px]"
-                      onClick={() => handlePivot2Sort('total')}
-                      title="Klik untuk sort Grand Total"
-                    >
-                      Grand Total {pivot2Sort.key === 'total' ? (pivot2Sort.direction === 'asc' ? '↑' : '↓') : '↕'}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pivotStatus.sortedWoks.length === 0 ? (
-                    <tr>
-                      <td colSpan={pivotStatus.columns.length + 2} className="p-4 text-slate-400 font-bold text-center">
-                        Tidak ada data pada subgroup yang dipilih.
-                      </td>
-                    </tr>
-                  ) : (
-                    pivotStatus.sortedWoks.map((wok) => {
-                      const sortedStos = Object.values(wok.stos).sort((a, b) => {
-                        let valA = pivot2Sort.key === 'total' ? a.total : (a.colCounts[pivot2Sort.key] || 0);
-                        let valB = pivot2Sort.key === 'total' ? b.total : (b.colCounts[pivot2Sort.key] || 0);
-                        if (pivot2Sort.key === 'name') {
-                          return pivot2Sort.direction === 'asc' ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name);
-                        }
-                        return pivot2Sort.direction === 'asc' ? valA - valB : valB - valA;
-                      });
-
-                      return (
-                        <React.Fragment key={wok.name}>
-                          <tr className="bg-slate-100 font-black text-slate-800 border-b border-slate-300">
-                            <td
-                              className="p-1.5 border border-slate-300 text-left pl-2 cursor-pointer hover:text-blue-700"
-                              onClick={() => {
-                                setActiveSubgroupScope(selectedPivotSubgroups);
-                                setSelectedFallout('ALL');
-                                setSelectedWok((prev) => (prev === wok.name ? 'ALL' : wok.name));
-                              }}
-                            >
-                              &oplus; {wok.name}
-                            </td>
-                            {pivotStatus.columns.map((st) => (
-                              <td
-                                key={st}
-                                className="p-1.5 border border-slate-300 cursor-pointer hover:bg-blue-100 font-semibold"
-                                onClick={() => {
-                                  setActiveSubgroupScope(selectedPivotSubgroups);
-                                  setSelectedFallout('ALL');
-                                  setSelectedWok(wok.name);
-                                  setSelectedStatus(st);
-                                }}
-                                title={`Klik untuk filter WOK ${wok.name} - Status ${st}`}
-                              >
-                                {wok.colCounts[st] || ''}
-                              </td>
-                            ))}
-                            <td
-                              className="p-1.5 border border-slate-300 font-extrabold bg-slate-200 cursor-pointer hover:bg-yellow-100"
-                              onClick={() => {
-                                setActiveSubgroupScope(selectedPivotSubgroups);
-                                setSelectedFallout('ALL');
-                                setSelectedWok(wok.name);
-                                setSelectedStatus('ALL');
-                              }}
-                              title="Klik Grand Total WOK"
-                            >
-                              {wok.total}
-                            </td>
-                          </tr>
-
-                          {sortedStos.map((sto) => (
-                            <tr
-                              key={sto.name}
-                              className="border-b border-slate-200 hover:bg-blue-50/70 transition bg-white"
-                            >
-                              <td
-                                className="p-1 border border-slate-200 text-left pl-6 font-semibold text-slate-700 cursor-pointer hover:text-blue-700"
-                                onClick={() => {
-                                  setActiveSubgroupScope(selectedPivotSubgroups);
-                                  setSelectedFallout('ALL');
-                                  setSelectedSto((prev) => (prev === sto.name ? 'ALL' : sto.name));
-                                }}
-                              >
-                                {sto.name}
-                              </td>
-                              {pivotStatus.columns.map((st) => (
-                                <td
-                                  key={st}
-                                  className="p-1 border border-slate-200 text-slate-600 cursor-pointer hover:bg-blue-100 font-semibold"
-                                  onClick={() => {
-                                    setActiveSubgroupScope(selectedPivotSubgroups);
-                                    setSelectedFallout('ALL');
-                                    setSelectedSto(sto.name);
-                                    setSelectedStatus(st);
-                                  }}
-                                  title={`Klik untuk filter STO ${sto.name} - Status ${st}`}
-                                >
-                                  {sto.colCounts[st] || ''}
-                                </td>
-                              ))}
-                              <td
-                                className="p-1 border border-slate-200 font-bold text-slate-800 bg-slate-50 cursor-pointer hover:bg-yellow-100"
-                                onClick={() => {
-                                  setActiveSubgroupScope(selectedPivotSubgroups);
-                                  setSelectedFallout('ALL');
-                                  setSelectedSto(sto.name);
-                                  setSelectedStatus('ALL');
-                                }}
-                                title="Klik Grand Total STO"
-                              >
-                                {sto.total}
-                              </td>
-                            </tr>
-                          ))}
-                        </React.Fragment>
-                      );
-                    })
-                  )}
-
-                  <tr className="bg-[#0f172a] text-white font-black border-t-2 border-slate-700 cursor-pointer">
-                    <td
-                      className="p-2 border border-slate-700 text-left pl-3 uppercase hover:text-yellow-300"
-                      onClick={() => {
-                        setActiveSubgroupScope(selectedPivotSubgroups);
-                        setSelectedFallout('ALL');
-                        setSelectedWok('ALL');
-                        setSelectedSto('ALL');
-                      }}
-                      title="Klik untuk filter semua data WOK & STO"
-                    >
-                      Grand Total
-                    </td>
-                    {pivotStatus.columns.map((st) => (
-                      <td
-                        key={st}
-                        className="p-2 border border-slate-700 hover:bg-slate-800"
-                        onClick={() => {
-                          setActiveSubgroupScope(selectedPivotSubgroups);
-                          setSelectedFallout('ALL');
-                          setSelectedStatus(st);
-                        }}
-                        title={`Klik untuk filter status ${st}`}
-                      >
-                        {pivotStatus.grandColTotals[st] || 0}
-                      </td>
-                    ))}
-                    <td
-                      className="p-2 border border-slate-700 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
-                      onClick={() => {
-                        setActiveSubgroupScope(selectedPivotSubgroups);
-                        setSelectedFallout('ALL');
-                        setSelectedWok('ALL');
-                        setSelectedSto('ALL');
-                        setSelectedStatus('ALL');
-                      }}
-                      title="Klik untuk filter total data subgroup"
-                    >
-                      {pivotStatus.totalAll}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        {/* SECTION TENGAH: PIVOT FALLOUT & DURATION FALLOUT CHART */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-3 sm:gap-4 items-start">
-          
-          {/* PIVOT 3: FALLOUT (FULL HEIGHT - RAPI UNTUK SCREENSHOT) */}
-          <div className="xl:col-span-1 bg-white border-2 border-slate-300 shadow-sm rounded overflow-hidden">
             <div className="bg-[#0f172a] text-white p-2 px-3 flex justify-between items-center text-xs font-black uppercase flex-wrap gap-1 border-b-2 border-slate-800">
               <span className="tracking-wide">Fallout</span>
               
@@ -1221,18 +1220,18 @@ export default function OrdersPage() {
               </div>
             </div>
 
-            <div className="overflow-x-auto w-full">
-              <table className="w-full text-left border-collapse text-[10.5px]">
+            <div className="w-full">
+              <table className="w-full table-auto text-left border-collapse text-[10px]">
                 <thead className="bg-[#1e293b] text-white select-none">
                   <tr>
                     <th
-                      className="p-2 border border-slate-600 cursor-pointer hover:bg-slate-700 font-extrabold"
+                      className="p-1.5 border border-slate-600 cursor-pointer hover:bg-slate-700 font-extrabold"
                       onClick={() => handlePivotFalloutSort('reason')}
                     >
                       Fallout {pivotFalloutSort.key === 'reason' ? (pivotFalloutSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
                     <th
-                      className="p-2 border border-slate-600 text-right pr-4 cursor-pointer hover:bg-slate-700 font-extrabold"
+                      className="p-1.5 border border-slate-600 text-right pr-4 cursor-pointer hover:bg-slate-700 font-extrabold w-[130px]"
                       onClick={() => handlePivotFalloutSort('count')}
                     >
                       Count of order_id {pivotFalloutSort.key === 'count' ? (pivotFalloutSort.direction === 'asc' ? '↑' : '↓') : '↕'}
@@ -1275,10 +1274,10 @@ export default function OrdersPage() {
                           }}
                           title="Klik untuk filter semua fallout durasi ini"
                         >
-                          <td className="p-1.5 border border-slate-300 pl-2">
+                          <td className="p-1 border border-slate-300 pl-2">
                             &oplus; {dur.name}
                           </td>
-                          <td className="p-1.5 border border-slate-300 text-right pr-4 font-black">
+                          <td className="p-1 border border-slate-300 text-right pr-4 font-black">
                             {dur.total}
                           </td>
                         </tr>
@@ -1297,10 +1296,10 @@ export default function OrdersPage() {
                             }}
                             title={`Klik untuk filter ${reason} (${dur.name})`}
                           >
-                            <td className="p-1 border border-slate-200 pl-6 font-semibold text-slate-700">
+                            <td className="p-0.5 border border-slate-200 pl-6 font-semibold text-slate-700">
                               {reason}
                             </td>
-                            <td className="p-1 border border-slate-200 text-right pr-4 text-slate-800 font-bold">
+                            <td className="p-0.5 border border-slate-200 text-right pr-4 text-slate-800 font-bold">
                               {cnt}
                             </td>
                           </tr>
@@ -1311,7 +1310,7 @@ export default function OrdersPage() {
 
                   <tr className="bg-[#0f172a] text-white font-black border-t-2 border-slate-700 cursor-pointer">
                     <td
-                      className="p-2 border border-slate-700 uppercase hover:text-yellow-300"
+                      className="p-1.5 border border-slate-700 uppercase hover:text-yellow-300 pl-2.5"
                       onClick={() => {
                         setActiveSubgroupScope('ALL');
                         if (selectedFalloutStates.length === 1) {
@@ -1325,7 +1324,7 @@ export default function OrdersPage() {
                       Grand Total
                     </td>
                     <td
-                      className="p-2 border border-slate-700 text-right pr-4 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
+                      className="p-1.5 border border-slate-700 text-right pr-4 text-yellow-300 font-black hover:bg-yellow-600 hover:text-slate-900"
                       onClick={() => {
                         setActiveSubgroupScope('ALL');
                         if (selectedFalloutStates.length === 1) {
@@ -1343,130 +1342,130 @@ export default function OrdersPage() {
               </table>
             </div>
           </div>
+        </div>
 
-          {/* DIAGRAM BATANG DURATION FALLOUT */}
-          <div className="xl:col-span-2 bg-white border-2 border-slate-300 shadow-sm rounded p-3">
-            <div className="flex items-center justify-between border-b pb-1.5 mb-2 flex-wrap gap-1">
-              <h4 className="font-extrabold text-slate-800 text-xs sm:text-sm tracking-wide uppercase">
-                DURATION FALLOUT
-              </h4>
-              <span className="text-[10px] text-purple-700 font-bold bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
-                Filter Status: {selectedFalloutStates.length === availableProcessStateOptions.length ? 'Semua Status' : selectedFalloutStates.join(', ')}
-              </span>
-            </div>
+        {/* 3. SECTION DIAGRAM BATANG DURATION FALLOUT */}
+        <div className="bg-white border-2 border-slate-300 shadow-sm rounded p-3">
+          <div className="flex items-center justify-between border-b pb-1.5 mb-2 flex-wrap gap-1">
+            <h4 className="font-extrabold text-slate-800 text-xs sm:text-sm tracking-wide uppercase flex items-center gap-1.5">
+              <span>📈</span> DURATION FALLOUT CHART
+            </h4>
+            <span className="text-[10px] text-purple-700 font-bold bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+              Filter Status: {selectedFalloutStates.length === availableProcessStateOptions.length ? 'Semua Status' : selectedFalloutStates.join(', ')}
+            </span>
+          </div>
 
-            <div className="h-80 w-full">
-              {chartData.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-slate-400 font-bold text-xs">
-                  Tidak ada data Fallout pada filter yang dipilih.
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={chartData}
-                    margin={{ top: 20, right: 10, left: -20, bottom: 55 }}
-                    onClick={(e) => {
-                      if (e && e.activePayload && e.activePayload.length) {
-                        const payload = e.activePayload[0].payload;
-                        setActiveSubgroupScope('ALL');
-                        if (selectedFalloutStates.length === 1) {
-                          setSelectedStatus(selectedFalloutStates[0]);
-                        }
-                        setSelectedDuration(payload.duration);
-                        setSelectedFallout((prev) => (prev === payload.reason ? 'ALL' : payload.reason));
+          <div className="h-72 w-full">
+            {chartData.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-slate-400 font-bold text-xs">
+                Tidak ada data Fallout pada filter yang dipilih.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={chartData}
+                  margin={{ top: 20, right: 10, left: -20, bottom: 55 }}
+                  onClick={(e) => {
+                    if (e && e.activePayload && e.activePayload.length) {
+                      const payload = e.activePayload[0].payload;
+                      setActiveSubgroupScope('ALL');
+                      if (selectedFalloutStates.length === 1) {
+                        setSelectedStatus(selectedFalloutStates[0]);
                       }
-                    }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis
-                      dataKey="reason"
-                      interval={0}
-                      tick={({ x, y, payload }) => (
-                        <g transform={`translate(${x},${y})`}>
-                          <text
-                            x={0}
-                            y={0}
-                            dy={10}
-                            textAnchor="end"
-                            fill="#334155"
-                            fontWeight="bold"
-                            fontSize={8}
-                            transform="rotate(-30)"
-                          >
-                            {payload.value}
-                          </text>
-                        </g>
-                      )}
-                    />
-                    <YAxis tick={{ fontSize: 9, fontWeight: 'bold' }} allowDecimals={false} />
-                    <Tooltip
-                      content={({ active, payload }) => {
-                        if (active && payload && payload.length) {
-                          const d = payload[0].payload;
-                          return (
-                            <div className="bg-white p-2 rounded shadow-lg border border-slate-300 text-xs font-sans">
-                              <p className="font-black text-slate-900">{d.reason}</p>
-                              <p className="text-[11px] font-bold text-slate-600">Kategori Durasi: {d.duration}</p>
-                              <p className="text-xs font-black text-blue-700 mt-1">Total: {d.count} Order</p>
-                              <p className="text-[9px] text-slate-400 mt-0.5">(Klik batang untuk filter)</p>
-                            </div>
-                          );
-                        }
-                        return null;
-                      }}
-                    />
-
-                    {dividerIndices.map((xVal, dIdx) => (
-                      <ReferenceLine
-                        key={`div-${dIdx}`}
-                        x={xVal}
-                        stroke="#94a3b8"
-                        strokeDasharray="4 4"
-                        strokeWidth={1.5}
-                      />
-                    ))}
-
-                    <Bar
-                      dataKey="count"
-                      label={({ x, y, width, value }) => (
+                      setSelectedDuration(payload.duration);
+                      setSelectedFallout((prev) => (prev === payload.reason ? 'ALL' : payload.reason));
+                    }
+                  }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="reason"
+                    interval={0}
+                    tick={({ x, y, payload }) => (
+                      <g transform={`translate(${x},${y})`}>
                         <text
-                          x={x + width / 2}
-                          y={y - 6}
-                          fill="#0f172a"
-                          textAnchor="middle"
-                          fontSize={9}
+                          x={0}
+                          y={0}
+                          dy={10}
+                          textAnchor="end"
+                          fill="#334155"
                           fontWeight="bold"
+                          fontSize={8}
+                          transform="rotate(-30)"
                         >
-                          {value}
+                          {payload.value}
                         </text>
-                      )}
-                    >
-                      {chartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fillColor} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </div>
+                      </g>
+                    )}
+                  />
+                  <YAxis tick={{ fontSize: 9, fontWeight: 'bold' }} allowDecimals={false} />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const d = payload[0].payload;
+                        return (
+                          <div className="bg-white p-2 rounded shadow-lg border border-slate-300 text-xs font-sans">
+                            <p className="font-black text-slate-900">{d.reason}</p>
+                            <p className="text-[11px] font-bold text-slate-600">Kategori Durasi: {d.duration}</p>
+                            <p className="text-xs font-black text-blue-700 mt-1">Total: {d.count} Order</p>
+                            <p className="text-[9px] text-slate-400 mt-0.5">(Klik batang untuk filter)</p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
 
-            <div className="flex flex-wrap items-center justify-center gap-4 text-[10px] font-bold text-slate-600 mt-2 border-t pt-1.5">
-              <span className="flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 bg-[#06b6d4] rounded-xs inline-block shadow-xs"></span> &gt; 0 HARI
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 bg-[#22c55e] rounded-xs inline-block shadow-xs"></span> &gt; 3 HARI
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 bg-[#f97316] rounded-xs inline-block shadow-xs"></span> &gt; 7 HARI
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 bg-[#3b82f6] rounded-xs inline-block shadow-xs"></span> &gt; 1 BULAN
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-3.5 h-3.5 bg-[#a855f7] rounded-xs inline-block shadow-xs"></span> &gt; 3 BULAN
-              </span>
-            </div>
+                  {dividerIndices.map((xVal, dIdx) => (
+                    <ReferenceLine
+                      key={`div-${dIdx}`}
+                      x={xVal}
+                      stroke="#94a3b8"
+                      strokeDasharray="4 4"
+                      strokeWidth={1.5}
+                    />
+                  ))}
+
+                  <Bar
+                    dataKey="count"
+                    label={({ x, y, width, value }) => (
+                      <text
+                        x={x + width / 2}
+                        y={y - 6}
+                        fill="#0f172a"
+                        textAnchor="middle"
+                        fontSize={9}
+                        fontWeight="bold"
+                      >
+                        {value}
+                      </text>
+                    )}
+                  >
+                    {chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fillColor} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-4 text-[10px] font-bold text-slate-600 mt-2 border-t pt-1.5">
+            <span className="flex items-center gap-1.5">
+              <span className="w-3.5 h-3.5 bg-[#06b6d4] rounded-xs inline-block shadow-xs"></span> &gt; 0 HARI
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-3.5 h-3.5 bg-[#22c55e] rounded-xs inline-block shadow-xs"></span> &gt; 3 HARI
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-3.5 h-3.5 bg-[#f97316] rounded-xs inline-block shadow-xs"></span> &gt; 7 HARI
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-3.5 h-3.5 bg-[#3b82f6] rounded-xs inline-block shadow-xs"></span> &gt; 1 BULAN
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-3.5 h-3.5 bg-[#a855f7] rounded-xs inline-block shadow-xs"></span> &gt; 3 BULAN
+            </span>
           </div>
         </div>
 
