@@ -29,17 +29,16 @@ function sortDurationColumns(cols = []) {
     if (idxA !== -1 && idxB !== -1) return idxA - idxB;
     if (idxA !== -1) return -1;
     if (idxB !== -1) return 1;
-    return String(a).localeCompare(String(b));
+    return String(a || '').localeCompare(String(b || ''));
   });
 }
 
-// Warna Modern & Kontras Tinggi
 const DURATION_COLORS = {
-  '> 0 HARI': '#06b6d4', // Cyan
-  '> 3 HARI': '#10b981', // Emerald Green
-  '> 7 HARI': '#f59e0b', // Amber
-  '> 1 BULAN': '#3b82f6', // Royal Blue
-  '> 3 BULAN': '#8b5cf6', // Violet Purple
+  '> 0 HARI': '#06b6d4',
+  '> 3 HARI': '#10b981',
+  '> 7 HARI': '#f59e0b',
+  '> 1 BULAN': '#3b82f6',
+  '> 3 BULAN': '#8b5cf6',
   DEFAULT: '#64748b',
 };
 
@@ -49,7 +48,7 @@ const MONTH_NAMES = [
 ];
 
 function formatFullDateTime(d) {
-  if (!d || isNaN(d.getTime())) return '-';
+  if (!d || !(d instanceof Date) || isNaN(d.getTime())) return '-';
   const day = String(d.getDate()).padStart(2, '0');
   const month = MONTH_NAMES[d.getMonth()];
   const year = d.getFullYear();
@@ -85,37 +84,58 @@ function extractPureDateString(val) {
     return `${y}-${m}-${d}`;
   }
 
-  return str.slice(0, 10);
+  return str.length >= 10 ? str.slice(0, 10) : str;
 }
 
-function formatDisplayDate(val) {
+function safeFormatDisplayDate(val) {
+  if (!val) return '-';
   const pure = extractPureDateString(val);
-  if (!pure || pure.length < 10) return val || '-';
+  if (!pure || pure.length < 10) return String(val);
   const parts = pure.split('-');
-  return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  if (parts.length === 3) {
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  }
+  return String(val);
+}
+
+function safeFormatNumber(val) {
+  if (val === null || val === undefined || val === '') return '-';
+  const num = Number(val);
+  return isNaN(num) ? String(val) : num.toLocaleString();
+}
+
+function safeFormatCoord(val) {
+  if (val === null || val === undefined || val === '') return '-';
+  const num = Number(val);
+  return isNaN(num) ? String(val) : num.toFixed(5);
 }
 
 function getExactDurationCategory(order) {
+  if (!order) return '> 0 HARI';
   const dateStr = extractPureDateString(order.provi || order.order_ts || order.order_date);
 
   if (dateStr && dateStr.length >= 10) {
     const parts = dateStr.split('-');
-    const proviY = parseInt(parts[0], 10);
-    const proviM = parseInt(parts[1], 10) - 1;
-    const proviD = parseInt(parts[2], 10);
+    if (parts.length === 3) {
+      const proviY = parseInt(parts[0], 10);
+      const proviM = parseInt(parts[1], 10) - 1;
+      const proviD = parseInt(parts[2], 10);
 
-    const proviDate = new Date(proviY, proviM, proviD);
-    const now = new Date();
-    const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const proviDate = new Date(proviY, proviM, proviD);
+      const now = new Date();
+      const todayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    const diffTime = todayDate.getTime() - proviDate.getTime();
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      if (!isNaN(proviDate.getTime())) {
+        const diffTime = todayDate.getTime() - proviDate.getTime();
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-    if (diffDays <= 3) return '> 0 HARI';
-    if (diffDays <= 7) return '> 3 HARI';
-    if (diffDays <= 30) return '> 7 HARI';
-    if (diffDays <= 90) return '> 1 BULAN';
-    return '> 3 BULAN';
+        if (diffDays <= 3) return '> 0 HARI';
+        if (diffDays <= 7) return '> 3 HARI';
+        if (diffDays <= 30) return '> 7 HARI';
+        if (diffDays <= 90) return '> 1 BULAN';
+        return '> 3 BULAN';
+      }
+    }
   }
 
   const raw = String(order.order_duration_cat || order.aging_fallout || '').toUpperCase().trim();
@@ -234,7 +254,8 @@ export default function OrdersPage() {
   const [showUploader, setShowUploader] = useState(false);
 
   const orders = useMemo(() => {
-    return rawOrders.map((o) => {
+    return (rawOrders || []).map((o) => {
+      if (!o) return {};
       const pureProvi = extractPureDateString(o.provi || o.order_ts || o.order_date);
       const calculatedDur = getExactDurationCategory(o);
       return {
@@ -328,7 +349,7 @@ export default function OrdersPage() {
     const earliest = new Date(Math.min(...dates));
     const latest = new Date(Math.max(...dates));
 
-    return `*Cut Off Data (${formatDisplayDate(earliest)} s/d ${formatDisplayDate(latest)})`;
+    return `*Cut Off Data (${safeFormatDisplayDate(earliest)} s/d ${safeFormatDisplayDate(latest)})`;
   }, [orders]);
 
   const filteredOrders = useMemo(() => {
@@ -585,15 +606,15 @@ export default function OrdersPage() {
       const s = searchTerm.toLowerCase();
       filtered = filtered.filter(
         (o) =>
-          (o.order_id && o.order_id.toLowerCase().includes(s)) ||
-          (o.name && o.name.toLowerCase().includes(s)) ||
-          (o.odp_name && o.odp_name.toLowerCase().includes(s)) ||
-          (o.sto_co && o.sto_co.toLowerCase().includes(s)) ||
-          (o.process_state && o.process_state.toLowerCase().includes(s)) ||
-          (o.funneling_subgroup && o.funneling_subgroup.toLowerCase().includes(s)) ||
-          (o.symptom && o.symptom.toLowerCase().includes(s)) ||
-          (o.fallout_category && o.fallout_category.toLowerCase().includes(s)) ||
-          (o.fallout_reason_clean && o.fallout_reason_clean.toLowerCase().includes(s))
+          (o.order_id && String(o.order_id).toLowerCase().includes(s)) ||
+          (o.name && String(o.name).toLowerCase().includes(s)) ||
+          (o.odp_name && String(o.odp_name).toLowerCase().includes(s)) ||
+          (o.sto_co && String(o.sto_co).toLowerCase().includes(s)) ||
+          (o.process_state && String(o.process_state).toLowerCase().includes(s)) ||
+          (o.funneling_subgroup && String(o.funneling_subgroup).toLowerCase().includes(s)) ||
+          (o.symptom && String(o.symptom).toLowerCase().includes(s)) ||
+          (o.fallout_category && String(o.fallout_category).toLowerCase().includes(s)) ||
+          (o.fallout_reason_clean && String(o.fallout_reason_clean).toLowerCase().includes(s))
       );
     }
 
@@ -781,15 +802,13 @@ export default function OrdersPage() {
           </div>
         )}
 
-        {/* ========================================================================= */}
-        {/* REPORT BROADCAST SECTION (1 HALAMAN PRESISI 2X2 GRID TANPA SCROLL)       */}
-        {/* ========================================================================= */}
+        {/* 4 Komponen Atas Presisi Screenshot 2x2 Grid */}
         <div id="broadcast-report-container" className="space-y-3 bg-slate-100/60 p-2 rounded-lg border border-slate-200">
           
-          {/* BARIS 1: DURATION SLA (KIRI) & PROCESS STATE (KANAN) */}
+          {/* BARIS 1: DURATION SLA & PROCESS STATE */}
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start">
             
-            {/* 1.1. Count of order_id • Duration SLA */}
+            {/* 1.1. Duration SLA Table */}
             <div className="bg-white border-2 border-slate-400 shadow-sm rounded overflow-hidden">
               <div className="bg-[#0f172a] text-white p-1.5 px-2.5 flex justify-between items-center text-[11px] font-black uppercase flex-wrap gap-1 border-b-2 border-slate-800">
                 <span className="tracking-wide flex items-center gap-1">
@@ -833,7 +852,6 @@ export default function OrdersPage() {
                             setSelectedFallout('ALL');
                             setSelectedDuration(c);
                           }}
-                          title={`Filter durasi ${c}`}
                         >
                           {c} {pivot1Sort.key === c ? (pivot1Sort.direction === 'asc' ? '↑' : '↓') : ''}
                         </th>
@@ -841,7 +859,6 @@ export default function OrdersPage() {
                       <th
                         className="p-1 border border-slate-600 bg-[#0f172a] text-yellow-300 font-black cursor-pointer hover:bg-slate-800 w-[70px]"
                         onClick={() => handlePivot1Sort('total')}
-                        title="Sort Grand Total"
                       >
                         Grand Total {pivot1Sort.key === 'total' ? (pivot1Sort.direction === 'asc' ? '↑' : '↓') : '↕'}
                       </th>
@@ -1004,7 +1021,7 @@ export default function OrdersPage() {
               </div>
             </div>
 
-            {/* 1.2. Count of order_id • Process State */}
+            {/* 1.2. Process State Table */}
             <div className="bg-white border-2 border-slate-400 shadow-sm rounded overflow-hidden">
               <div className="bg-[#0f172a] text-white p-1.5 px-2.5 flex justify-between items-center text-[11px] font-black uppercase flex-wrap gap-1 border-b-2 border-slate-800">
                 <span className="tracking-wide flex items-center gap-1">
@@ -1029,7 +1046,6 @@ export default function OrdersPage() {
                         <th
                           key={st}
                           className="p-1 border border-slate-600 font-bold bg-[#e0f2fe] text-blue-950 cursor-pointer hover:opacity-80 leading-tight break-words text-[8.5px]"
-                          title={`Filter ${st}`}
                           onClick={() => {
                             setActiveSubgroupScope(selectedPivotSubgroups);
                             setSelectedFallout('ALL');
@@ -1042,7 +1058,6 @@ export default function OrdersPage() {
                       <th
                         className="p-1 border border-slate-600 bg-[#0f172a] text-yellow-300 font-black cursor-pointer hover:bg-slate-800 w-[70px]"
                         onClick={() => handlePivot2Sort('total')}
-                        title="Sort Grand Total"
                       >
                         Grand Total {pivot2Sort.key === 'total' ? (pivot2Sort.direction === 'asc' ? '↑' : '↓') : '↕'}
                       </th>
@@ -1198,10 +1213,10 @@ export default function OrdersPage() {
 
           </div>
 
-          {/* BARIS 2: PIVOT FALLOUT (KIRI) & DURATION FALLOUT CHART (KANAN) */}
+          {/* BARIS 2: PIVOT FALLOUT & DURATION FALLOUT CHART */}
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 items-stretch">
             
-            {/* 2.1. Pivot Fallout Table (Lebar 4 dari 12 Kolom) */}
+            {/* 2.1. Pivot Fallout Table */}
             <div className="xl:col-span-4 bg-white border-2 border-slate-400 shadow-sm rounded overflow-hidden flex flex-col justify-between">
               <div>
                 <div className="bg-[#0f172a] text-white p-1.5 px-2.5 flex justify-between items-center text-[11px] font-black uppercase flex-wrap gap-1 border-b-2 border-slate-800">
@@ -1324,7 +1339,7 @@ export default function OrdersPage() {
               </div>
             </div>
 
-            {/* 2.2. Diagram Batang Duration Fallout (Grafik Modern, Glow & Keren) */}
+            {/* 2.2. Modern & Responsive Duration Fallout Chart */}
             <div className="xl:col-span-8 bg-gradient-to-b from-white to-slate-50 border-2 border-slate-400 shadow-sm rounded-lg p-3 flex flex-col justify-between relative overflow-hidden">
               <div>
                 <div className="flex items-center justify-between border-b border-slate-200 pb-1.5 mb-2 flex-wrap gap-1">
@@ -1471,7 +1486,7 @@ export default function OrdersPage() {
         </div>
 
         {/* ========================================================================= */}
-        {/* TABEL PALING BAWAH: MENAMPILKAN SELURUH KOLOM LENGKAP UNTUK PRESENTASI   */}
+        {/* TABEL PALING BAWAH: MENAMPILKAN SELURUH KOLOM DENGAN SAFE RENDERING       */}
         {/* ========================================================================= */}
         <div className="bg-white border border-slate-300 shadow-xs rounded overflow-hidden mt-4">
           <div className="bg-gradient-to-r from-[#0f172a] via-[#1e293b] to-[#334155] text-white p-2.5 px-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
@@ -1602,17 +1617,17 @@ export default function OrdersPage() {
                 ) : (
                   paginatedData.map((row, idx) => {
                     const rowNumber = (currentPage - 1) * rowsPerPage + idx + 1;
-                    const pState = (row.process_state || 'UNKNOWN').trim().toUpperCase();
-                    const saklekDur = row.order_duration_cat;
-                    const displayOrderDate = formatDisplayDate(row.order_ts || row.provi);
+                    const pState = String(row.process_state || 'UNKNOWN').trim().toUpperCase();
+                    const saklekDur = row.order_duration_cat || '> 0 HARI';
+                    const displayOrderDate = safeFormatDisplayDate(row.order_ts || row.provi);
 
                     return (
                       <tr
-                        key={`${row.order_id}-${idx}`}
+                        key={`${row.order_id || idx}-${idx}`}
                         className="border-b border-slate-200 hover:bg-purple-50/60 transition"
                       >
                         <td className="p-1 border border-slate-200 text-center font-bold text-slate-500">{rowNumber}</td>
-                        <td className="p-1 border border-slate-200 font-black text-purple-900">{row.order_id}</td>
+                        <td className="p-1 border border-slate-200 font-black text-purple-900">{row.order_id || '-'}</td>
                         <td className="p-1 border border-slate-200 font-mono text-slate-600">{row.new_order_id || '-'}</td>
                         <td
                           className="p-1 border border-slate-200 font-bold text-slate-800 cursor-pointer hover:text-blue-700 hover:underline"
@@ -1680,16 +1695,16 @@ export default function OrdersPage() {
                         </td>
                         <td className="p-1 border border-slate-200">{row.category_hk || '-'}</td>
                         <td className="p-1 border border-slate-200">{row.status_hk || '-'}</td>
-                        <td className="p-1 border border-slate-200">{formatDisplayDate(row.tanggal_hk)}</td>
+                        <td className="p-1 border border-slate-200">{safeFormatDisplayDate(row.tanggal_hk)}</td>
                         <td className="p-1 border border-slate-200">{row.pic_dept || '-'}</td>
-                        <td className="p-1 border border-slate-200 text-right">{row.price_package ? Number(row.price_package).toLocaleString() : '-'}</td>
+                        <td className="p-1 border border-slate-200 text-right">{safeFormatNumber(row.price_package)}</td>
                         <td className="p-1 border border-slate-200 font-mono text-[9px] font-bold text-slate-800">{displayOrderDate}</td>
-                        <td className="p-1 border border-slate-200">{formatDisplayDate(row.ps_ts)}</td>
+                        <td className="p-1 border border-slate-200">{safeFormatDisplayDate(row.ps_ts)}</td>
                         <td className="p-1 border border-slate-200">{row.sf_name || '-'}</td>
                         <td className="p-1 border border-slate-200 max-w-[150px] truncate" title={row.remark}>{row.remark || '-'}</td>
                         <td className="p-1 border border-slate-200 max-w-[180px] truncate" title={row.address}>{row.address || '-'}</td>
-                        <td className="p-1 border border-slate-200 font-mono text-[8.5px]">{row.latitude || '-'}</td>
-                        <td className="p-1 border border-slate-200 font-mono text-[8.5px]">{row.longitude || '-'}</td>
+                        <td className="p-1 border border-slate-200 font-mono text-[8.5px]">{safeFormatCoord(row.latitude)}</td>
+                        <td className="p-1 border border-slate-200 font-mono text-[8.5px]">{safeFormatCoord(row.longitude)}</td>
                       </tr>
                     );
                   })
