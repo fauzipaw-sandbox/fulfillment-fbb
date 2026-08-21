@@ -415,6 +415,7 @@ export default function Dashboard() {
     });
   }, [filteredOrders, orderTableSort]);
 
+  // PAGINATION VARIABEL TERDEFINISI TEPAT
   const totalOdpPages = Math.ceil(sortedBottomOdpData.length / rowsPerPage) || 1;
   const paginatedOdpData = useMemo(() => {
     const start = (currentPage - 1) * rowsPerPage;
@@ -599,7 +600,7 @@ export default function Dashboard() {
   return (
     <Sidebar>
       <Head>
-        <title>ODP Profile & Utilization</title>
+        <title>ODP Profile &amp; Utilization</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
       </Head>
 
@@ -615,7 +616,7 @@ export default function Dashboard() {
         <div className="bg-gradient-to-r from-[#211c47] to-[#3a3575] text-white p-3 sm:p-4 flex flex-col md:flex-row justify-between items-start md:items-center border-b-4 border-purple-500 rounded-t-lg shadow-sm gap-2">
           <div>
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-extrabold tracking-wide uppercase italic">
-              ODP PROFILE & UTILIZATION
+              ODP PROFILE &amp; UTILIZATION
             </h1>
             <p className="text-[10px] sm:text-xs font-semibold mt-0.5 opacity-90 text-yellow-300">
               {headerCutoffText}
@@ -945,7 +946,7 @@ export default function Dashboard() {
 
           {/* ================= KOLOM KANAN ================= */}
           <div className="space-y-3 sm:space-y-4">
-            {/* MAPS LOKASI ODP (KHUSUS TITIK ODP) */}
+            {/* MAPS LOKASI ODP */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm relative">
               <div className="bg-gradient-to-r from-[#1e3a8a] to-[#3a3575] text-white p-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                 <div className="flex items-center gap-2">
@@ -1612,7 +1613,7 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={() => setCurrentPage((p) => Math.min(totalOdpPages, p + 1))}
-                    disabled={currentPage === totalPages}
+                    disabled={currentPage === totalOdpPages}
                     className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     Next &rsaquo;
@@ -1620,7 +1621,7 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={() => setCurrentPage(totalOdpPages)}
-                    disabled={currentPage === totalPages}
+                    disabled={currentPage === totalOdpPages}
                     className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     Terakhir &raquo;
