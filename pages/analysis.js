@@ -91,6 +91,17 @@ export default function AnalysisPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 50;
 
+  // Helper Pembersih Jejak Ukur Jarak Darat
+  const clearMeasureActivity = () => {
+    setRoadRouteCoordinates([]);
+    setManualMeasureLine(null);
+    setMeasureResult(null);
+    setPointAInput('');
+    setPointBInput('');
+    setPointASuggestions([]);
+    setPointBSuggestions([]);
+  };
+
   const availableProcessStates = useMemo(() => {
     const set = new Set();
     (rawOrdersData || []).forEach((o) => {
@@ -173,6 +184,9 @@ export default function AnalysisPage() {
   };
 
   const handleSelectTarget = (target) => {
+    // OTOMATIS CLEAR JEJAK UKUR JARAK DARAT SAAT MASUKKAN TARGET BARU
+    clearMeasureActivity();
+    
     setSelectedTarget(target);
     setSearchInput(target.displayName || target.odp_name || target.order_id);
     setSuggestions([]);
@@ -358,7 +372,7 @@ export default function AnalysisPage() {
 
   const requestSort = (key) => {
     let direction = 'asc';
-    if (tableSort.key === key && tableSort.direction === 'asc') direction = 'desc';
+    if (tableSort.key === key && tableSort.direction === 'desc') direction = 'desc';
     setTableSort({ key, direction });
   };
 
@@ -376,6 +390,7 @@ export default function AnalysisPage() {
   };
 
   const clearTarget = () => {
+    clearMeasureActivity();
     setSelectedTarget(null);
     setSearchInput('');
     setSuggestions([]);
