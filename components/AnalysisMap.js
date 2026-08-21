@@ -64,11 +64,11 @@ function MapController({ selectedTarget, radiusLimit, isFullscreen, roadRouteCoo
 
   useEffect(() => {
     if (roadRouteCoordinates && roadRouteCoordinates.length > 0) {
-      map.fitBounds(roadRouteCoordinates, { padding: [35, 35], maxZoom: 16 });
+      map.fitBounds(roadRouteCoordinates, { padding: [40, 40], maxZoom: 16 });
     } else if (manualMeasureLine && manualMeasureLine.length === 2) {
-      map.fitBounds(manualMeasureLine, { padding: [35, 35], maxZoom: 16 });
+      map.fitBounds(manualMeasureLine, { padding: [40, 40], maxZoom: 16 });
     } else if (selectedTarget && selectedTarget.lat && selectedTarget.lon) {
-      map.flyTo([selectedTarget.lat, selectedTarget.lon], 17, { animate: true, duration: 1 });
+      map.flyTo([selectedTarget.lat, selectedTarget.lon], 17, { animate: true, duration: 0.8 });
     }
   }, [selectedTarget, radiusLimit, roadRouteCoordinates, manualMeasureLine, map]);
 
@@ -166,7 +166,7 @@ export default function AnalysisMap({
   };
 
   const getColor = (status) => {
-    const s = (status || '').toUpperCase();
+    const s = String(status || '').toUpperCase();
     if (s.includes('RED')) return '#dc2626';
     if (s.includes('ORANGE')) return '#ea580c';
     if (s.includes('YELLOW')) return '#eab308';
@@ -175,10 +175,12 @@ export default function AnalysisMap({
   };
 
   const getRxColor = (rxVal) => {
-    if (rxVal === null || rxVal === undefined) return '#64748b';
-    if (rxVal > -18) return '#16a34a';
-    if (rxVal >= -21 && rxVal <= -18) return '#ca8a04';
-    if (rxVal >= -25 && rxVal < -21) return '#ea580c';
+    if (rxVal === null || rxVal === undefined || rxVal === '') return '#64748b';
+    const num = Number(rxVal);
+    if (isNaN(num)) return '#64748b';
+    if (num > -18) return '#16a34a';
+    if (num >= -21 && num <= -18) return '#ca8a04';
+    if (num >= -25 && num < -21) return '#ea580c';
     return '#dc2626';
   };
 
@@ -219,7 +221,7 @@ export default function AnalysisMap({
     if (!selectedOrderStates || selectedOrderStates.length === 0) return [];
     return (ordersData || []).filter((o) => {
       if (!o.lat || !o.lon) return false;
-      const ps = (o.process_state || '').trim().toUpperCase();
+      const ps = String(o.process_state || '').trim().toUpperCase();
       return selectedOrderStates.includes(ps);
     });
   }, [ordersData, selectedOrderStates]);
@@ -258,7 +260,6 @@ export default function AnalysisMap({
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
       >
-        {/* Tombol Ukur Rute Darat OSRM */}
         <button
           type="button"
           onClick={onToggleMeasureModal}
@@ -304,7 +305,6 @@ export default function AnalysisMap({
                 </button>
               </div>
 
-              {/* Tag / Badge Status Aktif dengan tombol hapus cepat (✕) */}
               {selectedOrderStates.length > 0 && (
                 <div className="flex flex-wrap gap-1 pb-1 border-b border-slate-800">
                   {selectedOrderStates.map((st) => (
@@ -326,11 +326,10 @@ export default function AnalysisMap({
                 </div>
               )}
 
-              {/* List Checkbox Status */}
               <div className="space-y-1 pt-0.5 max-h-40 overflow-y-auto">
                 {availableProcessStates.map((st) => {
                   const isChecked = selectedOrderStates.includes(st);
-                  const count = ordersData.filter((o) => (o.process_state || '').toUpperCase() === st).length;
+                  const count = ordersData.filter((o) => String(o.process_state || '').toUpperCase() === st).length;
                   return (
                     <label
                       key={st}
@@ -458,6 +457,35 @@ export default function AnalysisMap({
         />
         <MapClickHandler measureMode={measureActive} onMapClick={handleMapClick} />
 
+        {/* LAYER RADIUS DITARUH PALING BAWAH DENGAN INTERACTIVE FALSE AGAR TIDAK MENGHALANGI KLIK */}
+        {selectedTarget && selectedTarget.lat && selectedTarget.lon && (
+          <>
+            <Circle
+              center={[selectedTarget.lat, selectedTarget.lon]}
+              radius={radiusLimit}
+              interactive={false}
+              pathOptions={{
+                color: '#2563eb',
+                weight: 2.5,
+                dashArray: '6, 6',
+                fillColor: '#3b82f6',
+                fillOpacity: 0.12,
+              }}
+            />
+            <CircleMarker
+              center={[selectedTarget.lat, selectedTarget.lon]}
+              radius={8}
+              interactive={false}
+              pathOptions={{
+                color: '#ffffff',
+                weight: 3,
+                fillColor: '#2563eb',
+                fillOpacity: 1,
+              }}
+            />
+          </>
+        )}
+
         {roadRouteCoordinates && roadRouteCoordinates.length > 0 && (
           <Polyline positions={roadRouteCoordinates} pathOptions={{ color: '#2563eb', weight: 4, opacity: 0.9 }} />
         )}
@@ -491,47 +519,20 @@ export default function AnalysisMap({
           />
         ))}
 
-        {/* Lingkaran Radius 250M */}
-        {selectedTarget && selectedTarget.lat && selectedTarget.lon && (
-          <>
-            <Circle
-              center={[selectedTarget.lat, selectedTarget.lon]}
-              radius={radiusLimit}
-              pathOptions={{
-                color: '#2563eb',
-                weight: 2.5,
-                dashArray: '6, 6',
-                fillColor: '#3b82f6',
-                fillOpacity: 0.14,
-              }}
-            />
-            <CircleMarker
-              center={[selectedTarget.lat, selectedTarget.lon]}
-              radius={8}
-              pathOptions={{
-                color: '#ffffff',
-                weight: 3,
-                fillColor: '#2563eb',
-                fillOpacity: 1,
-              }}
-            />
-          </>
-        )}
-
-        {/* Marker ODP */}
+        {/* MARKER ODP DI ATAS LAYER RADIUS */}
         {odpData.map((odp, idx) => {
           if (!odp.latitude || !odp.longitude) return null;
           const color = getColor(odp.status_final);
           const rxColor = getRxColor(odp.ont_rx_level);
-          const formattedRx = odp.ont_rx_level !== null ? `${Number(odp.ont_rx_level).toFixed(2)} dBm` : '-';
-          const occVal = odp.is_total > 0 ? Math.round((odp.used / odp.is_total) * 100) : 0;
+          const formattedRx = odp.ont_rx_level !== null && odp.ont_rx_level !== undefined && odp.ont_rx_level !== '' ? `${Number(odp.ont_rx_level).toFixed(2)} dBm` : '-';
+          const occVal = odp.is_total > 0 ? Math.round(((odp.used || 0) / odp.is_total) * 100) : 0;
           const isSelected = selectedTarget?.targetType === 'ODP' && selectedTarget?.odp_name === odp.odp_name;
 
           return (
             <CircleMarker
               key={`odp-${odp.odp_name}-${idx}`}
               center={[odp.latitude, odp.longitude]}
-              radius={isSelected ? 7 : 4.5}
+              radius={isSelected ? 7.5 : 4.5}
               eventHandlers={{
                 click: () => {
                   if (onSelectTarget) {
@@ -562,7 +563,7 @@ export default function AnalysisMap({
                       className="text-[8px] font-bold px-1.5 py-0.2 rounded text-white uppercase"
                       style={{ backgroundColor: color }}
                     >
-                      {odp.status_final}
+                      {odp.status_final || 'BLACK'}
                     </span>
                   </div>
 
@@ -606,16 +607,16 @@ export default function AnalysisMap({
           );
         })}
 
-        {/* Marker Order */}
+        {/* MARKER ORDER DI ATAS LAYER RADIUS */}
         {visibleOrders.map((ord, idx) => {
           if (!ord.lat || !ord.lon) return null;
           const nearestOdp = findNearestOdp(ord.lat, ord.lon);
           const nearestColor = nearestOdp ? getColor(nearestOdp.status_final) : '#64748b';
           const nearestOcc = nearestOdp && nearestOdp.is_total > 0
-            ? Math.round((nearestOdp.used / nearestOdp.is_total) * 100)
+            ? Math.round(((nearestOdp.used || 0) / nearestOdp.is_total) * 100)
             : 0;
 
-          const pState = (ord.process_state || 'UNKNOWN').toUpperCase();
+          const pState = String(ord.process_state || 'UNKNOWN').toUpperCase();
           const markerColor = pState === 'FALLOUT' ? '#e11d48' : pState === 'COMPLETED' ? '#16a34a' : pState.includes('CANCEL') ? '#ea580c' : '#8b5cf6';
           const icon = createTriangleIcon(markerColor);
           const remarksRaw = ord.fallout_reason || ord.remark || ord.order_status_desc || '';
@@ -646,7 +647,7 @@ export default function AnalysisMap({
                       <span>🔺</span> {pState}
                     </span>
                     <span className="bg-slate-100 text-slate-700 font-bold px-1.5 py-0.5 rounded text-[8.5px] whitespace-nowrap">
-                      {ord.order_duration_cat || ord.aging_fallout || '3 HARI'}
+                      {ord.order_duration_cat || ord.aging_fallout || '> 0 HARI'}
                     </span>
                   </div>
 
@@ -707,9 +708,9 @@ export default function AnalysisMap({
                         {nearestOdp.odp_name}
                       </p>
                       <div className="flex items-center justify-between pt-0.5">
-                        <span>Port: <strong>{nearestOdp.used}/{nearestOdp.is_total}</strong> ({nearestOcc}%)</span>
+                        <span>Port: <strong>{nearestOdp.used || 0}/{nearestOdp.is_total || 0}</strong> ({nearestOcc}%)</span>
                         <span className="text-white px-1.5 py-0.2 rounded text-[7.5px] font-black uppercase" style={{ backgroundColor: nearestColor }}>
-                          {nearestOdp.status_final}
+                          {nearestOdp.status_final || 'BLACK'}
                         </span>
                       </div>
                     </div>
