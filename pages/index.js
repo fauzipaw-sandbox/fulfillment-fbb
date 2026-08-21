@@ -23,7 +23,7 @@ const MONTH_NAMES = [
 ];
 
 function formatDateFormatted(d) {
-  if (!d) return '-';
+  if (!d || !(d instanceof Date) || isNaN(d.getTime())) return '-';
   return `${String(d.getDate()).padStart(2, '0')}-${MONTH_NAMES[d.getMonth()]}-${d.getFullYear()}`;
 }
 
@@ -54,14 +54,30 @@ function extractPureDateString(val) {
     return `${y}-${m}-${d}`;
   }
 
-  return str.slice(0, 10);
+  return str.length >= 10 ? str.slice(0, 10) : str;
 }
 
-function formatDisplayDate(val) {
+function safeFormatDisplayDate(val) {
+  if (!val) return '-';
   const pure = extractPureDateString(val);
-  if (!pure || pure.length < 10) return val || '-';
+  if (!pure || pure.length < 10) return String(val);
   const parts = pure.split('-');
-  return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  if (parts.length === 3) {
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  }
+  return String(val);
+}
+
+function safeFormatNumber(val) {
+  if (val === null || val === undefined || val === '') return '-';
+  const num = Number(val);
+  return isNaN(num) ? String(val) : num.toLocaleString();
+}
+
+function safeFormatCoord(val) {
+  if (val === null || val === undefined || val === '') return '-';
+  const num = Number(val);
+  return isNaN(num) ? String(val) : num.toFixed(5);
 }
 
 const renderExactSegmentLabel = (key) => (props) => {
@@ -182,6 +198,7 @@ export default function Dashboard() {
 
   const fullyFilteredData = useMemo(() => {
     return (data || []).filter((d) => {
+      if (!d) return false;
       const matchStatus = selectedStatus === 'ALL' || d.status_final === selectedStatus;
       const matchRx = selectedRx === 'ALL' || d.rx_category === selectedRx;
       const matchKab = selectedKabupaten === 'ALL' || d.kabupaten === selectedKabupaten;
@@ -195,6 +212,7 @@ export default function Dashboard() {
 
   const rxFilteredData = useMemo(() => {
     return (data || []).filter((d) => {
+      if (!d) return false;
       const matchStatus = selectedStatus === 'ALL' || d.status_final === selectedStatus;
       const matchKab = selectedKabupaten === 'ALL' || d.kabupaten === selectedKabupaten;
       const matchSto = selectedStoFilter === 'ALL' || d.sto === selectedStoFilter;
@@ -206,18 +224,19 @@ export default function Dashboard() {
 
   const filteredOrders = useMemo(() => {
     return (ordersData || []).filter((o) => {
+      if (!o) return false;
       const matchSto = selectedStoFilter === 'ALL' || o.sto_co === selectedStoFilter;
       const matchWok = selectedWokFilter === 'ALL' || o.wok === selectedWokFilter;
       const s = orderTableSearch.toLowerCase();
       const matchSearch =
         !s ||
-        (o.order_id && o.order_id.toLowerCase().includes(s)) ||
-        (o.name && o.name.toLowerCase().includes(s)) ||
-        (o.odp_name && o.odp_name.toLowerCase().includes(s)) ||
-        (o.sto_co && o.sto_co.toLowerCase().includes(s)) ||
-        (o.symptom && o.symptom.toLowerCase().includes(s)) ||
-        (o.fallout_category && o.fallout_category.toLowerCase().includes(s)) ||
-        (o.fallout_reason_clean && o.fallout_reason_clean.toLowerCase().includes(s));
+        (o.order_id && String(o.order_id).toLowerCase().includes(s)) ||
+        (o.name && String(o.name).toLowerCase().includes(s)) ||
+        (o.odp_name && String(o.odp_name).toLowerCase().includes(s)) ||
+        (o.sto_co && String(o.sto_co).toLowerCase().includes(s)) ||
+        (o.symptom && String(o.symptom).toLowerCase().includes(s)) ||
+        (o.fallout_category && String(o.fallout_category).toLowerCase().includes(s)) ||
+        (o.fallout_reason_clean && String(o.fallout_reason_clean).toLowerCase().includes(s));
 
       return matchSto && matchWok && matchSearch;
     });
@@ -225,7 +244,7 @@ export default function Dashboard() {
 
   const headerCutoffText = useMemo(() => {
     if (!data || data.length === 0) return '*Cut Off Data until -';
-    const dates = data.map((d) => d.parsed_date?.getTime()).filter((t) => t && !isNaN(t));
+    const dates = data.map((d) => (d && d.parsed_date ? d.parsed_date.getTime() : null)).filter((t) => t && !isNaN(t));
     if (dates.length === 0) return '*Cut Off Data';
     const latestDate = new Date(Math.max(...dates));
     return `*Cut Off Data until ${formatDateFormatted(latestDate)}`;
@@ -237,12 +256,13 @@ export default function Dashboard() {
     let colorPorts = { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 };
 
     (data || []).forEach(item => {
-      totalPort += item.is_total;
-      usedPort += item.used;
-      avaiPort += item.avai;
+      if (!item) return;
+      totalPort += item.is_total || 0;
+      usedPort += item.used || 0;
+      avaiPort += item.avai || 0;
       if (colorCounts[item.status_final] !== undefined) {
         colorCounts[item.status_final]++;
-        colorPorts[item.status_final] += item.is_total;
+        colorPorts[item.status_final] += item.is_total || 0;
       }
     });
 
@@ -254,9 +274,10 @@ export default function Dashboard() {
     let rxPorts = { RED: 0, ORANGE: 0, YELLOW: 0, GREEN: 0, NO_DATA: 0 };
 
     rxFilteredData.forEach(item => {
+      if (!item) return;
       if (rxCounts[item.rx_category] !== undefined) {
         rxCounts[item.rx_category]++;
-        rxPorts[item.rx_category] += item.is_total;
+        rxPorts[item.rx_category] += item.is_total || 0;
       }
     });
 
@@ -274,20 +295,23 @@ export default function Dashboard() {
     });
 
     fullyFilteredData.forEach(item => {
-      const kab = item.kabupaten;
+      if (!item) return;
+      const kab = item.kabupaten || 'LAINNYA';
       if (!kabMap[kab]) {
         kabMap[kab] = { name: kab, rawCounts: { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 }, rawPorts: { BLACK: 0, GREEN: 0, YELLOW: 0, ORANGE: 0, RED: 0 }, total: 0 };
       }
-      kabMap[kab].rawCounts[item.status_final]++;
-      kabMap[kab].rawPorts[item.status_final] += item.is_total;
-      kabMap[kab].total++;
+      if (kabMap[kab].rawCounts[item.status_final] !== undefined) {
+        kabMap[kab].rawCounts[item.status_final]++;
+        kabMap[kab].rawPorts[item.status_final] += item.is_total || 0;
+        kabMap[kab].total++;
+      }
 
-      const key = `${item.wok}_${item.sto}`;
-      if (!flatStosMap[key]) flatStosMap[key] = { wok: item.wok, sto: item.sto, odp_count: 0, is_total: 0, used: 0, avai: 0 };
+      const key = `${item.wok || 'WOK'}_${item.sto || 'STO'}`;
+      if (!flatStosMap[key]) flatStosMap[key] = { wok: item.wok || '-', sto: item.sto || '-', odp_count: 0, is_total: 0, used: 0, avai: 0 };
       flatStosMap[key].odp_count++;
-      flatStosMap[key].is_total += item.is_total;
-      flatStosMap[key].used += item.used;
-      flatStosMap[key].avai += item.avai;
+      flatStosMap[key].is_total += item.is_total || 0;
+      flatStosMap[key].used += item.used || 0;
+      flatStosMap[key].avai += item.avai || 0;
     });
 
     const chartData = Object.values(kabMap).filter(k => k.total > 0 || VALID_KABS.includes(k.name)).map(k => {
@@ -356,11 +380,11 @@ export default function Dashboard() {
     if (tableSearch.trim()) {
       const s = tableSearch.toLowerCase();
       filtered = filtered.filter((d) =>
-        (d.odp_name && d.odp_name.toLowerCase().includes(s)) ||
-        (d.sto && d.sto.toLowerCase().includes(s)) ||
-        (d.wok && d.wok.toLowerCase().includes(s)) ||
-        (d.kabupaten && d.kabupaten.toLowerCase().includes(s)) ||
-        (d.desa && d.desa.toLowerCase().includes(s))
+        (d.odp_name && String(d.odp_name).toLowerCase().includes(s)) ||
+        (d.sto && String(d.sto).toLowerCase().includes(s)) ||
+        (d.wok && String(d.wok).toLowerCase().includes(s)) ||
+        (d.kabupaten && String(d.kabupaten).toLowerCase().includes(s)) ||
+        (d.desa && String(d.desa).toLowerCase().includes(s))
       );
     }
 
@@ -466,7 +490,7 @@ export default function Dashboard() {
     setSearchTerm(val);
     if (val.length >= 3) {
       const lower = val.toLowerCase();
-      const suggs = fullyFilteredData.filter(d => (d.odp_name && d.odp_name.toLowerCase().includes(lower)) || (d.kabupaten && d.kabupaten.toLowerCase().includes(lower)) || (d.sto && d.sto.toLowerCase().includes(lower))).slice(0, 8);
+      const suggs = fullyFilteredData.filter(d => (d.odp_name && String(d.odp_name).toLowerCase().includes(lower)) || (d.kabupaten && String(d.kabupaten).toLowerCase().includes(lower)) || (d.sto && String(d.sto).toLowerCase().includes(lower))).slice(0, 8);
       setSuggestions(suggs);
     } else {
       setSuggestions([]);
@@ -480,7 +504,7 @@ export default function Dashboard() {
       const parts = clean.split(',').map((p) => parseFloat(p.trim()));
       if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) return { name: clean, lat: parts[0], lon: parts[1] };
     }
-    const found = (data || []).find((d) => d.odp_name && d.odp_name.toLowerCase() === clean.toLowerCase());
+    const found = (data || []).find((d) => d.odp_name && String(d.odp_name).toLowerCase() === clean.toLowerCase());
     if (found && found.latitude && found.longitude) return { name: found.odp_name, lat: found.latitude, lon: found.longitude };
     return null;
   };
@@ -1101,7 +1125,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ================= SECTION BAWAH: TABEL DETAIL RAW DATA (SEMUA KOLOM) ================= */}
+        {/* ================= SECTION BAWAH: TABEL DETAIL RAW DATA (SEMUA KOLOM LENGKAP) ================= */}
         <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden mt-4">
           <div className="bg-gradient-to-r from-[#0f172a] via-[#1e293b] to-[#334155] text-white p-2.5 px-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <div className="flex items-center gap-2">
@@ -1266,7 +1290,7 @@ export default function Dashboard() {
                   ) : (
                     paginatedOdpData.map((row, idx) => {
                       const rowNumber = (currentPage - 1) * rowsPerPage + idx + 1;
-                      const occ = row.is_total > 0 ? (row.used / row.is_total) * 100 : 0;
+                      const occ = (row.is_total && row.is_total > 0) ? ((row.used || 0) / row.is_total) * 100 : 0;
                       
                       let statusColor = '#111827';
                       if (row.status_final === 'RED') statusColor = '#dc2626';
@@ -1275,17 +1299,20 @@ export default function Dashboard() {
                       else if (row.status_final === 'GREEN') statusColor = '#16a34a';
 
                       let rxColor = '#64748b';
-                      if (row.ont_rx_level !== null) {
-                        if (row.ont_rx_level > -18) rxColor = '#16a34a';
-                        else if (row.ont_rx_level >= -21) rxColor = '#ca8a04';
-                        else if (row.ont_rx_level >= -25) rxColor = '#ea580c';
-                        else rxColor = '#dc2626';
+                      if (row.ont_rx_level !== null && row.ont_rx_level !== undefined && row.ont_rx_level !== '') {
+                        const rxNum = Number(row.ont_rx_level);
+                        if (!isNaN(rxNum)) {
+                          if (rxNum > -18) rxColor = '#16a34a';
+                          else if (rxNum >= -21) rxColor = '#ca8a04';
+                          else if (rxNum >= -25) rxColor = '#ea580c';
+                          else rxColor = '#dc2626';
+                        }
                       }
 
                       return (
-                        <tr key={`${row.odp_name}-${idx}`} className="border-b border-slate-200 hover:bg-blue-50/60 transition">
+                        <tr key={`${row.odp_name || idx}-${idx}`} className="border-b border-slate-200 hover:bg-blue-50/60 transition">
                           <td className="p-1 border border-slate-200 text-center font-bold text-slate-500">{rowNumber}</td>
-                          <td className="p-1 border border-slate-200 font-black text-blue-900">{row.odp_name}</td>
+                          <td className="p-1 border border-slate-200 font-black text-blue-900">{row.odp_name || '-'}</td>
                           <td
                             className="p-1 border border-slate-200 font-bold cursor-pointer hover:text-blue-700 hover:underline"
                             onClick={() => setSelectedStoFilter((p) => (p === row.sto ? 'ALL' : row.sto))}
@@ -1322,7 +1349,7 @@ export default function Dashboard() {
                               className="px-1.5 py-0.5 rounded text-[8.5px] font-bold text-white uppercase"
                               style={{ backgroundColor: statusColor }}
                             >
-                              {row.status_final}
+                              {row.status_final || 'BLACK'}
                             </span>
                           </td>
                           <td className="p-1 border border-slate-200 text-center font-bold">{row.is_total || 0}</td>
@@ -1336,12 +1363,12 @@ export default function Dashboard() {
                             onClick={() => setSelectedRx((p) => (p === row.rx_category ? 'ALL' : row.rx_category))}
                             title="Klik untuk filter Kategori RX ini"
                           >
-                            {row.ont_rx_level !== null ? `${Number(row.ont_rx_level).toFixed(2)} dBm` : '-'}
+                            {row.ont_rx_level !== null && row.ont_rx_level !== undefined && row.ont_rx_level !== '' ? `${Number(row.ont_rx_level).toFixed(2)} dBm` : '-'}
                           </td>
                           <td className="p-1 border border-slate-200 text-center text-slate-600">{row.status || '-'}</td>
-                          <td className="p-1 border border-slate-200">{row.event_date || '-'}</td>
-                          <td className="p-1 border border-slate-200 font-mono text-[8.5px] text-slate-500">{row.latitude || '-'}</td>
-                          <td className="p-1 border border-slate-200 font-mono text-[8.5px] text-slate-500">{row.longitude || '-'}</td>
+                          <td className="p-1 border border-slate-200">{safeFormatDisplayDate(row.event_date)}</td>
+                          <td className="p-1 border border-slate-200 font-mono text-[8.5px] text-slate-500">{safeFormatCoord(row.latitude)}</td>
+                          <td className="p-1 border border-slate-200 font-mono text-[8.5px] text-slate-500">{safeFormatCoord(row.longitude)}</td>
                         </tr>
                       );
                     })
@@ -1440,17 +1467,15 @@ export default function Dashboard() {
                   ) : (
                     paginatedOrderData.map((row, idx) => {
                       const rowNumber = (currentOrderPage - 1) * rowsPerPage + idx + 1;
-                      const pState = (row.process_state || 'UNKNOWN').trim().toUpperCase();
-                      const saklekDur = getExactDurationCategory(row);
-                      const displayOrderDate = formatDisplayDate(row.order_ts || row.provi);
+                      const pState = String(row.process_state || 'UNKNOWN').trim().toUpperCase();
 
                       return (
                         <tr
-                          key={`${row.order_id}-${idx}`}
+                          key={`${row.order_id || idx}-${idx}`}
                           className="border-b border-slate-200 hover:bg-purple-50/60 transition"
                         >
                           <td className="p-1 border border-slate-200 text-center font-bold text-slate-500">{rowNumber}</td>
-                          <td className="p-1 border border-slate-200 font-black text-purple-900">{row.order_id}</td>
+                          <td className="p-1 border border-slate-200 font-black text-purple-900">{row.order_id || '-'}</td>
                           <td className="p-1 border border-slate-200 font-mono text-slate-600">{row.new_order_id || '-'}</td>
                           <td className="p-1 border border-slate-200 font-bold text-slate-800">
                             <span
@@ -1472,7 +1497,7 @@ export default function Dashboard() {
                           <td className="p-1 border border-slate-200">{row.wok || '-'}</td>
                           <td className="p-1 border border-slate-200 font-bold text-blue-800">{row.odp_name || '-'}</td>
                           <td className="p-1 border border-slate-200">{row.product_commercial_name || '-'}</td>
-                          <td className="p-1 border border-slate-200 font-bold text-emerald-800">{saklekDur}</td>
+                          <td className="p-1 border border-slate-200 font-bold text-emerald-800">{row.order_duration_cat || '-'}</td>
                           <td className="p-1 border border-slate-200 font-semibold text-slate-700">{row.fallout_category || '-'}</td>
                           <td className="p-1 border border-slate-200 font-bold text-red-700">{row.symptom || '-'}</td>
                           <td className="p-1 border border-slate-200 text-red-600 max-w-[200px] truncate" title={row.fallout_reason_clean || row.fallout_reason}>
@@ -1480,16 +1505,16 @@ export default function Dashboard() {
                           </td>
                           <td className="p-1 border border-slate-200">{row.category_hk || '-'}</td>
                           <td className="p-1 border border-slate-200">{row.status_hk || '-'}</td>
-                          <td className="p-1 border border-slate-200">{formatDisplayDate(row.tanggal_hk)}</td>
+                          <td className="p-1 border border-slate-200">{safeFormatDisplayDate(row.tanggal_hk)}</td>
                           <td className="p-1 border border-slate-200">{row.pic_dept || '-'}</td>
-                          <td className="p-1 border border-slate-200 text-right">{row.price_package ? Number(row.price_package).toLocaleString() : '-'}</td>
-                          <td className="p-1 border border-slate-200 font-mono text-[9px] font-bold text-slate-800">{displayOrderDate}</td>
-                          <td className="p-1 border border-slate-200">{formatDisplayDate(row.ps_ts)}</td>
+                          <td className="p-1 border border-slate-200 text-right">{safeFormatNumber(row.price_package)}</td>
+                          <td className="p-1 border border-slate-200 font-mono text-[9px] font-bold text-slate-800">{safeFormatDisplayDate(row.order_ts || row.provi)}</td>
+                          <td className="p-1 border border-slate-200">{safeFormatDisplayDate(row.ps_ts)}</td>
                           <td className="p-1 border border-slate-200">{row.sf_name || '-'}</td>
                           <td className="p-1 border border-slate-200 max-w-[150px] truncate" title={row.remark}>{row.remark || '-'}</td>
                           <td className="p-1 border border-slate-200 max-w-[180px] truncate" title={row.address}>{row.address || '-'}</td>
-                          <td className="p-1 border border-slate-200 font-mono text-[8.5px]">{row.latitude || '-'}</td>
-                          <td className="p-1 border border-slate-200 font-mono text-[8.5px]">{row.longitude || '-'}</td>
+                          <td className="p-1 border border-slate-200 font-mono text-[8.5px]">{safeFormatCoord(row.latitude)}</td>
+                          <td className="p-1 border border-slate-200 font-mono text-[8.5px]">{safeFormatCoord(row.longitude)}</td>
                         </tr>
                       );
                     })
@@ -1500,7 +1525,7 @@ export default function Dashboard() {
           )}
 
           {/* Pagination */}
-          <div className="bg-slate-50 p-2 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-2 text-xs font-semibold">
+          <div className="bg-slate-50 p-2.5 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-2 text-xs font-semibold">
             {bottomActiveTab === 'ODP' ? (
               <>
                 <span className="text-slate-600">
@@ -1511,7 +1536,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentPage(1)}
                     disabled={currentPage === 1}
-                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     &laquo; Pertama
                   </button>
@@ -1519,7 +1544,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
-                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     &lsaquo; Prev
                   </button>
@@ -1528,7 +1553,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentPage((p) => Math.min(totalOdpPages, p + 1))}
                     disabled={currentPage === totalOdpPages}
-                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     Next &rsaquo;
                   </button>
@@ -1536,7 +1561,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentPage(totalOdpPages)}
                     disabled={currentPage === totalOdpPages}
-                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     Terakhir &raquo;
                   </button>
@@ -1552,7 +1577,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentOrderPage(1)}
                     disabled={currentOrderPage === 1}
-                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     &laquo; Pertama
                   </button>
@@ -1560,7 +1585,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentOrderPage((p) => Math.max(1, p - 1))}
                     disabled={currentOrderPage === 1}
-                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     &lsaquo; Prev
                   </button>
@@ -1569,7 +1594,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentOrderPage((p) => Math.min(totalOrderPages, p + 1))}
                     disabled={currentOrderPage === totalOrderPages}
-                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     Next &rsaquo;
                   </button>
@@ -1577,7 +1602,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentOrderPage(totalOrderPages)}
                     disabled={currentOrderPage === totalOrderPages}
-                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     Terakhir &raquo;
                   </button>
