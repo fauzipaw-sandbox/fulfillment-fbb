@@ -33,12 +33,13 @@ function sortDurationColumns(cols = []) {
   });
 }
 
+// Warna Modern & Kontras Tinggi
 const DURATION_COLORS = {
-  '> 0 HARI': '#06b6d4',
-  '> 3 HARI': '#22c55e',
-  '> 7 HARI': '#f97316',
-  '> 1 BULAN': '#3b82f6',
-  '> 3 BULAN': '#a855f7',
+  '> 0 HARI': '#06b6d4', // Cyan
+  '> 3 HARI': '#10b981', // Emerald Green
+  '> 7 HARI': '#f59e0b', // Amber
+  '> 1 BULAN': '#3b82f6', // Royal Blue
+  '> 3 BULAN': '#8b5cf6', // Violet Purple
   DEFAULT: '#64748b',
 };
 
@@ -781,7 +782,7 @@ export default function OrdersPage() {
         )}
 
         {/* ========================================================================= */}
-        {/* REPORT BROADCAST SECTION (1 HALAMAN PRESISI SESUAI GAMBAR 2X2 GRID)     */}
+        {/* REPORT BROADCAST SECTION (1 HALAMAN PRESISI 2X2 GRID TANPA SCROLL)       */}
         {/* ========================================================================= */}
         <div id="broadcast-report-container" className="space-y-3 bg-slate-100/60 p-2 rounded-lg border border-slate-200">
           
@@ -821,10 +822,10 @@ export default function OrdersPage() {
                           key={c}
                           className={`p-1 border border-slate-600 cursor-pointer hover:opacity-80 font-black text-[8.5px] ${
                             c === '> 0 HARI' ? 'bg-[#06b6d4] text-slate-950' :
-                            c === '> 3 HARI' ? 'bg-[#22c55e] text-slate-950' :
-                            c === '> 7 HARI' ? 'bg-[#f97316] text-slate-950' :
+                            c === '> 3 HARI' ? 'bg-[#10b981] text-slate-950' :
+                            c === '> 7 HARI' ? 'bg-[#f59e0b] text-slate-950' :
                             c === '> 1 BULAN' ? 'bg-[#3b82f6] text-white' :
-                            c === '> 3 BULAN' ? 'bg-[#a855f7] text-white' : 'bg-slate-700'
+                            c === '> 3 BULAN' ? 'bg-[#8b5cf6] text-white' : 'bg-slate-700'
                           }`}
                           onClick={() => {
                             setActiveSubgroupScope(selectedPivotSubgroups);
@@ -1258,7 +1259,7 @@ export default function OrdersPage() {
                               } ${
                                 dur.name === '> 0 HARI' ? 'bg-[#cffafe] hover:bg-[#a5f3fc]' :
                                 dur.name === '> 3 HARI' ? 'bg-[#dcfce7] hover:bg-[#bbf7d0]' :
-                                dur.name === '> 7 HARI' ? 'bg-[#ffedd5] hover:bg-[#fed7aa]' :
+                                dur.name === '> 7 HARI' ? 'bg-[#fef3c7] hover:bg-[#fde68a]' :
                                 dur.name === '> 1 BULAN' ? 'bg-[#dbeafe] hover:bg-[#bfdbfe]' : 'bg-[#f3e8ff] hover:bg-[#e9d5ff]'
                               }`}
                               onClick={() => {
@@ -1323,19 +1324,27 @@ export default function OrdersPage() {
               </div>
             </div>
 
-            {/* 2.2. Diagram Batang Duration Fallout (Lebar 8 dari 12 Kolom) */}
-            <div className="xl:col-span-8 bg-white border-2 border-slate-400 shadow-sm rounded p-2.5 flex flex-col justify-between">
+            {/* 2.2. Diagram Batang Duration Fallout (Grafik Modern, Glow & Keren) */}
+            <div className="xl:col-span-8 bg-gradient-to-b from-white to-slate-50 border-2 border-slate-400 shadow-sm rounded-lg p-3 flex flex-col justify-between relative overflow-hidden">
               <div>
-                <div className="flex items-center justify-between border-b pb-1 mb-1.5 flex-wrap gap-1">
-                  <h4 className="font-extrabold text-slate-800 text-xs sm:text-sm tracking-wide uppercase flex items-center gap-1">
-                    <span>📈</span> DURATION FALLOUT
-                  </h4>
-                  <span className="text-[9.5px] text-purple-700 font-bold bg-purple-50 px-2 py-0.2 rounded border border-purple-200">
-                    Filter: {selectedFalloutStates.length === availableProcessStateOptions.length ? 'Semua Status' : selectedFalloutStates.join(', ')}
-                  </span>
+                <div className="flex items-center justify-between border-b border-slate-200 pb-1.5 mb-2 flex-wrap gap-1">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1 bg-purple-100 text-purple-900 rounded font-black text-xs">📊</span>
+                    <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm tracking-wide uppercase">
+                      DURATION FALLOUT CHART
+                    </h4>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9.5px] font-extrabold text-blue-900 bg-blue-100/80 px-2 py-0.5 rounded-full border border-blue-200">
+                      Total: {chartData.reduce((acc, curr) => acc + curr.count, 0)} Kasus
+                    </span>
+                    <span className="text-[9.5px] text-purple-700 font-bold bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                      Filter: {selectedFalloutStates.length === availableProcessStateOptions.length ? 'Semua Status' : selectedFalloutStates.join(', ')}
+                    </span>
+                  </div>
                 </div>
 
-                <div className="h-[270px] w-full">
+                <div className="h-[280px] w-full pt-1">
                   {chartData.length === 0 ? (
                     <div className="h-full flex items-center justify-center text-slate-400 font-bold text-xs">
                       Tidak ada data Fallout pada filter yang dipilih.
@@ -1344,7 +1353,7 @@ export default function OrdersPage() {
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart
                         data={chartData}
-                        margin={{ top: 15, right: 10, left: -25, bottom: 50 }}
+                        margin={{ top: 20, right: 10, left: -25, bottom: 55 }}
                         onClick={(e) => {
                           if (e && e.activePayload && e.activePayload.length) {
                             const payload = e.activePayload[0].payload;
@@ -1357,7 +1366,7 @@ export default function OrdersPage() {
                           }
                         }}
                       >
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                         <XAxis
                           dataKey="reason"
                           interval={0}
@@ -1366,11 +1375,11 @@ export default function OrdersPage() {
                               <text
                                 x={0}
                                 y={0}
-                                dy={8}
+                                dy={10}
                                 textAnchor="end"
-                                fill="#334155"
-                                fontWeight="bold"
-                                fontSize={7.5}
+                                fill="#1e293b"
+                                fontWeight="700"
+                                fontSize={8}
                                 transform="rotate(-30)"
                               >
                                 {payload.value}
@@ -1378,16 +1387,18 @@ export default function OrdersPage() {
                             </g>
                           )}
                         />
-                        <YAxis tick={{ fontSize: 8.5, fontWeight: 'bold' }} allowDecimals={false} />
+                        <YAxis tick={{ fontSize: 9, fontWeight: 'bold', fill: '#475569' }} allowDecimals={false} />
                         <Tooltip
                           content={({ active, payload }) => {
                             if (active && payload && payload.length) {
                               const d = payload[0].payload;
                               return (
-                                <div className="bg-white p-2 rounded shadow-lg border border-slate-300 text-xs font-sans">
-                                  <p className="font-black text-slate-900">{d.reason}</p>
-                                  <p className="text-[11px] font-bold text-slate-600">Kategori Durasi: {d.duration}</p>
-                                  <p className="text-xs font-black text-blue-700 mt-1">Total: {d.count} Order</p>
+                                <div className="bg-slate-900/95 text-white p-2.5 rounded-lg shadow-2xl border border-slate-700 text-xs font-sans space-y-1">
+                                  <p className="font-extrabold text-yellow-300 border-b border-slate-700 pb-1">{d.reason}</p>
+                                  <p className="text-[11px] font-semibold text-slate-300">
+                                    Durasi: <strong className="text-white">{d.duration}</strong>
+                                  </p>
+                                  <p className="text-xs font-black text-emerald-400 pt-0.5">Jumlah: {d.count} Order</p>
                                 </div>
                               );
                             }
@@ -1399,7 +1410,7 @@ export default function OrdersPage() {
                           <ReferenceLine
                             key={`div-${dIdx}`}
                             x={xVal}
-                            stroke="#94a3b8"
+                            stroke="#cbd5e1"
                             strokeDasharray="4 4"
                             strokeWidth={1.5}
                           />
@@ -1407,21 +1418,26 @@ export default function OrdersPage() {
 
                         <Bar
                           dataKey="count"
+                          radius={[6, 6, 0, 0]}
                           label={({ x, y, width, value }) => (
                             <text
                               x={x + width / 2}
-                              y={y - 4}
+                              y={y - 6}
                               fill="#0f172a"
                               textAnchor="middle"
-                              fontSize={8.5}
-                              fontWeight="bold"
+                              fontSize={9}
+                              fontWeight="900"
                             >
                               {value}
                             </text>
                           )}
                         >
                           {chartData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.fillColor} />
+                            <Cell
+                              key={`cell-${index}`}
+                              fill={entry.fillColor}
+                              className="transition-all duration-200 hover:opacity-80 cursor-pointer"
+                            />
                           ))}
                         </Bar>
                       </BarChart>
@@ -1430,21 +1446,22 @@ export default function OrdersPage() {
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-center gap-3 text-[9.5px] font-bold text-slate-600 mt-1 border-t pt-1">
-                <span className="flex items-center gap-1">
-                  <span className="w-3 h-3 bg-[#06b6d4] rounded-xs inline-block shadow-xs"></span> &gt; 0 HARI
+              {/* Legend Modern Pills */}
+              <div className="flex flex-wrap items-center justify-center gap-2 text-[9.5px] font-extrabold text-slate-700 mt-2 border-t border-slate-200 pt-2 bg-white/80 p-1.5 rounded-md">
+                <span className="flex items-center gap-1.5 bg-cyan-50 border border-cyan-300 px-2 py-0.5 rounded-full text-cyan-950">
+                  <span className="w-2.5 h-2.5 bg-[#06b6d4] rounded-full inline-block shadow-xs"></span> &gt; 0 HARI
                 </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-3 h-3 bg-[#22c55e] rounded-xs inline-block shadow-xs"></span> &gt; 3 HARI
+                <span className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-300 px-2 py-0.5 rounded-full text-emerald-950">
+                  <span className="w-2.5 h-2.5 bg-[#10b981] rounded-full inline-block shadow-xs"></span> &gt; 3 HARI
                 </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-3 h-3 bg-[#f97316] rounded-xs inline-block shadow-xs"></span> &gt; 7 HARI
+                <span className="flex items-center gap-1.5 bg-amber-50 border border-amber-300 px-2 py-0.5 rounded-full text-amber-950">
+                  <span className="w-2.5 h-2.5 bg-[#f59e0b] rounded-full inline-block shadow-xs"></span> &gt; 7 HARI
                 </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-3 h-3 bg-[#3b82f6] rounded-xs inline-block shadow-xs"></span> &gt; 1 BULAN
+                <span className="flex items-center gap-1.5 bg-blue-50 border border-blue-300 px-2 py-0.5 rounded-full text-blue-950">
+                  <span className="w-2.5 h-2.5 bg-[#3b82f6] rounded-full inline-block shadow-xs"></span> &gt; 1 BULAN
                 </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-3 h-3 bg-[#a855f7] rounded-xs inline-block shadow-xs"></span> &gt; 3 BULAN
+                <span className="flex items-center gap-1.5 bg-purple-50 border border-purple-300 px-2 py-0.5 rounded-full text-purple-950">
+                  <span className="w-2.5 h-2.5 bg-[#8b5cf6] rounded-full inline-block shadow-xs"></span> &gt; 3 BULAN
                 </span>
               </div>
             </div>
@@ -1477,7 +1494,7 @@ export default function OrdersPage() {
                   setSearchTerm(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="px-2 py-1 text-black rounded text-xs outline-none w-full sm:w-60 bg-white"
+                className="px-2 py-1 text-black rounded text-xs outline-none w-full sm:w-60 bg-white font-semibold"
               />
               
               <button
