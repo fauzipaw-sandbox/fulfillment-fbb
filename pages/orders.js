@@ -33,12 +33,13 @@ function sortDurationColumns(cols = []) {
   });
 }
 
+// Warna Kontras Tinggi & Modern
 const DURATION_COLORS = {
-  '> 0 HARI': '#06b6d4',
-  '> 3 HARI': '#10b981',
-  '> 7 HARI': '#f59e0b',
-  '> 1 BULAN': '#3b82f6',
-  '> 3 BULAN': '#8b5cf6',
+  '> 0 HARI': '#06b6d4', // Cyan
+  '> 3 HARI': '#10b981', // Emerald Green
+  '> 7 HARI': '#f59e0b', // Amber
+  '> 1 BULAN': '#3b82f6', // Royal Blue
+  '> 3 BULAN': '#8b5cf6', // Violet Purple
   DEFAULT: '#64748b',
 };
 
@@ -253,6 +254,7 @@ export default function OrdersPage() {
 
   const [showUploader, setShowUploader] = useState(false);
 
+  // Normalisasi Data Orders Secara Real-time
   const orders = useMemo(() => {
     return (rawOrders || []).map((o) => {
       if (!o) return {};
@@ -383,7 +385,8 @@ export default function OrdersPage() {
         matchSubgroup = subGroup === activeSubgroupScope;
       }
       
-      const rVal = o.symptom || o.fallout_category || o.fallout_reason_clean || 'LAINNYA';
+      // MURNI DARI KOLOM FALLOUT REASON
+      const rVal = (o.fallout_reason || o.fallout_reason_clean || 'LAINNYA').trim();
       const matchFallout = selectedFallout === 'ALL' || rVal === selectedFallout;
       return matchMonth && matchWok && matchSto && matchDur && matchStat && matchSubgroup && matchFallout;
     });
@@ -501,7 +504,7 @@ export default function OrdersPage() {
     return { sortedWoks, columns, grandColTotals, totalAll };
   }, [pivotBaseOrders, pivot2Sort]);
 
-  // Pivot 3: Duration vs Fallout
+  // Pivot 3: Duration vs Fallout (MURNI DARI KOLOM FALLOUT REASON)
   const pivotFallout = useMemo(() => {
     const tree = {};
     DURATION_ORDER.forEach((k) => {
@@ -530,7 +533,8 @@ export default function OrdersPage() {
 
     baseOrders.forEach((o) => {
       const dur = o.order_duration_cat;
-      const r = o.symptom || o.fallout_category || o.fallout_reason_clean || 'LAINNYA';
+      // Ambil murni dari teks Fallout Reason
+      const r = (o.fallout_reason || o.fallout_reason_clean || 'LAINNYA').trim();
 
       if (!tree[dur]) tree[dur] = { name: dur, total: 0, reasons: {} };
       tree[dur].total++;
@@ -614,6 +618,7 @@ export default function OrdersPage() {
           (o.funneling_subgroup && String(o.funneling_subgroup).toLowerCase().includes(s)) ||
           (o.symptom && String(o.symptom).toLowerCase().includes(s)) ||
           (o.fallout_category && String(o.fallout_category).toLowerCase().includes(s)) ||
+          (o.fallout_reason && String(o.fallout_reason).toLowerCase().includes(s)) ||
           (o.fallout_reason_clean && String(o.fallout_reason_clean).toLowerCase().includes(s))
       );
     }
@@ -1213,14 +1218,14 @@ export default function OrdersPage() {
 
           </div>
 
-          {/* BARIS 2: PIVOT FALLOUT & DURATION FALLOUT CHART */}
+          {/* BARIS 2: PIVOT FALLOUT (KIRI) & DURATION FALLOUT CHART (KANAN) - MURNI DARI KOLOM FALLOUT REASON */}
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 items-stretch">
             
             {/* 2.1. Pivot Fallout Table */}
             <div className="xl:col-span-4 bg-white border-2 border-slate-400 shadow-sm rounded overflow-hidden flex flex-col justify-between">
               <div>
                 <div className="bg-[#0f172a] text-white p-1.5 px-2.5 flex justify-between items-center text-[11px] font-black uppercase flex-wrap gap-1 border-b-2 border-slate-800">
-                  <span className="tracking-wide">Fallout</span>
+                  <span className="tracking-wide">Fallout Reason</span>
                   
                   <div className="flex items-center gap-1">
                     <span className="text-[8.5px] text-slate-300 font-bold">Status:</span>
@@ -1241,7 +1246,7 @@ export default function OrdersPage() {
                           className="p-1 border border-slate-600 cursor-pointer hover:bg-slate-700 font-extrabold pl-2"
                           onClick={() => handlePivotFalloutSort('reason')}
                         >
-                          Row Labels {pivotFalloutSort.key === 'reason' ? (pivotFalloutSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                          Fallout Reason {pivotFalloutSort.key === 'reason' ? (pivotFalloutSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                         </th>
                         <th
                           className="p-1 border border-slate-600 text-right pr-2.5 cursor-pointer hover:bg-slate-700 font-extrabold w-[110px]"
@@ -1339,14 +1344,14 @@ export default function OrdersPage() {
               </div>
             </div>
 
-            {/* 2.2. Modern & Responsive Duration Fallout Chart */}
+            {/* 2.2. Modern & Responsive Duration Fallout Chart (MURNI DARI KOLOM FALLOUT REASON) */}
             <div className="xl:col-span-8 bg-gradient-to-b from-white to-slate-50 border-2 border-slate-400 shadow-sm rounded-lg p-3 flex flex-col justify-between relative overflow-hidden">
               <div>
                 <div className="flex items-center justify-between border-b border-slate-200 pb-1.5 mb-2 flex-wrap gap-1">
                   <div className="flex items-center gap-2">
                     <span className="p-1 bg-purple-100 text-purple-900 rounded font-black text-xs">📊</span>
                     <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm tracking-wide uppercase">
-                      DURATION FALLOUT CHART
+                      DURATION FALLOUT CHART (BY FALLOUT REASON)
                     </h4>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1677,20 +1682,18 @@ export default function OrdersPage() {
                           {saklekDur}
                         </td>
                         <td className="p-1 border border-slate-200 font-semibold text-slate-700">{row.fallout_category || '-'}</td>
+                        <td className="p-1 border border-slate-200 font-bold text-red-700">{row.symptom || '-'}</td>
                         <td
-                          className="p-1 border border-slate-200 text-red-700 font-bold cursor-pointer hover:underline"
+                          className="p-1 border border-slate-200 text-red-600 max-w-[200px] truncate cursor-pointer hover:underline"
                           onClick={() => {
-                            const r = row.symptom || row.fallout_category || row.fallout_reason_clean;
+                            const r = (row.fallout_reason || row.fallout_reason_clean || '').trim();
                             if (selectedFalloutStates.length === 1) {
                               setSelectedStatus(selectedFalloutStates[0]);
                             }
                             r && setSelectedFallout((p) => (p === r ? 'ALL' : r));
                           }}
-                          title="Klik filter symptom ini"
+                          title={row.fallout_reason_clean || row.fallout_reason}
                         >
-                          {row.symptom || '-'}
-                        </td>
-                        <td className="p-1 border border-slate-200 text-red-600 max-w-[200px] truncate" title={row.fallout_reason_clean || row.fallout_reason}>
                           {row.fallout_reason_clean || row.fallout_reason || '-'}
                         </td>
                         <td className="p-1 border border-slate-200">{row.category_hk || '-'}</td>
