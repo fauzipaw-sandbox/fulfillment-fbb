@@ -27,6 +27,43 @@ function formatDateFormatted(d) {
   return `${String(d.getDate()).padStart(2, '0')}-${MONTH_NAMES[d.getMonth()]}-${d.getFullYear()}`;
 }
 
+function extractPureDateString(val) {
+  if (!val) return null;
+  const str = String(val).trim();
+
+  const ymdMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (ymdMatch) {
+    const y = ymdMatch[1];
+    const m = String(parseInt(ymdMatch[2], 10)).padStart(2, '0');
+    const d = String(parseInt(ymdMatch[3], 10)).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (dmyMatch) {
+    const d = String(parseInt(dmyMatch[1], 10)).padStart(2, '0');
+    const m = String(parseInt(dmyMatch[2], 10)).padStart(2, '0');
+    const y = dmyMatch[3];
+    return `${y}-${m}-${d}`;
+  }
+
+  if (val instanceof Date && !isNaN(val.getTime())) {
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, '0');
+    const d = String(val.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  return str.slice(0, 10);
+}
+
+function formatDisplayDate(val) {
+  const pure = extractPureDateString(val);
+  if (!pure || pure.length < 10) return val || '-';
+  const parts = pure.split('-');
+  return `${parts[2]}-${parts[1]}-${parts[0]}`;
+}
+
 const renderExactSegmentLabel = (key) => (props) => {
   const { x, y, width, height, payload } = props;
   const val = payload ? payload[key] : null;
@@ -179,6 +216,7 @@ export default function Dashboard() {
         (o.odp_name && o.odp_name.toLowerCase().includes(s)) ||
         (o.sto_co && o.sto_co.toLowerCase().includes(s)) ||
         (o.symptom && o.symptom.toLowerCase().includes(s)) ||
+        (o.fallout_category && o.fallout_category.toLowerCase().includes(s)) ||
         (o.fallout_reason_clean && o.fallout_reason_clean.toLowerCase().includes(s));
 
       return matchSto && matchWok && matchSearch;
@@ -516,7 +554,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="max-w-[1450px] mx-auto space-y-3">
+      <div className="max-w-[1550px] mx-auto space-y-3">
         {/* HEADER UTAMA */}
         <div className="bg-gradient-to-r from-[#211c47] to-[#3a3575] text-white p-3 sm:p-4 flex flex-col md:flex-row justify-between items-start md:items-center border-b-4 border-purple-500 rounded-t-lg shadow-sm gap-2">
           <div>
@@ -879,7 +917,7 @@ export default function Dashboard() {
                     placeholder="Cari ODP / STO / Kab..."
                     value={searchTerm}
                     onChange={handleSearchChange}
-                    className="w-full px-2.5 py-1 text-black rounded text-xs outline-none shadow-sm bg-white"
+                    className="w-full px-2.5 py-1 text-black rounded text-xs outline-none shadow-sm bg-white font-semibold"
                   />
                   {suggestions.length > 0 && (
                     <div className="absolute top-full left-0 w-full bg-white text-black mt-1 rounded shadow-xl border border-gray-300 overflow-hidden max-h-52 overflow-y-auto z-[2000]">
@@ -1063,9 +1101,9 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ================= SECTION BAWAH: TABEL DETAIL RAW DATA ================= */}
+        {/* ================= SECTION BAWAH: TABEL DETAIL RAW DATA (SEMUA KOLOM) ================= */}
         <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden mt-4">
-          <div className="bg-gradient-to-r from-[#0f172a] via-[#1e293b] to-[#334155] text-white p-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+          <div className="bg-gradient-to-r from-[#0f172a] via-[#1e293b] to-[#334155] text-white p-2.5 px-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -1102,7 +1140,7 @@ export default function Dashboard() {
                       setTableSearch(e.target.value);
                       setCurrentPage(1);
                     }}
-                    className="px-2.5 py-1 text-black rounded text-xs outline-none w-full sm:w-44 bg-white"
+                    className="px-2.5 py-1 text-black rounded text-xs outline-none w-full sm:w-44 bg-white font-semibold"
                   />
                   <button
                     type="button"
@@ -1129,7 +1167,7 @@ export default function Dashboard() {
                       setOrderTableSearch(e.target.value);
                       setCurrentOrderPage(1);
                     }}
-                    className="px-2.5 py-1 text-black rounded text-xs outline-none w-full sm:w-44 bg-white"
+                    className="px-2.5 py-1 text-black rounded text-xs outline-none w-full sm:w-44 bg-white font-semibold"
                   />
                   <button
                     type="button"
@@ -1150,57 +1188,78 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* TAB 1: TABEL DETAIL ODP */}
+          {/* TAB 1: TABEL DETAIL ODP (SEMUA KOLOM LENGKAP) */}
           {bottomActiveTab === 'ODP' && (
-            <div className="overflow-x-auto max-h-[460px] overflow-y-auto">
-              <table className="w-full text-left border-collapse text-[10px] whitespace-nowrap">
+            <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
+              <table className="w-full text-left border-collapse text-[9.5px] whitespace-nowrap">
                 <thead className="bg-[#1e293b] text-white uppercase font-bold sticky top-0 z-10 shadow select-none cursor-pointer">
                   <tr>
-                    <th className="p-2 border border-slate-600 text-center">No</th>
-                    <th className="p-2 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('odp_name')}>
+                    <th className="p-1.5 border border-slate-600 text-center">No</th>
+                    <th className="p-1.5 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('odp_name')}>
                       ODP Name {odpTableSort.key === 'odp_name' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('sto')}>
+                    <th className="p-1.5 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('sto')}>
                       STO {odpTableSort.key === 'sto' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('wok')}>
+                    <th className="p-1.5 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('sto_desc')}>
+                      STO Desc {odpTableSort.key === 'sto_desc' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-1.5 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('wok')}>
                       WOK {odpTableSort.key === 'wok' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('kabupaten')}>
+                    <th className="p-1.5 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('witel')}>
+                      Witel {odpTableSort.key === 'witel' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-1.5 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('datel')}>
+                      Datel {odpTableSort.key === 'datel' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-1.5 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('regional')}>
+                      Regional {odpTableSort.key === 'regional' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-1.5 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('kabupaten')}>
                       Kabupaten {odpTableSort.key === 'kabupaten' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('kecamatan')}>
+                    <th className="p-1.5 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('kecamatan')}>
                       Kecamatan {odpTableSort.key === 'kecamatan' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('desa')}>
+                    <th className="p-1.5 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('desa')}>
                       Desa {odpTableSort.key === 'desa' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-slate-600 text-center hover:bg-slate-700" onClick={() => requestOdpSort('status_final')}>
-                      Status {odpTableSort.key === 'status_final' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    <th className="p-1.5 border border-slate-600 text-center hover:bg-slate-700" onClick={() => requestOdpSort('status_final')}>
+                      Status Final {odpTableSort.key === 'status_final' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-slate-600 text-center hover:bg-slate-700" onClick={() => requestOdpSort('is_total')}>
+                    <th className="p-1.5 border border-slate-600 text-center hover:bg-slate-700" onClick={() => requestOdpSort('is_total')}>
                       Total Port {odpTableSort.key === 'is_total' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-slate-600 text-center hover:bg-slate-700" onClick={() => requestOdpSort('used')}>
+                    <th className="p-1.5 border border-slate-600 text-center hover:bg-slate-700" onClick={() => requestOdpSort('used')}>
                       Used {odpTableSort.key === 'used' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-slate-600 text-center hover:bg-slate-700" onClick={() => requestOdpSort('avai')}>
+                    <th className="p-1.5 border border-slate-600 text-center hover:bg-slate-700" onClick={() => requestOdpSort('avai')}>
                       Avail {odpTableSort.key === 'avai' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-slate-600 text-center hover:bg-slate-700" onClick={() => requestOdpSort('rsk')}>
-                      % OCC {odpTableSort.key === 'rsk' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    <th className="p-1.5 border border-slate-600 text-center hover:bg-slate-700" onClick={() => requestOdpSort('rsv')}>
+                      RSV {odpTableSort.key === 'rsv' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-slate-600 text-center hover:bg-slate-700" onClick={() => requestOdpSort('ont_rx_level')}>
+                    <th className="p-1.5 border border-slate-600 text-center hover:bg-slate-700" onClick={() => requestOdpSort('rsk')}>
+                      RSK (% OCC) {odpTableSort.key === 'rsk' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-1.5 border border-slate-600 text-center hover:bg-slate-700" onClick={() => requestOdpSort('ont_rx_level')}>
                       ONT RX Level {odpTableSort.key === 'ont_rx_level' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-slate-600">Latitude</th>
-                    <th className="p-2 border border-slate-600">Longitude</th>
+                    <th className="p-1.5 border border-slate-600 text-center hover:bg-slate-700" onClick={() => requestOdpSort('status')}>
+                      Status {odpTableSort.key === 'status' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-1.5 border border-slate-600 hover:bg-slate-700" onClick={() => requestOdpSort('event_date')}>
+                      Event Date {odpTableSort.key === 'event_date' ? (odpTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-1.5 border border-slate-600">Latitude</th>
+                    <th className="p-1.5 border border-slate-600">Longitude</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedOdpData.length === 0 ? (
                     <tr>
-                      <td colSpan={15} className="p-4 text-center text-slate-400 font-bold">
+                      <td colSpan={22} className="p-4 text-center text-slate-400 font-bold">
                         Tidak ada data ODP yang sesuai filter.
                       </td>
                     </tr>
@@ -1225,33 +1284,37 @@ export default function Dashboard() {
 
                       return (
                         <tr key={`${row.odp_name}-${idx}`} className="border-b border-slate-200 hover:bg-blue-50/60 transition">
-                          <td className="p-1.5 border border-slate-200 text-center font-bold text-slate-500">{rowNumber}</td>
-                          <td className="p-1.5 border border-slate-200 font-black text-blue-900">{row.odp_name}</td>
+                          <td className="p-1 border border-slate-200 text-center font-bold text-slate-500">{rowNumber}</td>
+                          <td className="p-1 border border-slate-200 font-black text-blue-900">{row.odp_name}</td>
                           <td
-                            className="p-1.5 border border-slate-200 font-bold cursor-pointer hover:text-blue-700 hover:underline"
+                            className="p-1 border border-slate-200 font-bold cursor-pointer hover:text-blue-700 hover:underline"
                             onClick={() => setSelectedStoFilter((p) => (p === row.sto ? 'ALL' : row.sto))}
                             title="Klik untuk filter STO ini"
                           >
                             {row.sto || '-'}
                           </td>
+                          <td className="p-1 border border-slate-200 text-slate-600 max-w-[150px] truncate" title={row.sto_desc}>{row.sto_desc || '-'}</td>
                           <td
-                            className="p-1.5 border border-slate-200 cursor-pointer hover:text-blue-700 hover:underline"
+                            className="p-1 border border-slate-200 cursor-pointer hover:text-blue-700 hover:underline"
                             onClick={() => setSelectedWokFilter((p) => (p === row.wok ? 'ALL' : row.wok))}
                             title="Klik untuk filter WOK ini"
                           >
                             {row.wok || '-'}
                           </td>
+                          <td className="p-1 border border-slate-200">{row.witel || '-'}</td>
+                          <td className="p-1 border border-slate-200">{row.datel || '-'}</td>
+                          <td className="p-1 border border-slate-200">{row.regional || '-'}</td>
                           <td
-                            className="p-1.5 border border-slate-200 cursor-pointer hover:text-blue-700 hover:underline"
+                            className="p-1 border border-slate-200 cursor-pointer hover:text-blue-700 hover:underline"
                             onClick={() => setSelectedKabupaten((p) => (p === row.kabupaten ? 'ALL' : row.kabupaten))}
                             title="Klik untuk filter Kabupaten ini"
                           >
                             {row.kabupaten || '-'}
                           </td>
-                          <td className="p-1.5 border border-slate-200">{row.kecamatan || '-'}</td>
-                          <td className="p-1.5 border border-slate-200">{row.desa || '-'}</td>
+                          <td className="p-1 border border-slate-200">{row.kecamatan || '-'}</td>
+                          <td className="p-1 border border-slate-200">{row.desa || '-'}</td>
                           <td
-                            className="p-1.5 border border-slate-200 text-center cursor-pointer"
+                            className="p-1 border border-slate-200 text-center cursor-pointer"
                             onClick={() => setSelectedStatus((p) => (p === row.status_final ? 'ALL' : row.status_final))}
                             title="Klik untuk filter Status ini"
                           >
@@ -1262,20 +1325,23 @@ export default function Dashboard() {
                               {row.status_final}
                             </span>
                           </td>
-                          <td className="p-1.5 border border-slate-200 text-center font-bold">{row.is_total || 0}</td>
-                          <td className="p-1.5 border border-slate-200 text-center text-emerald-800 font-bold">{row.used || 0}</td>
-                          <td className="p-1.5 border border-slate-200 text-center text-red-800 font-bold">{row.avai || 0}</td>
-                          <td className="p-1.5 border border-slate-200 text-center font-extrabold">{occ.toFixed(1)}%</td>
+                          <td className="p-1 border border-slate-200 text-center font-bold">{row.is_total || 0}</td>
+                          <td className="p-1 border border-slate-200 text-center text-emerald-800 font-bold">{row.used || 0}</td>
+                          <td className="p-1 border border-slate-200 text-center text-red-800 font-bold">{row.avai || 0}</td>
+                          <td className="p-1 border border-slate-200 text-center">{row.rsv || 0}</td>
+                          <td className="p-1 border border-slate-200 text-center font-extrabold">{occ.toFixed(1)}%</td>
                           <td
-                            className="p-1.5 border border-slate-200 text-center font-bold cursor-pointer hover:underline"
+                            className="p-1 border border-slate-200 text-center font-bold cursor-pointer hover:underline"
                             style={{ color: rxColor }}
                             onClick={() => setSelectedRx((p) => (p === row.rx_category ? 'ALL' : row.rx_category))}
                             title="Klik untuk filter Kategori RX ini"
                           >
                             {row.ont_rx_level !== null ? `${Number(row.ont_rx_level).toFixed(2)} dBm` : '-'}
                           </td>
-                          <td className="p-1.5 border border-slate-200 font-mono text-[9px] text-slate-500">{row.latitude || '-'}</td>
-                          <td className="p-1.5 border border-slate-200 font-mono text-[9px] text-slate-500">{row.longitude || '-'}</td>
+                          <td className="p-1 border border-slate-200 text-center text-slate-600">{row.status || '-'}</td>
+                          <td className="p-1 border border-slate-200">{row.event_date || '-'}</td>
+                          <td className="p-1 border border-slate-200 font-mono text-[8.5px] text-slate-500">{row.latitude || '-'}</td>
+                          <td className="p-1 border border-slate-200 font-mono text-[8.5px] text-slate-500">{row.longitude || '-'}</td>
                         </tr>
                       );
                     })
@@ -1285,67 +1351,89 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* TAB 2: TABEL DETAIL ORDER FULFILLMENT */}
+          {/* TAB 2: TABEL DETAIL ORDER (SEMUA KOLOM LENGKAP) */}
           {bottomActiveTab === 'ORDER' && (
-            <div className="overflow-x-auto max-h-[460px] overflow-y-auto">
-              <table className="w-full text-left border-collapse text-[10px] whitespace-nowrap">
+            <div className="overflow-x-auto max-h-[480px] overflow-y-auto">
+              <table className="w-full text-left border-collapse text-[9.5px] whitespace-nowrap">
                 <thead className="bg-[#3b0764] text-white uppercase font-bold sticky top-0 z-10 shadow select-none cursor-pointer">
                   <tr>
-                    <th className="p-2 border border-purple-800 text-center">No</th>
-                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('order_id')}>
+                    <th className="p-1.5 border border-purple-800 text-center">No</th>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('order_id')}>
                       Order ID {orderTableSort.key === 'order_id' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('process_state')}>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('new_order_id')}>
+                      New Order ID {orderTableSort.key === 'new_order_id' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('process_state')}>
                       Process State {orderTableSort.key === 'process_state' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('funneling_subgroup')}>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('funneling_subgroup')}>
                       Subgroup {orderTableSort.key === 'funneling_subgroup' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('name')}>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('name')}>
                       Nama Pelanggan {orderTableSort.key === 'name' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('no_handphone')}>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('no_handphone')}>
                       No HP {orderTableSort.key === 'no_handphone' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('sto_co')}>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('sto_co')}>
                       STO {orderTableSort.key === 'sto_co' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('wok')}>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('wok')}>
                       WOK {orderTableSort.key === 'wok' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('odp_name')}>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('odp_name')}>
                       ODP Name {orderTableSort.key === 'odp_name' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('product_commercial_name')}>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('product_commercial_name')}>
                       Product Name {orderTableSort.key === 'product_commercial_name' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('order_duration_cat')}>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800 bg-purple-900" onClick={() => requestOrderSort('order_duration_cat')}>
                       Duration Cat {orderTableSort.key === 'order_duration_cat' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('fallout_reason_clean')}>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('fallout_category')}>
+                      Fallout Category {orderTableSort.key === 'fallout_category' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('symptom')}>
+                      Symptom {orderTableSort.key === 'symptom' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('fallout_reason_clean')}>
                       Fallout Reason {orderTableSort.key === 'fallout_reason_clean' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('price_package')}>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('category_hk')}>
+                      Category HK {orderTableSort.key === 'category_hk' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('status_hk')}>
+                      Status HK {orderTableSort.key === 'status_hk' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('tanggal_hk')}>
+                      Tanggal HK {orderTableSort.key === 'tanggal_hk' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('pic_dept')}>
+                      PIC Dept {orderTableSort.key === 'pic_dept' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    </th>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('price_package')}>
                       Price {orderTableSort.key === 'price_package' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('order_ts')}>
-                      Order Date {orderTableSort.key === 'order_ts' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800 bg-purple-900" onClick={() => requestOrderSort('order_ts')}>
+                      Order Date (Provi) {orderTableSort.key === 'order_ts' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('ps_ts')}>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('ps_ts')}>
                       PS Date {orderTableSort.key === 'ps_ts' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('sf_name')}>
+                    <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('sf_name')}>
                       SF Name {orderTableSort.key === 'sf_name' ? (orderTableSort.direction === 'asc' ? '↑' : '↓') : '↕'}
                     </th>
-                    <th className="p-2 border border-purple-800">Alamat</th>
-                    <th className="p-2 border border-purple-800">Latitude</th>
-                    <th className="p-2 border border-purple-800">Longitude</th>
+                    <th className="p-1.5 border border-purple-800">Remark</th>
+                    <th className="p-1.5 border border-purple-800">Alamat</th>
+                    <th className="p-1.5 border border-purple-800">Latitude</th>
+                    <th className="p-1.5 border border-purple-800">Longitude</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedOrderData.length === 0 ? (
                     <tr>
-                      <td colSpan={19} className="p-4 text-center text-slate-400 font-bold">
+                      <td colSpan={27} className="p-4 text-center text-slate-400 font-bold">
                         Belum ada data Order yang diunggah atau tidak sesuai filter.
                       </td>
                     </tr>
@@ -1353,17 +1441,20 @@ export default function Dashboard() {
                     paginatedOrderData.map((row, idx) => {
                       const rowNumber = (currentOrderPage - 1) * rowsPerPage + idx + 1;
                       const pState = (row.process_state || 'UNKNOWN').trim().toUpperCase();
+                      const saklekDur = getExactDurationCategory(row);
+                      const displayOrderDate = formatDisplayDate(row.order_ts || row.provi);
 
                       return (
                         <tr
                           key={`${row.order_id}-${idx}`}
                           className="border-b border-slate-200 hover:bg-purple-50/60 transition"
                         >
-                          <td className="p-1.5 border border-slate-200 text-center font-bold text-slate-500">{rowNumber}</td>
-                          <td className="p-1.5 border border-slate-200 font-black text-purple-900">{row.order_id}</td>
-                          <td className="p-1.5 border border-slate-200 font-bold text-slate-800">
+                          <td className="p-1 border border-slate-200 text-center font-bold text-slate-500">{rowNumber}</td>
+                          <td className="p-1 border border-slate-200 font-black text-purple-900">{row.order_id}</td>
+                          <td className="p-1 border border-slate-200 font-mono text-slate-600">{row.new_order_id || '-'}</td>
+                          <td className="p-1 border border-slate-200 font-bold text-slate-800">
                             <span
-                              className={`px-1.5 py-0.5 rounded text-[9px] font-black ${
+                              className={`px-1.5 py-0.5 rounded text-[8.5px] font-black ${
                                 pState === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' :
                                 pState === 'FALLOUT' ? 'bg-red-100 text-red-800' :
                                 pState.includes('CANCEL') ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-700'
@@ -1372,30 +1463,33 @@ export default function Dashboard() {
                               {pState}
                             </span>
                           </td>
-                          <td className="p-1.5 border border-slate-200 font-bold text-slate-700">
+                          <td className="p-1 border border-slate-200 font-bold text-slate-700">
                             {row.funneling_subgroup || '-'}
                           </td>
-                          <td className="p-1.5 border border-slate-200 font-semibold">{row.name || '-'}</td>
-                          <td className="p-1.5 border border-slate-200 font-mono text-[9px]">{row.no_handphone || row.no_handphone_mask || '-'}</td>
-                          <td className="p-1.5 border border-slate-200 font-bold text-slate-800">{row.sto_co || '-'}</td>
-                          <td className="p-1.5 border border-slate-200">{row.wok || '-'}</td>
-                          <td className="p-1.5 border border-slate-200 font-bold text-blue-800">{row.odp_name || '-'}</td>
-                          <td className="p-1.5 border border-slate-200">{row.product_commercial_name || '-'}</td>
-                          <td className="p-1.5 border border-slate-200 font-bold text-emerald-800">{row.order_duration_cat || '-'}</td>
-                          <td className="p-1.5 border border-slate-200 text-red-600 font-bold">
-                            {row.fallout_reason_clean ? (
-                              <span className="bg-red-50 px-1.5 py-0.5 rounded border border-red-200">
-                                {row.fallout_reason_clean}
-                              </span>
-                            ) : '-'}
+                          <td className="p-1 border border-slate-200 font-semibold">{row.name || '-'}</td>
+                          <td className="p-1 border border-slate-200 font-mono text-[9px]">{row.no_handphone || row.no_handphone_mask || '-'}</td>
+                          <td className="p-1 border border-slate-200 font-bold text-slate-800">{row.sto_co || '-'}</td>
+                          <td className="p-1 border border-slate-200">{row.wok || '-'}</td>
+                          <td className="p-1 border border-slate-200 font-bold text-blue-800">{row.odp_name || '-'}</td>
+                          <td className="p-1 border border-slate-200">{row.product_commercial_name || '-'}</td>
+                          <td className="p-1 border border-slate-200 font-bold text-emerald-800">{saklekDur}</td>
+                          <td className="p-1 border border-slate-200 font-semibold text-slate-700">{row.fallout_category || '-'}</td>
+                          <td className="p-1 border border-slate-200 font-bold text-red-700">{row.symptom || '-'}</td>
+                          <td className="p-1 border border-slate-200 text-red-600 max-w-[200px] truncate" title={row.fallout_reason_clean || row.fallout_reason}>
+                            {row.fallout_reason_clean || row.fallout_reason || '-'}
                           </td>
-                          <td className="p-1.5 border border-slate-200 text-right">{row.price_package ? Number(row.price_package).toLocaleString() : '-'}</td>
-                          <td className="p-1.5 border border-slate-200">{row.order_ts || '-'}</td>
-                          <td className="p-1.5 border border-slate-200">{row.ps_ts || '-'}</td>
-                          <td className="p-1.5 border border-slate-200">{row.sf_name || '-'}</td>
-                          <td className="p-1.5 border border-slate-200 max-w-[200px] truncate" title={row.address}>{row.address || '-'}</td>
-                          <td className="p-1.5 border border-slate-200 font-mono text-[9px]">{row.latitude || '-'}</td>
-                          <td className="p-1.5 border border-slate-200 font-mono text-[9px]">{row.longitude || '-'}</td>
+                          <td className="p-1 border border-slate-200">{row.category_hk || '-'}</td>
+                          <td className="p-1 border border-slate-200">{row.status_hk || '-'}</td>
+                          <td className="p-1 border border-slate-200">{formatDisplayDate(row.tanggal_hk)}</td>
+                          <td className="p-1 border border-slate-200">{row.pic_dept || '-'}</td>
+                          <td className="p-1 border border-slate-200 text-right">{row.price_package ? Number(row.price_package).toLocaleString() : '-'}</td>
+                          <td className="p-1 border border-slate-200 font-mono text-[9px] font-bold text-slate-800">{displayOrderDate}</td>
+                          <td className="p-1 border border-slate-200">{formatDisplayDate(row.ps_ts)}</td>
+                          <td className="p-1 border border-slate-200">{row.sf_name || '-'}</td>
+                          <td className="p-1 border border-slate-200 max-w-[150px] truncate" title={row.remark}>{row.remark || '-'}</td>
+                          <td className="p-1 border border-slate-200 max-w-[180px] truncate" title={row.address}>{row.address || '-'}</td>
+                          <td className="p-1 border border-slate-200 font-mono text-[8.5px]">{row.latitude || '-'}</td>
+                          <td className="p-1 border border-slate-200 font-mono text-[8.5px]">{row.longitude || '-'}</td>
                         </tr>
                       );
                     })
@@ -1406,7 +1500,7 @@ export default function Dashboard() {
           )}
 
           {/* Pagination */}
-          <div className="bg-slate-50 p-2.5 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-2 text-xs font-semibold">
+          <div className="bg-slate-50 p-2 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-2 text-xs font-semibold">
             {bottomActiveTab === 'ODP' ? (
               <>
                 <span className="text-slate-600">
@@ -1417,7 +1511,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentPage(1)}
                     disabled={currentPage === 1}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     &laquo; Pertama
                   </button>
@@ -1425,7 +1519,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     &lsaquo; Prev
                   </button>
@@ -1434,7 +1528,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentPage((p) => Math.min(totalOdpPages, p + 1))}
                     disabled={currentPage === totalOdpPages}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     Next &rsaquo;
                   </button>
@@ -1442,7 +1536,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentPage(totalOdpPages)}
                     disabled={currentPage === totalOdpPages}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     Terakhir &raquo;
                   </button>
@@ -1458,7 +1552,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentOrderPage(1)}
                     disabled={currentOrderPage === 1}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     &laquo; Pertama
                   </button>
@@ -1466,7 +1560,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentOrderPage((p) => Math.max(1, p - 1))}
                     disabled={currentOrderPage === 1}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     &lsaquo; Prev
                   </button>
@@ -1475,7 +1569,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentOrderPage((p) => Math.min(totalOrderPages, p + 1))}
                     disabled={currentOrderPage === totalOrderPages}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     Next &rsaquo;
                   </button>
@@ -1483,7 +1577,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentOrderPage(totalOrderPages)}
                     disabled={currentOrderPage === totalOrderPages}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     Terakhir &raquo;
                   </button>
