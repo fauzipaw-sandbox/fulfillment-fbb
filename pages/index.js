@@ -181,6 +181,8 @@ export default function Dashboard() {
   const [showMeasureModal, setShowMeasureModal] = useState(false);
   const [pointAInput, setPointAInput] = useState('');
   const [pointBInput, setPointBInput] = useState('');
+  const [pointASuggestions, setPointASuggestions] = useState([]);
+  const [pointBSuggestions, setPointBSuggestions] = useState([]);
   const [isRouting, setIsRouting] = useState(false);
   const [measureResult, setMeasureResult] = useState(null);
   const [manualMeasureLine, setManualMeasureLine] = useState(null);
@@ -497,15 +499,48 @@ export default function Dashboard() {
     }
   };
 
+  const getPointsSuggestions = (input) => {
+    if (!input || input.trim().length < 3) return [];
+    const q = input.trim().toLowerCase();
+    const list = [];
+    const match = q.match(/^(-?\d+\.?\d*)[,\s\t]+(-?\d+\.?\d*)$/);
+    if (match && match[1] && match[2]) {
+      list.push({ displayName: `${parseFloat(match[1]).toFixed(5)}, ${parseFloat(match[2]).toFixed(5)}` });
+    }
+
+    (data || []).forEach((d) => {
+      if (d.odp_name && d.odp_name.toLowerCase().includes(q)) {
+        list.push({ displayName: d.odp_name });
+      }
+    });
+
+    (ordersData || []).forEach((o) => {
+      if (o.order_id && o.order_id.toLowerCase().includes(q)) {
+        list.push({ displayName: o.order_id });
+      }
+    });
+
+    return list.slice(0, 6);
+  };
+
   const parsePoint = (input) => {
     if (!input) return null;
-    const clean = input.trim();
-    if (clean.includes(',')) {
-      const parts = clean.split(',').map((p) => parseFloat(p.trim()));
-      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) return { name: clean, lat: parts[0], lon: parts[1] };
+    const clean = String(input).trim();
+    const match = clean.match(/^(-?\d+\.?\d*)[,\s\t]+(-?\d+\.?\d*)$/);
+    if (match && match[1] && match[2]) {
+      let num1 = parseFloat(match[1]);
+      let num2 = parseFloat(match[2]);
+      if (!isNaN(num1) && !isNaN(num2)) {
+        if (num1 > 90 || (num1 > 0 && num2 < 0)) return { name: `${num2.toFixed(5)}, ${num1.toFixed(5)}`, lat: num2, lon: num1 };
+        return { name: `${num1.toFixed(5)}, ${num2.toFixed(5)}`, lat: num1, lon: num2 };
+      }
     }
     const found = (data || []).find((d) => d.odp_name && String(d.odp_name).toLowerCase() === clean.toLowerCase());
     if (found && found.latitude && found.longitude) return { name: found.odp_name, lat: found.latitude, lon: found.longitude };
+
+    const foundOrd = (ordersData || []).find((o) => o.order_id && String(o.order_id).toLowerCase() === clean.toLowerCase());
+    if (foundOrd && foundOrd.latitude && foundOrd.longitude) return { name: foundOrd.order_id, lat: foundOrd.latitude, lon: foundOrd.longitude };
+
     return null;
   };
 
@@ -570,11 +605,8 @@ export default function Dashboard() {
 
       {!odpLoaded && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/70 backdrop-blur-xs flex flex-col items-center justify-center text-white">
-          <div className="relative flex items-center justify-center mb-4">
-            <div className="w-16 h-16 border-4 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
-            <div className="w-8 h-8 border-4 border-indigo-200 border-b-transparent rounded-full animate-spin absolute"></div>
-          </div>
-          <p className="text-base font-extrabold tracking-wider animate-pulse">MEMUAT DATA...</p>
+          <div className="w-16 h-16 border-4 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-base font-extrabold tracking-wider animate-pulse mt-3">MEMUAT DATA...</p>
         </div>
       )}
 
@@ -596,14 +628,6 @@ export default function Dashboard() {
               onClick={() => setShowUploader(!showUploader)}
               className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded shadow transition cursor-pointer"
             >
-              <svg
-                className={`w-4 h-4 transition-transform ${showUploader ? 'rotate-180' : ''}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
               {showUploader ? 'Tutup Upload' : 'Upload Data'}
             </button>
           </div>
@@ -794,7 +818,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* 2. KUALITAS REDAMAN (SYNC DENGAN FILTER OVERVIEW ODP) */}
+            {/* 2. KUALITAS REDAMAN */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#059669] via-[#0d9488] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
                 <span className="font-extrabold text-xs sm:text-sm tracking-wide">KUALITAS REDAMAN (ONT RX LEVEL)</span>
@@ -966,27 +990,68 @@ export default function Dashboard() {
 
               {showMeasureModal && (
                 <div className="bg-slate-50 p-2.5 border-b border-slate-200 text-xs space-y-2">
-                  <p className="font-bold text-slate-800 text-[11px]">Hitung Jarak Darat (Jalan Raya) Berdasarkan ODP Name / Koordinat:</p>
+                  <div className="flex justify-between items-center border-b pb-1">
+                    <p className="font-bold text-slate-800 text-[11px]">Hitung Jarak Darat (Ketik 3 Digit untuk Suggestion):</p>
+                    <button type="button" onClick={() => setShowMeasureModal(false)} className="text-slate-400 hover:text-slate-700 font-black">✕</button>
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <div>
+                    <div className="relative">
                       <label className="text-[10px] text-slate-500 font-semibold">Titik A:</label>
                       <input
                         type="text"
-                        placeholder="Contoh: ODP-PLK-FAA/01"
+                        placeholder="Contoh: ODP-PLK-FAA/01 atau Koordinat"
                         value={pointAInput}
-                        onChange={(e) => setPointAInput(e.target.value)}
-                        className="w-full p-1 border rounded text-xs mt-0.5 bg-white"
+                        onChange={(e) => {
+                          setPointAInput(e.target.value);
+                          setPointASuggestions(getPointsSuggestions(e.target.value));
+                        }}
+                        className="w-full p-1 border rounded text-xs mt-0.5 bg-white font-semibold"
                       />
+                      {pointASuggestions.length > 0 && (
+                        <div className="absolute top-full left-0 w-full bg-white border border-slate-300 shadow-xl rounded z-[3000] max-h-40 overflow-y-auto">
+                          {pointASuggestions.map((s, idx) => (
+                            <div
+                              key={`suggA-${idx}`}
+                              onClick={() => {
+                                setPointAInput(s.displayName);
+                                setPointASuggestions([]);
+                              }}
+                              className="p-1.5 text-[10px] hover:bg-blue-50 cursor-pointer border-b font-semibold text-slate-700"
+                            >
+                              {s.displayName}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <div>
+                    <div className="relative">
                       <label className="text-[10px] text-slate-500 font-semibold">Titik B:</label>
                       <input
                         type="text"
-                        placeholder="Contoh: ODP-PLK-FAA/05"
+                        placeholder="Contoh: ODP-PLK-FAA/05 atau Koordinat"
                         value={pointBInput}
-                        onChange={(e) => setPointBInput(e.target.value)}
-                        className="w-full p-1 border rounded text-xs mt-0.5 bg-white"
+                        onChange={(e) => {
+                          setPointBInput(e.target.value);
+                          setPointBSuggestions(getPointsSuggestions(e.target.value));
+                        }}
+                        className="w-full p-1 border rounded text-xs mt-0.5 bg-white font-semibold"
                       />
+                      {pointBSuggestions.length > 0 && (
+                        <div className="absolute top-full left-0 w-full bg-white border border-slate-300 shadow-xl rounded z-[3000] max-h-40 overflow-y-auto">
+                          {pointBSuggestions.map((s, idx) => (
+                            <div
+                              key={`suggB-${idx}`}
+                              onClick={() => {
+                                setPointBInput(s.displayName);
+                                setPointBSuggestions([]);
+                              }}
+                              className="p-1.5 text-[10px] hover:bg-blue-50 cursor-pointer border-b font-semibold text-slate-700"
+                            >
+                              {s.displayName}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -1080,7 +1145,6 @@ export default function Dashboard() {
                           <td
                             onClick={() => setSelectedWokFilter((prev) => (prev === row.wok ? 'ALL' : row.wok))}
                             className="p-1 border border-gray-300 font-bold text-gray-600 cursor-pointer hover:text-blue-700 hover:underline"
-                            title="Klik untuk filter WOK"
                           >
                             {row.wok}
                           </td>
@@ -1088,7 +1152,6 @@ export default function Dashboard() {
                           <td
                             onClick={() => setSelectedStoFilter((prev) => (prev === row.sto ? 'ALL' : row.sto))}
                             className="p-1 border border-gray-300 font-bold text-gray-700 cursor-pointer hover:text-blue-700 hover:underline"
-                            title="Klik untuk filter STO"
                           >
                             {row.sto}
                           </td>
@@ -1125,7 +1188,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ================= SECTION BAWAH: TABEL DETAIL RAW DATA (SEMUA KOLOM LENGKAP) ================= */}
+        {/* ================= SECTION BAWAH: TABEL DETAIL RAW DATA (SAFE RENDERING) ================= */}
         <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden mt-4">
           <div className="bg-gradient-to-r from-[#0f172a] via-[#1e293b] to-[#334155] text-white p-2.5 px-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
             <div className="flex items-center gap-2">
@@ -1316,7 +1379,6 @@ export default function Dashboard() {
                           <td
                             className="p-1 border border-slate-200 font-bold cursor-pointer hover:text-blue-700 hover:underline"
                             onClick={() => setSelectedStoFilter((p) => (p === row.sto ? 'ALL' : row.sto))}
-                            title="Klik untuk filter STO ini"
                           >
                             {row.sto || '-'}
                           </td>
@@ -1324,7 +1386,6 @@ export default function Dashboard() {
                           <td
                             className="p-1 border border-slate-200 cursor-pointer hover:text-blue-700 hover:underline"
                             onClick={() => setSelectedWokFilter((p) => (p === row.wok ? 'ALL' : row.wok))}
-                            title="Klik untuk filter WOK ini"
                           >
                             {row.wok || '-'}
                           </td>
@@ -1334,7 +1395,6 @@ export default function Dashboard() {
                           <td
                             className="p-1 border border-slate-200 cursor-pointer hover:text-blue-700 hover:underline"
                             onClick={() => setSelectedKabupaten((p) => (p === row.kabupaten ? 'ALL' : row.kabupaten))}
-                            title="Klik untuk filter Kabupaten ini"
                           >
                             {row.kabupaten || '-'}
                           </td>
@@ -1343,7 +1403,6 @@ export default function Dashboard() {
                           <td
                             className="p-1 border border-slate-200 text-center cursor-pointer"
                             onClick={() => setSelectedStatus((p) => (p === row.status_final ? 'ALL' : row.status_final))}
-                            title="Klik untuk filter Status ini"
                           >
                             <span
                               className="px-1.5 py-0.5 rounded text-[8.5px] font-bold text-white uppercase"
@@ -1361,7 +1420,6 @@ export default function Dashboard() {
                             className="p-1 border border-slate-200 text-center font-bold cursor-pointer hover:underline"
                             style={{ color: rxColor }}
                             onClick={() => setSelectedRx((p) => (p === row.rx_category ? 'ALL' : row.rx_category))}
-                            title="Klik untuk filter Kategori RX ini"
                           >
                             {row.ont_rx_level !== null && row.ont_rx_level !== undefined && row.ont_rx_level !== '' ? `${Number(row.ont_rx_level).toFixed(2)} dBm` : '-'}
                           </td>
@@ -1468,6 +1526,8 @@ export default function Dashboard() {
                     paginatedOrderData.map((row, idx) => {
                       const rowNumber = (currentOrderPage - 1) * rowsPerPage + idx + 1;
                       const pState = String(row.process_state || 'UNKNOWN').trim().toUpperCase();
+                      const saklekDur = row.order_duration_cat || '> 0 HARI';
+                      const displayOrderDate = safeFormatDisplayDate(row.order_ts || row.provi);
 
                       return (
                         <tr
@@ -1497,7 +1557,7 @@ export default function Dashboard() {
                           <td className="p-1 border border-slate-200">{row.wok || '-'}</td>
                           <td className="p-1 border border-slate-200 font-bold text-blue-800">{row.odp_name || '-'}</td>
                           <td className="p-1 border border-slate-200">{row.product_commercial_name || '-'}</td>
-                          <td className="p-1 border border-slate-200 font-bold text-emerald-800">{row.order_duration_cat || '-'}</td>
+                          <td className="p-1 border border-slate-200 font-bold text-emerald-800">{saklekDur}</td>
                           <td className="p-1 border border-slate-200 font-semibold text-slate-700">{row.fallout_category || '-'}</td>
                           <td className="p-1 border border-slate-200 font-bold text-red-700">{row.symptom || '-'}</td>
                           <td className="p-1 border border-slate-200 text-red-600 max-w-[200px] truncate" title={row.fallout_reason_clean || row.fallout_reason}>
@@ -1508,7 +1568,7 @@ export default function Dashboard() {
                           <td className="p-1 border border-slate-200">{safeFormatDisplayDate(row.tanggal_hk)}</td>
                           <td className="p-1 border border-slate-200">{row.pic_dept || '-'}</td>
                           <td className="p-1 border border-slate-200 text-right">{safeFormatNumber(row.price_package)}</td>
-                          <td className="p-1 border border-slate-200 font-mono text-[9px] font-bold text-slate-800">{safeFormatDisplayDate(row.order_ts || row.provi)}</td>
+                          <td className="p-1 border border-slate-200 font-mono text-[9px] font-bold text-slate-800">{displayOrderDate}</td>
                           <td className="p-1 border border-slate-200">{safeFormatDisplayDate(row.ps_ts)}</td>
                           <td className="p-1 border border-slate-200">{row.sf_name || '-'}</td>
                           <td className="p-1 border border-slate-200 max-w-[150px] truncate" title={row.remark}>{row.remark || '-'}</td>
@@ -1525,7 +1585,7 @@ export default function Dashboard() {
           )}
 
           {/* Pagination */}
-          <div className="bg-slate-50 p-2.5 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-2 text-xs font-semibold">
+          <div className="bg-slate-50 p-2 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-2 text-xs font-semibold">
             {bottomActiveTab === 'ODP' ? (
               <>
                 <span className="text-slate-600">
@@ -1536,7 +1596,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentPage(1)}
                     disabled={currentPage === 1}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     &laquo; Pertama
                   </button>
@@ -1544,7 +1604,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     &lsaquo; Prev
                   </button>
@@ -1552,16 +1612,16 @@ export default function Dashboard() {
                   <button
                     type="button"
                     onClick={() => setCurrentPage((p) => Math.min(totalOdpPages, p + 1))}
-                    disabled={currentPage === totalOdpPages}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    disabled={currentPage === totalPages}
+                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     Next &rsaquo;
                   </button>
                   <button
                     type="button"
                     onClick={() => setCurrentPage(totalOdpPages)}
-                    disabled={currentPage === totalOdpPages}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    disabled={currentPage === totalPages}
+                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     Terakhir &raquo;
                   </button>
@@ -1577,7 +1637,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentOrderPage(1)}
                     disabled={currentOrderPage === 1}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     &laquo; Pertama
                   </button>
@@ -1585,7 +1645,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentOrderPage((p) => Math.max(1, p - 1))}
                     disabled={currentOrderPage === 1}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     &lsaquo; Prev
                   </button>
@@ -1594,7 +1654,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentOrderPage((p) => Math.min(totalOrderPages, p + 1))}
                     disabled={currentOrderPage === totalOrderPages}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     Next &rsaquo;
                   </button>
@@ -1602,7 +1662,7 @@ export default function Dashboard() {
                     type="button"
                     onClick={() => setCurrentOrderPage(totalOrderPages)}
                     disabled={currentOrderPage === totalOrderPages}
-                    className="px-2 py-1 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
+                    className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                   >
                     Terakhir &raquo;
                   </button>
