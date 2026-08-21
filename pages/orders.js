@@ -111,16 +111,36 @@ function safeFormatCoord(val) {
   return isNaN(num) ? String(val) : num.toFixed(5);
 }
 
-// Helper: Ambil Fallout Reason yang sudah disederhanakan (Simplified / Clean)
+// FUNGSI UTAMA: Prioritaskan 100% kolom SYMPTOM (BATAL, ODP FULL, KENDALA JALUR, dll)
 function getSimplifiedFalloutReason(order) {
   if (!order) return 'LAINNYA';
-  const clean = (order.fallout_category || order.symptom || order.fallout_reason_clean || '').trim();
-  if (clean && clean !== '-' && clean !== 'null' && clean !== 'undefined') {
-    return clean;
+  
+  // 1. Prioritas Utama: SYMPTOM
+  const symptomVal = (order.symptom || '').trim();
+  if (symptomVal && symptomVal !== '-' && symptomVal !== 'null' && symptomVal !== 'undefined') {
+    return symptomVal;
   }
-  const raw = (order.fallout_reason || order.remark || '').trim();
-  if (!raw || raw === '-') return 'LAINNYA';
-  return raw.length > 35 ? `${raw.slice(0, 35)}...` : raw;
+
+  // 2. Prioritas Kedua: Fallout Reason Clean
+  const cleanVal = (order.fallout_reason_clean || '').trim();
+  if (cleanVal && cleanVal !== '-' && cleanVal !== 'null' && cleanVal !== 'undefined') {
+    return cleanVal;
+  }
+
+  // 3. Prioritas Ketiga: Fallout Category jika bukan teks macro generic
+  const catVal = (order.fallout_category || '').trim();
+  if (
+    catVal &&
+    catVal !== '-' &&
+    !catVal.includes('KENDALA SISTEM') &&
+    !catVal.includes('KENDALA TEKNIK') &&
+    !catVal.includes('KENDALA PELANGGAN') &&
+    catVal !== 'OTHERS'
+  ) {
+    return catVal;
+  }
+
+  return 'LAINNYA';
 }
 
 function getExactDurationCategory(order) {
@@ -397,7 +417,7 @@ export default function OrdersPage() {
         matchSubgroup = subGroup === activeSubgroupScope;
       }
       
-      // SINKRON FILTER DENGAN SIMPLIFIED REASON
+      // SINKRON FILTER MENGGUNAKAN SYMPTOM (SIMPLIFIED REASON)
       const rVal = getSimplifiedFalloutReason(o);
       const matchFallout = selectedFallout === 'ALL' || rVal === selectedFallout;
       return matchMonth && matchWok && matchSto && matchDur && matchStat && matchSubgroup && matchFallout;
@@ -516,7 +536,7 @@ export default function OrdersPage() {
     return { sortedWoks, columns, grandColTotals, totalAll };
   }, [pivotBaseOrders, pivot2Sort]);
 
-  // Pivot 3: Duration vs Fallout (MURNI DARI SIMPLIFIED FALLOUT REASON)
+  // Pivot 3: Duration vs Fallout (100% MURNI DARI SYMPTOM: BATAL, ODP FULL, KENDALA JALUR, dll)
   const pivotFallout = useMemo(() => {
     const tree = {};
     DURATION_ORDER.forEach((k) => {
@@ -545,7 +565,7 @@ export default function OrdersPage() {
 
     baseOrders.forEach((o) => {
       const dur = o.order_duration_cat;
-      // Menggunakan simplified fallout reason
+      // Mengambil murni dari Symptom
       const r = getSimplifiedFalloutReason(o);
 
       if (!tree[dur]) tree[dur] = { name: dur, total: 0, reasons: {} };
@@ -1230,14 +1250,14 @@ export default function OrdersPage() {
 
           </div>
 
-          {/* BARIS 2: PIVOT FALLOUT (KIRI) & DURATION FALLOUT CHART (KANAN) - MURNI DARI SIMPLIFIED FALLOUT REASON */}
+          {/* BARIS 2: PIVOT FALLOUT & DURATION FALLOUT CHART (MURNI DARI SYMPTOM / SIMPLIFIED REASON) */}
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 items-stretch">
             
             {/* 2.1. Pivot Fallout Table */}
             <div className="xl:col-span-4 bg-white border-2 border-slate-400 shadow-sm rounded overflow-hidden flex flex-col justify-between">
               <div>
                 <div className="bg-[#0f172a] text-white p-1.5 px-2.5 flex justify-between items-center text-[11px] font-black uppercase flex-wrap gap-1 border-b-2 border-slate-800">
-                  <span className="tracking-wide">Fallout Reason</span>
+                  <span className="tracking-wide">Fallout</span>
                   
                   <div className="flex items-center gap-1">
                     <span className="text-[8.5px] text-slate-300 font-bold">Status:</span>
@@ -1356,7 +1376,7 @@ export default function OrdersPage() {
               </div>
             </div>
 
-            {/* 2.2. Modern & Responsive Duration Fallout Chart (MURNI DARI SIMPLIFIED FALLOUT REASON) */}
+            {/* 2.2. Modern & Responsive Duration Fallout Chart (MURNI DARI SYMPTOM: BATAL, ODP FULL, dll) */}
             <div className="xl:col-span-8 bg-gradient-to-b from-white to-slate-50 border-2 border-slate-400 shadow-sm rounded-lg p-3 flex flex-col justify-between relative overflow-hidden">
               <div>
                 <div className="flex items-center justify-between border-b border-slate-200 pb-1.5 mb-2 flex-wrap gap-1">
@@ -1552,70 +1572,70 @@ export default function OrdersPage() {
               <thead className="bg-[#3b0764] text-white uppercase font-bold sticky top-0 z-10 shadow cursor-pointer select-none">
                 <tr>
                   <th className="p-1.5 border border-purple-800 text-center">No</th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('order_id')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('order_id')}>
                     Order ID {sortConfig.key === 'order_id' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('new_order_id')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('new_order_id')}>
                     New Order ID {sortConfig.key === 'new_order_id' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('process_state')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('process_state')}>
                     Process State {sortConfig.key === 'process_state' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('funneling_subgroup')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('funneling_subgroup')}>
                     Subgroup {sortConfig.key === 'funneling_subgroup' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('name')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('name')}>
                     Nama Pelanggan {sortConfig.key === 'name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('no_handphone')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('no_handphone')}>
                     No HP {sortConfig.key === 'no_handphone' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('sto_co')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('sto_co')}>
                     STO {sortConfig.key === 'sto_co' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('wok')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('wok')}>
                     WOK {sortConfig.key === 'wok' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('odp_name')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('odp_name')}>
                     ODP Name {sortConfig.key === 'odp_name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('product_commercial_name')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('product_commercial_name')}>
                     Product Name {sortConfig.key === 'product_commercial_name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800 bg-purple-900" onClick={() => requestOrderSort('order_duration_cat')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800 bg-purple-900" onClick={() => requestSort('order_duration_cat')}>
                     Duration Cat {sortConfig.key === 'order_duration_cat' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('fallout_category')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('fallout_category')}>
                     Fallout Category {sortConfig.key === 'fallout_category' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('symptom')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('symptom')}>
                     Symptom {sortConfig.key === 'symptom' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('fallout_reason_clean')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('fallout_reason_clean')}>
                     Fallout Reason {sortConfig.key === 'fallout_reason_clean' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('category_hk')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('category_hk')}>
                     Category HK {sortConfig.key === 'category_hk' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('status_hk')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('status_hk')}>
                     Status HK {sortConfig.key === 'status_hk' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('tanggal_hk')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('tanggal_hk')}>
                     Tanggal HK {sortConfig.key === 'tanggal_hk' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('pic_dept')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('pic_dept')}>
                     PIC Dept {sortConfig.key === 'pic_dept' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('price_package')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('price_package')}>
                     Price {sortConfig.key === 'price_package' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800 bg-purple-900" onClick={() => requestOrderSort('order_ts')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800 bg-purple-900" onClick={() => requestSort('order_ts')}>
                     Order Date (Provi) {sortConfig.key === 'order_ts' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('ps_ts')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('ps_ts')}>
                     PS Date {sortConfig.key === 'ps_ts' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
-                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestOrderSort('sf_name')}>
+                  <th className="p-1.5 border border-purple-800 hover:bg-purple-800" onClick={() => requestSort('sf_name')}>
                     SF Name {sortConfig.key === 'sf_name' ? (sortConfig.direction === 'asc' ? '↑' : '↓') : '↕'}
                   </th>
                   <th className="p-1.5 border border-purple-800">Remark</th>
@@ -1703,9 +1723,9 @@ export default function OrdersPage() {
                             }
                             r && setSelectedFallout((p) => (p === r ? 'ALL' : r));
                           }}
-                          title="Klik filter fallout ini"
+                          title="Klik filter symptom ini"
                         >
-                          {row.symptom || row.fallout_category || '-'}
+                          {row.symptom || '-'}
                         </td>
                         <td className="p-1 border border-slate-200 text-red-600 max-w-[200px] truncate" title={row.fallout_reason || row.fallout_reason_clean}>
                           {row.fallout_reason || row.fallout_reason_clean || '-'}
@@ -1757,7 +1777,7 @@ export default function OrdersPage() {
                 <span className="px-2 font-bold text-slate-700">{currentPage} / {totalPages}</span>
                 <button
                   type="button"
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  onClick={() => setCurrentPage((p) => Math.min(totalOdpPages, p + 1))}
                   disabled={currentPage === totalPages}
                   className="px-2 py-0.5 bg-white border border-slate-300 rounded disabled:opacity-40 hover:bg-slate-100 text-xs cursor-pointer"
                 >
