@@ -198,6 +198,17 @@ export default function Dashboard() {
   const [orderTableSort, setOrderTableSort] = useState({ key: 'order_ts', direction: 'desc' });
   const rowsPerPage = 50;
 
+  // Helper Clear Ukur Jarak Darat di Peta Utama
+  const clearMeasureActivity = () => {
+    setRoadRouteCoordinates([]);
+    setManualMeasureLine(null);
+    setMeasureResult(null);
+    setPointAInput('');
+    setPointBInput('');
+    setPointASuggestions([]);
+    setPointBSuggestions([]);
+  };
+
   const fullyFilteredData = useMemo(() => {
     return (data || []).filter((d) => {
       if (!d) return false;
@@ -415,7 +426,6 @@ export default function Dashboard() {
     });
   }, [filteredOrders, orderTableSort]);
 
-  // PAGINATION VARIABEL TERDEFINISI TEPAT
   const totalOdpPages = Math.ceil(sortedBottomOdpData.length / rowsPerPage) || 1;
   const paginatedOdpData = useMemo(() => {
     const start = (currentPage - 1) * rowsPerPage;
@@ -974,6 +984,7 @@ export default function Dashboard() {
                         <div
                           key={i}
                           onClick={() => {
+                            clearMeasureActivity();
                             setFocusedOdp(s);
                             setSuggestions([]);
                             setSearchTerm(s.odp_name);
@@ -1088,7 +1099,7 @@ export default function Dashboard() {
             {/* OCCUPANCY & AVAILABLE PORT */}
             <div className="bg-white border border-gray-300 shadow-sm rounded-sm overflow-hidden">
               <div className="bg-gradient-to-r from-[#b91c1c] via-[#6d28d9] to-[#1e3a8a] text-white px-3 py-1.5 flex justify-between items-center flex-wrap gap-1 shadow-sm">
-                <span className="font-extrabold text-xs sm:text-sm tracking-wide">OCCUPANCY & AVAILABLE PORT</span>
+                <span className="font-extrabold text-xs sm:text-sm tracking-wide">OCCUPANCY &amp; AVAILABLE PORT</span>
                 <span className="bg-white/20 hover:bg-white/30 text-white text-[9.5px] font-semibold px-2 py-0.5 rounded-full border border-white/20 backdrop-blur-sm">
                   {selectedStoFilter !== 'ALL' ? `STO: ${selectedStoFilter}` : selectedWokFilter !== 'ALL' ? `WOK: ${selectedWokFilter}` : 'Klik STO / WOK untuk filter'}
                 </span>
